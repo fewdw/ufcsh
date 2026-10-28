@@ -53,6 +53,7 @@ import { pruneBackups } from "./backup-retention.ts";
 import { ensureImageVariant, normalizeHeadshot, variantPath, type ImageSize } from "./image-variants.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight, fighterNames } from "./sync.ts";
 import { boutOdds, LiveOddsService, scanUpcoming, upcomingBouts, type FinishedBout, type LiveBout } from "./polymarket.ts";
+import { PolymarketMarkets } from "./polymarket-markets.ts";
 import { BackgroundRefresh } from "./background-refresh.ts";
 import { VersionCache } from "./version-cache.ts";
 import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy.ts";
@@ -2606,6 +2607,8 @@ export function startApi(port: number): http.Server {
   // Polymarket's live price is read here, on the main thread, so every reader
   // shares one price and one "just finished" moment (polymarket.ts).
   const liveOdds = new LiveOddsService({ current: polymarketBout, result: boutResult });
+  const markets = new PolymarketMarkets(scoreStore.db, fighterNames);
+  if (process.env.NODE_ENV !== "test") markets.start();
   const previewOdds = process.env.NODE_ENV !== "production" || SITE_URL === "https://dev.ufc.sh";
   if (process.env.NO_SYNC !== "1") {
     // Fight week: every bout should have a market; Admin → Bugs lists the ones that don't.
@@ -2888,6 +2891,28 @@ export function startApi(port: number): http.Server {
           /^[a-f0-9]{12}$/.test(url.searchParams.get("v") ?? ""));
       }
       if ((url.searchParams.get("q")?.length ?? 0) > 120) return await sendJson(req, res, { error: "search query too long" }, 400);
+      if (p.startsWith("/api/polymarket/")) {
+        if (req.method !== "GET" && req.method !== "HEAD") {
+          res.setHeader("Allow", "GET, HEAD");
+          return await sendJson(req, res, { error: "Method not allowed." }, 405);
+        }
+        const fight = /^\/api\/polymarket\/fights\/([a-f0-9]{16})$/i.exec(p);
+        if (fight) {
+          const detail = await markets.detail(fight[1]);
+          return await sendJson(req, res, detail ?? { error: "Fight not found." }, detail ? 200 : 404);
+        }
+        if (p === "/api/polymarket/board") {
+          const event = url.searchParams.get("event") ?? undefined;
+          const ids = url.searchParams.get("ids")?.split(",");
+          const fighters = url.searchParams.get("fighters")?.split(",");
+          if ((event && !/^[a-f0-9]{16}$/i.test(event)) || [ids, fighters].some(list => list && (list.length > 40 || list.some(id => !/^[a-f0-9]{16}$/i.test(id)))))
+            return await sendJson(req, res, { error: "Invalid market filter." }, 400);
+          return await sendJson(req, res, { fights: markets.board({ event, ids, fighters }) });
+        }
+        if (p === "/api/polymarket/analytics") return await sendJson(req, res, markets.analytics());
+        if (p === "/api/polymarket/explore") return await sendJson(req, res, markets.explore());
+        return await sendJson(req, res, { error: "Not found." }, 404);
+      }
       if (p === "/api/live/odds") {
         // ?fight= prices any bout, for previewing the pill on a dev site.
         const fightId = url.searchParams.get("fight");
@@ -3014,6 +3039,7 @@ export function startApi(port: number): http.Server {
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);
   server.on("close", () => {
+    markets.stop();
     metricsServer?.close();
     clearInterval(trafficFlusher);
     flushTraffic();

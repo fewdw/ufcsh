@@ -247,6 +247,24 @@ function polymarketMissing(): BugCheck {
   })));
 }
 
+function polymarketData(): BugCheck {
+  const rows = db.prepare(`SELECT ${FIGHT_COLUMNS}, p.error AS market_error, p.history_error,
+    p.checked_at AS market_checked, p.history_at, p.identity AS market_identity
+    FROM polymarket_bouts p JOIN fights f ON f.id=p.fight_id JOIN events e ON e.id=f.event_id
+    WHERE p.error IS NOT NULL OR p.history_error IS NOT NULL
+      OR p.identity != (f.event_id || ':' || e.date || ':' || f.f1_id || ':' || f.f2_id)
+    ORDER BY e.date DESC LIMIT 1000`).all() as (FightRow & { market_error: string | null; history_error: string | null; market_checked: number; history_at: number | null })[];
+  return check({ id: "odds-polymarket-data", group: "Odds", label: "Polymarket feed and history gaps",
+    description: "Source failures and mappings invalidated by a date or fighter change. Historical observations are retained, but old identities and stale prices are never shown as current. Re-read queues mapping and price-history discovery for the next request or background pass.",
+    grade: lastYear(),
+  }, rows.map(fight => fightItem(fight, {
+    facts: [["Market read", ago(fight.market_checked)], ["History read", ago(fight.history_at)],
+      ["Issue", fight.market_error ?? fight.history_error ?? "The matchup or event date changed."]],
+    links: [{ label: "Market analysis", href: `/fights/${fight.id}?tab=market`, internal: true }],
+    actions: [{ id: "polymarket-data", label: "Re-read market and history", target: fight.id }],
+  })));
+}
+
 function upcomingProps(): BugCheck {
   const rows = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, e.bfo_url, e.bfo_checked_at, o.f1_close
@@ -2202,6 +2220,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     potentialMatchupGaps(),
     upcomingMoneyline(),
     polymarketMissing(),
+    polymarketData(),
     pastMoneyline(),
     upcomingProps(),
     pastProps(),
@@ -2286,7 +2305,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "event-crew" | "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "deductions" | "media" | "antidoping";
+export type BugActionId = "event-crew" | "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "polymarket-data" | "deductions" | "media" | "antidoping";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -2400,6 +2419,10 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "ufc-status":
       db.prepare("UPDATE ufc_status SET url = NULL, checked_at = 0 WHERE fighter_id = ?").run(target);
       return { ok: true, message: "Queued; ufc.com is searched again on the next pass." };
+    case "polymarket-data": {
+      db.prepare("UPDATE polymarket_bouts SET checked_at=0, history_at=NULL WHERE fight_id=?").run(target);
+      return { ok: true, message: "Queued a new mapping and history read. Open the matchup’s Market tab to refresh; upcoming bouts also retry in the background." };
+    }
     case "polymarket": {
       const { fights } = await scanUpcoming(upcomingBouts(fighterNames));
       const missing = Object.values(fights).filter((slug) => slug === null).length;

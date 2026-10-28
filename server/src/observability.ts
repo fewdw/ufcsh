@@ -1,5 +1,6 @@
 /** Browser page views use fixed route patterns, never a visitor's username or a fight ID. */
 export function pageRouteGroup(pathname: string): string | null {
+  if (pathname === "/markets") return "page_markets";
   if (pathname === "/") return "page_home";
   if (/^\/events\/[^/]+$/.test(pathname)) return "page_event";
   if (/^\/fights\/[^/]+$/.test(pathname)) return "page_fight";
@@ -25,6 +26,7 @@ export function pageRouteGroup(pathname: string): string | null {
 
 /** Bounded, anonymous labels keep metrics useful even when URLs contain IDs or usernames. */
 export function routeGroup(pathname: string): string {
+  if (pathname.startsWith("/api/polymarket/")) return "polymarket";
   if (/^\/api\/fights\/[a-f0-9]{16}\/scores\/mine$/i.test(pathname)) return "scores_mine";
   if (/^\/api\/fights\/[a-f0-9]{16}\/scores$/i.test(pathname)) return "scores_public";
   if (/^\/api\/fights\/[a-f0-9]{16}\/predictions(\/mine)?$/i.test(pathname)) return "predictions";

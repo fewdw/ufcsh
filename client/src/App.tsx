@@ -19,6 +19,7 @@ import ParlaySlip from "./components/ParlaySlip";
 import ReportIssueDialog from "./components/ReportIssueDialog";
 import { ShortcutProvider } from "./shortcuts";
 import { DevStatsOverlay, isDevSite } from "./devStats";
+import MarketMonitor from "./components/MarketMonitor";
 import { LivePreviewPanel } from "./livePreview";
 
 /** Only a reader coming back from Google (or from signing in on the way)
@@ -57,6 +58,7 @@ const LocationPage = page(pages.venue, module => module.LocationPage);
 const InfoPage = page(pages.info, module => module.default);
 const RosterPage = page(pages.roster, module => module.default);
 const NewsPage = page(pages.news, module => module.default);
+const MarketsPage = page(pages.markets, module => module.default);
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
@@ -304,6 +306,7 @@ export default function App() {
     <ShortcutProvider onSearch={openSearch}>
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900">
       <Header onSearch={openSearch} />
+      <MarketMonitor />
       {isDevSite ? <DevStatsOverlay /> : null}
       {isDevSite ? <LivePreviewPanel /> : null}
       {returningToCalendar ? <Suspense fallback={null}><GoogleCalendarReturn /></Suspense> : null}
@@ -332,6 +335,7 @@ export default function App() {
           <Route path="/venues/:slug" element={<VenuePage />} />
           <Route path="/locations/:slug" element={<LocationPage />} />
           <Route path="/news" element={<NewsPage />} />
+          <Route path="/markets" element={<MarketsPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/admin/bugs" element={<AdminPage />} />
           <Route path="/profiles/:handle" element={<ProfilePage />} />

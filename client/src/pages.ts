@@ -30,6 +30,7 @@ export const pages = {
   info: loader(() => import("./pages/InfoPage")),
   roster: loader(() => import("./pages/RosterPage")),
   news: loader(() => import("./pages/NewsPage")),
+  markets: loader(() => import("./pages/MarketsPage")),
   overlay: loader(() => import("./pages/OverlayPage")),
 };
 
@@ -48,6 +49,7 @@ export function pageFor(pathname: string): PageLoader | null {
   if (pathname === "/info") return pages.info;
   if (pathname === "/roster") return pages.roster;
   if (pathname === "/news") return pages.news;
+  if (pathname === "/markets") return pages.markets;
   if (pathname === "/overlay" || pathname.startsWith("/overlay/")) return pages.overlay;
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return pages.admin;
   if (pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up")) return pages.auth;

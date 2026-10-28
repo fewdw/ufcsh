@@ -20,6 +20,7 @@ import Avatar from "../components/Avatar";
 import { CardEventTitle, NAV_STEP, CardNavigation } from "../components/CardHeader";
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
+import PolymarketPanel, { MarketTeaser } from "../components/PolymarketPanel";
 import { predictionTabVisible, type PredictionSummary } from "../predictions";
 import { FightRail, FightRailSkeleton, FightStepLink, FightStrip, MatchupSkeleton } from "../components/FightRail";
 // Part of this page's own code, so the Discussion tab opens with it rather
@@ -700,8 +701,8 @@ function CommonOpponents({ fight }: { fight: Matchup }) {
 
 // ---------------------------------------------------------------------------
 
-type MatchupTab = "fight" | "matchup" | "odds" | "score" | "predict" | "discussion";
-const TAB_LABEL: Record<MatchupTab, string> = { fight: "Result", matchup: "Matchup", odds: "Odds", score: "Score", predict: "Predict", discussion: "Discussion" };
+type MatchupTab = "fight" | "matchup" | "odds" | "market" | "score" | "predict" | "discussion";
+const TAB_LABEL: Record<MatchupTab, string> = { fight: "Result", matchup: "Matchup", odds: "Odds", market: "Market", score: "Score", predict: "Predict", discussion: "Discussion" };
 
 /** The matchup's sections, grouped by the question they answer. Arrow keys move
  *  between tabs the way a native tab control does. */
@@ -897,6 +898,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     ...(fight.status === "past" || fight.in_progress || hasStats ? ["fight" as const] : []),
     "matchup",
     ...(hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name) ? ["odds" as const] : []),
+    ...(!fight.potential ? ["market" as const] : []),
     // The card's next bout and the one on now have their Score tab before a
     // round opens: the rounds wait for the feed or the admin panel, and a
     // streamer can copy the overlay in time.
@@ -1002,6 +1004,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraitOf(fight.f2)} onPortraitError={portraitUnavailable(fight.f2)} past={fight.status === "past"} />
                   </div>
                 </div>
+                {!fight.potential ? <MarketTeaser key={fight.id} fightId={fight.id} /> : null}
                 {/* Yearly awards honour the bout, so they sit under both corners,
                     drawn up into the hero's own bottom padding. */}
                 {fight.awards?.length ? (
@@ -1026,6 +1029,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
 
             <div id="matchup-tabpanel" role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `matchup-tab-${tab}` : undefined} className="flex flex-col gap-2 sm:gap-3">
               {tab === "fight" ? <>
+                {fight.in_progress ? <PolymarketPanel key={fight.id} fightId={fight.id} compact /> : null}
                 <Scorecards fight={fight} />
                 {fight.status === "past" && !detail?.judges?.length ? <FightScoring key={fight.id} fight={fight} communityOnly /> : null}
                 {hasStats ? <FightStatistics fight={fight} live={statsLive} /> : fight.in_progress ? (
@@ -1080,7 +1084,8 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 <CommonOpponents fight={fight} />
               </> : null}
               {tab === "odds" ? <OddsPanel fight={fight} /> : null}
-              {tab === "score" ? <FightScoring key={fight.id} fight={fight} /> : null}
+              {tab === "market" ? <PolymarketPanel key={fight.id} fightId={fight.id} /> : null}
+              {tab === "score" ? <>{fight.in_progress ? <PolymarketPanel key={fight.id} fightId={fight.id} compact /> : null}<FightScoring key={fight.id} fight={fight} /></> : null}
               {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} /> : null}
               {tab === "discussion" ? (
                 <FightDiscussion key={fight.id} fightId={fight.id} />
