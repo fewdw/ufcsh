@@ -8,6 +8,7 @@ import { americanLine, fightIndex, impliedProbability, professionalBouts } from 
 import { fighterNamed, hasUfcFight, ufcFightExistsSql } from "./fighter-identity.ts";
 import { SEARCH_ALIASES } from "./search-aliases.ts";
 import { awardMisses, awardYearDue } from "./awards.ts";
+import { ANTIDOPING_SOURCE, antidopingGaps, syncAntidopingTests, unlinkedAntidopingRows } from "./antidoping.ts";
 import { AWARDS_SOURCE } from "./awards-data.ts";
 import { normName } from "./util.ts";
 import { SCAN_KEY, scanUpcoming, upcomingBouts, type ScanResult } from "./polymarket.ts";
@@ -39,6 +40,7 @@ import {
   forgetUfcPage,
   syncEventDetail,
   syncEventSegments,
+  syncEventSchedules,
   syncFightDetail,
   syncFighterBirthDate,
   syncMethodOddsForEvent,
@@ -868,6 +870,51 @@ function awardYearMissing(): BugCheck {
   }] : []);
 }
 
+function antidopingMisses(): BugCheck {
+  const synced = Number(getMeta("antidoping_synced_at") ?? 0);
+  const thisYear = new Date().getUTCFullYear();
+  const error = getMeta("antidoping_error");
+  const stale: BugItem[] = error || Date.now() - synced > 3 * 86_400_000 ? [{
+    key: "sync",
+    title: error ? "Test history refresh failed" : synced ? "Test history not read for 3 days" : "Test history never read online",
+    subtitle: error || "The daily read hasn't succeeded; bundled data stays available",
+    facts: [],
+    links: [{ label: "UFC Anti-Doping test history", href: ANTIDOPING_SOURCE }],
+    actions: [{ id: "antidoping", label: "Read again", target: "all" }],
+  }] : [];
+  return check({
+    id: "antidoping-misses",
+    group: "Fighters",
+    label: "Fighters with no anti-doping tests in a year they fought",
+    description: "The UFC Anti-Doping Program lists athletes by registered name. Review the source before adding a name to SOURCE_NAMES in server/src/antidoping.ts; spelling similarity alone is not identity evidence. Current and previous years refresh daily, history monthly. Read again rechecks every year. Years before last are graded OK.",
+    grade: (item) => item.key === "sync" ? "must" : Number(item.key.split(":")[1]) >= thisYear - 1 ? "minor" : "ok",
+  }, [...stale, ...antidopingGaps().map((gap): BugItem => ({
+    key: `${gap.id}:${gap.year}`,
+    title: gap.name,
+    subtitle: `Fought in ${gap.year}, no tests tied that year`,
+    facts: gap.unmatched.length ? [["Leads", gap.unmatched.join(", ")]] : [],
+    links: [fighterLink(gap.id, gap.name), { label: `${gap.year} tests`, href: `${ANTIDOPING_SOURCE}?year=${gap.year}` }],
+    actions: [],
+  }))]);
+}
+
+function antidopingUnlinked(): BugCheck {
+  return check({
+    id: "antidoping-unlinked",
+    group: "Fighters",
+    label: "Unlinked anti-doping test records",
+    description: "Every source row without a confirmed profile link, including people not yet booked and years without a bout. These rows are retained, never counted as zero or assigned by spelling similarity. Review identity evidence and add a verified SOURCE_NAMES alias when appropriate, then read again.",
+    grade: () => "minor",
+  }, unlinkedAntidopingRows().map((row) => ({
+    key: `${row.year}:${row.name}`,
+    title: row.name,
+    subtitle: `${row.year}: ${row.tests} test sessions, no confirmed profile link`,
+    facts: [],
+    links: [{ label: `${row.year} source table`, href: `${ANTIDOPING_SOURCE}?year=${row.year}` }],
+    actions: [{ id: "antidoping", label: "Read again", target: "all" }],
+  })));
+}
+
 // ---------------------------------------------------------------------------
 // fights, events, fighters
 
@@ -1287,16 +1334,30 @@ function careerStatGaps(): BugCheck {
   }, items);
 }
 
+export function upcomingCardCoverage(now = Date.now()): BugCheck {
+  const rows = db.prepare(`SELECT id, name, date, ufc_slug, segments_fetched_at FROM events
+    WHERE complete = 0 AND date >= date('now', '-2 day')
+      AND (ufc_slug IS NULL OR segments_fetched_at IS NULL OR segments_fetched_at < ?)
+    ORDER BY date`).all(now - 30 * 60_000) as
+    { id: string; name: string; date: string; ufc_slug: string | null; segments_fetched_at: number | null }[];
+  return check({
+    id: "upcoming-card-coverage", group: "Fights & events", label: "Upcoming cards missing a recent section check",
+    description: "Every announced event needs a matched UFC page and a successful card read, even when it has no bouts yet. Missing pages and reads older than 30 minutes can conceal new sections. Re-read to discover the page and refresh its card; UFC may still have no placements published.",
+    grade: ahead([[3, "must"], [14, "minor"]]),
+  }, rows.map(event => ({
+    key: event.id, title: event.name, date: event.date,
+    facts: [["ufc.com page", event.ufc_slug ?? "not matched"], ["Sections read", ago(event.segments_fetched_at)]],
+    links: [eventLink(event.id), ...(event.ufc_slug ? [{ label: "ufc.com event", href: `https://www.ufc.com/event/${event.ufc_slug}` }] : [])],
+    actions: [{ id: "segments", label: event.ufc_slug ? "Re-read ufc.com card" : "Find ufc.com card", target: event.id }],
+  })));
+}
+
 function upcomingWithoutSegment(): BugCheck {
   const rows = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, e.ufc_slug, e.segments_fetched_at
     FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.complete = 0 AND (
-      (f.segment IS NULL
-        -- ufc.com only splits a card close to the event, so earlier than a week out
-        -- a missing segment is a problem only when the rest of the card is placed.
-        AND (e.date <= date('now', '+7 day')
-          OR EXISTS (SELECT 1 FROM fights o WHERE o.event_id = f.event_id AND o.segment IS NOT NULL)))
+      f.segment IS NULL
       -- Without ufc.com's place, the bout sits where UFCStats lists it, which
       -- for a late addition is the bottom of the card, whatever it is booked on.
       OR (f.card_pos IS NULL
@@ -1307,7 +1368,7 @@ function upcomingWithoutSegment(): BugCheck {
     id: "upcoming-no-segment",
     group: "Fights & events",
     label: "Upcoming bouts not placed on ufc.com's card",
-    description: "A bout is missing its section (early prelims, prelims or main card) or its place on ufc.com's card. Cards with missing sections show a confirmation notice and no bout start estimates. Missing positions fall back to UFCStats' list, which puts a late addition at the bottom. Usually ufc.com hasn't published the full split yet, hasn't listed a new booking, or its names differ from UFCStats.",
+    description: "A bout is missing its section (early prelims, prelims or main card) or its place on ufc.com's card. Confirmed sections remain visible; unplaced bouts have their own confirmation notice. Bout start estimates wait for the full split. Missing positions fall back to UFCStats' list, which puts a late addition at the bottom. Tracked from announcement, even weeks out: ufc.com may not have listed the booking or published its section yet, or its names differ from UFCStats.",
     grade: ahead([[3, "must"], [14, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["ufc.com slug", fight.ufc_slug ?? "none"], ["Segments read", ago(fight.segments_fetched_at)]],
@@ -2287,6 +2348,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     untrustworthyFightStats(),
     careerStatGaps(),
     upcomingWithoutSegment(),
+    upcomingCardCoverage(),
     decisionsWithoutJudges(),
     finishesWithoutDetail(),
     cancelledBoutsUnread(),
@@ -2317,6 +2379,8 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     searchAliasMisses(),
     awardLinkMisses(),
     awardYearMissing(),
+    antidopingMisses(),
+    antidopingUnlinked(),
     rosterMovesUnread(),
     rosterHistoryGaps(),
     newsFeedsUnread(),
@@ -2353,7 +2417,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "event-crew" | "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "deductions" | "media" | "pay";
+export type BugActionId = "event-crew" | "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "deductions" | "media" | "antidoping" | "pay";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -2450,9 +2514,13 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       return { ok: true, message: `Board read: ${result.bouts} cancelled ${result.bouts === 1 ? "bout" : "bouts"}.` };
     }
     case "segments": {
+      const before = db.prepare("SELECT ufc_slug FROM events WHERE id = ?").get(target) as { ufc_slug: string | null } | undefined;
+      if (!before) return { ok: false, message: "Event not found." };
+      if (!before.ufc_slug) await syncEventSchedules();
       await syncEventSegments(target);
       const row = db.prepare("SELECT ufc_slug FROM events WHERE id = ?").get(target) as { ufc_slug: string | null } | undefined;
-      return { ok: true, message: row?.ufc_slug ? "ufc.com card re-read." : "That page was another event's; forgotten. The archive offers this card its own page on its next pass." };
+      return row?.ufc_slug ? { ok: true, message: "ufc.com card re-read." }
+        : { ok: false, message: "No matching UFC page was found. Page discovery will retry on the next schedule pass." };
     }
     case "forget-ufc":
       forgetUfcPage(target);
@@ -2468,6 +2536,16 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       const missing = Object.values(fights).filter((slug) => slug === null).length;
       return { ok: true, message: `Scanned ${Object.keys(fights).length} bouts; ${missing} without a market.` };
     }
+    case "antidoping":
+      try {
+        await syncAntidopingTests(new Date(), { history: true });
+        setMeta("antidoping_synced_at", String(Date.now()));
+        setMeta("antidoping_error", "");
+      } catch (err) {
+        setMeta("antidoping_error", String(err));
+        return { ok: false, message: `Couldn't read it (${String(err)}). The stored years stay up.` };
+      }
+      return { ok: true, message: "Read the test history and tied its names again." };
     case "news":
       await syncNews();
       return { ok: true, message: "Read every outlet again." };

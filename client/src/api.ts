@@ -598,9 +598,13 @@ export type FighterProfile = {
   roster_events?: CareerRosterEvent[];
   /** Yearly awards, newest first. */
   awards?: FighterAward[];
+  /** Anti-doping test sessions by year, oldest first. */
+  antidoping?: AntidopingYear[];
   /** UFC-only history, including verified source-only UFC rows. */
   history: (HistoryRow | ProfessionalHistoryRow)[];
 };
+
+export type AntidopingYear = { year: number; tests: number };
 
 export type RankingEntry = {
   rank: string;

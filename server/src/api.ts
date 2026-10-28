@@ -86,6 +86,7 @@ import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchO
 import { comebacksList, controversialList, controversyLabel, homeRecord, judgeExtras, matchupJudging, withNumbers } from "./judging.ts";
 import { searchAliases } from "./search-aliases.ts";
 import { awardsDirectory, fightAwards, fighterAwards } from "./awards.ts";
+import { fighterAntidopingTests } from "./antidoping.ts";
 import { locationDirectory, locationOfEvent, locationPage, searchLocations, searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
 import { newsView } from "./news.ts";
 import { newsAiStatus, setNewsAi, startNewsReader } from "./news-ai.ts";
@@ -1231,6 +1232,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     cancelled: cancelledBoutsOf(fr.id, [...history, ...proHistory]),
     roster_events: fighterRosterEvents(fr.id),
     awards: fighterAwards(fr.id),
+    antidoping: fighterAntidopingTests(fr.id),
     // The professional list shows the same ranks on its UFC bouts.
     pro_history: proHistory.map((row) => {
       const ranked = row.fight_id ? mergedUfcHistory.find((entry) => entry.fight_id === row.fight_id) : undefined;

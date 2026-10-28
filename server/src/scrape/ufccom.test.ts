@@ -328,13 +328,56 @@ test("older pages without event settings still discover the feed through a fight
 });
 
 for (const [label, feed] of [["an empty", { LiveEventDetail: {} }], ["another event's", { LiveEventDetail: { EventId: 1336 } }]] as const) {
-  test(`${label} event feed fails instead of returning data that clears stored rounds`, async (t) => {
+  test(`${label} event feed preserves page sections without clearing stored rounds`, async (t) => {
     t.mock.method(globalThis, "fetch", async (input: string) => input.includes("www.ufc.com")
       ? new Response(eventCardHtml + eventSettings({ eventLiveStats: { event_fmid: "1339" } }))
       : Response.json(feed));
-    await assert.rejects(scrapeEventCard("bad-feed"), /event 1339 returned no matching event/);
+    const card = await scrapeEventCard("bad-feed");
+    assert.equal(card.segments.length, 1);
+    assert.equal(card.rounds, null);
+    assert.equal(card.info, null);
+    assert.deepEqual(card.feedSegments, []);
+    assert.match(card.feedError ?? "", /event 1339 returned no matching event/);
   });
 }
+
+test("an explicit page event id reads the feed before any fight ids or names are rendered", async t => {
+  t.mock.method(globalThis, "fetch", async (url: string) => {
+    if (url.includes("www.ufc.com")) return new Response(eventSettings({ eventLiveStats: { event_fmid: "1339" } }));
+    assert.equal(url, "https://d29dxerjsp82wz.cloudfront.net/api/v3/event/live/1339.json");
+    return Response.json({ LiveEventDetail: { ...eventFeed.LiveEventDetail, FightCard: [{ ...eventFeed.LiveEventDetail.FightCard[0], CardSegment: "Main" }] } });
+  });
+  const card = await scrapeEventCard("early-feed");
+  assert.deepEqual(card.segments, []);
+  assert.deepEqual(card.feedSegments, [{ segment: "main", f1: "Renato Moicano", f2: "Tom Nolan" }]);
+  assert.equal(card.rounds?.[0].rounds, 5);
+});
+
+test("the page's event id accepts cancelled page fights missing from its newer feed, but never a different event", () => {
+  const feed = { LiveEventDetail: { ...eventFeed.LiveEventDetail, FightCard: [{ ...eventFeed.LiveEventDetail.FightCard[0], CardSegment: "Main" }] } };
+  assert.equal(parseFeedSegments(feed, [999], 1339).length, 1);
+  assert.equal(parseCardRounds(feed, [999], 1339).length, 1);
+  assert.deepEqual(parseFeedSegments(feed, [13313], 999), []);
+  assert.deepEqual(parseCardRounds(feed, [13313], 999), []);
+  assert.deepEqual(parseFeedSegments(feed, [999]), [], "legacy fight discovery still requires every page fight id");
+});
+
+test("a broken feed with no usable page sections still fails visibly", async t => {
+  t.mock.method(globalThis, "fetch", async (url: string) => url.includes("www.ufc.com")
+    ? new Response(eventSettings({ eventLiveStats: { event_fmid: "1339" } })) : Response.json({ LiveEventDetail: {} }));
+  await assert.rejects(scrapeEventCard("empty-card"), /event 1339 returned no matching event/);
+});
+
+test("a matched empty event feed is valid for a zero-bout announcement and confirms no booked lengths", async t => {
+  t.mock.method(globalThis, "fetch", async (url: string) => url.includes("www.ufc.com")
+    ? new Response(eventSettings({ eventLiveStats: { event_fmid: "1339" } }))
+    : Response.json({ LiveEventDetail: { EventId: 1339, FightCard: [] } }));
+  const card = await scrapeEventCard("unannounced-card");
+  assert.deepEqual(card.feedSegments, []);
+  assert.equal(card.rounds, null);
+  assert.equal(card.info?.eventId, 1339);
+  assert.equal(card.feedError, undefined);
+});
 
 test("a bout's rounds are kept only when the feed states them consistently", () => {
   const fighter = (first: string, last: string) => ({ Name: { FirstName: first, LastName: last } });
@@ -375,10 +418,19 @@ test("the feed places every bout, late additions included, in card order", () =>
     { segment: "prelims", f1: "Azamat Murzakanov", f2: "Dominick Reyes" },
     { segment: "early", f1: "Iasmin Lucindo", f2: "Nicolle Caliari" },
   ]);
-  // Another card's feed, or one bout in a segment we can't name: the page's list stands.
+  // Another card's feed is rejected. A single unknown segment does not hide
+  // the three assignments this same event's feed already publishes.
   assert.deepEqual(parseFeedSegments(feed, [1, 99]), []);
   const unknown = { LiveEventDetail: { FightCard: [...feed.LiveEventDetail.FightCard, bout(15, 15, "Prelims3", "Kody Steele", "Noah Gugnon")] } };
-  assert.deepEqual(parseFeedSegments(unknown, [1, 6]), []);
+  assert.deepEqual(parseFeedSegments(unknown, [1, 6]), parseFeedSegments(feed, [1, 6]));
+  const incomplete = { LiveEventDetail: { FightCard: [
+    ...feed.LiveEventDetail.FightCard,
+    { ...bout(16, 16, "Main", "Kody Steele", "Noah Gugnon"), Fighters: [] },
+    bout(17, 0, "Main", "Kody Steele", "Noah Gugnon"),
+  ] } };
+  assert.deepEqual(parseFeedSegments(incomplete, [1, 6]), parseFeedSegments(feed, [1, 6]));
+  const duplicateOrder = { LiveEventDetail: { FightCard: [...feed.LiveEventDetail.FightCard, bout(18, 1, "Main", "Kody Steele", "Noah Gugnon")] } };
+  assert.deepEqual(parseFeedSegments(duplicateOrder, [1, 6]), []);
 });
 
 test("reads an athlete's roster status in English or French", () => {

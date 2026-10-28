@@ -4,7 +4,7 @@ import { CareerStatModal } from "../components/CareerStatDetails";
 import { Children, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api";
-import type { CompleteRecordBefore, FighterAward, FighterProfile, FighterRecord, HistoryRow, NewsPage, ProfessionalHistoryRow, ProfileCancelledBout } from "../api";
+import type { AntidopingYear, CompleteRecordBefore, FighterAward, FighterProfile, FighterRecord, HistoryRow, NewsPage, ProfessionalHistoryRow, ProfileCancelledBout } from "../api";
 import { divisionName, finishDetail, formatDateShortWithYear, formatLine, formatMethod, isDecision, lastName } from "../format";
 import { formatValue, PANEL } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
@@ -230,6 +230,27 @@ function FighterAwards({ awards }: { awards: FighterAward[] }) {
         })}
       </ul>
     </div>
+  );
+}
+
+/** Test sessions a year under the UFC Anti-Doping Program, oldest first; the
+ *  current year is counted so far. */
+function FighterTests({ years }: { years: AntidopingYear[] }) {
+  const thisYear = new Date().getFullYear();
+  const total = years.reduce((sum, row) => sum + row.tests, 0);
+  return (
+    <section className={shell}>
+      <PanelHeading title="Drug tests" subtitle={total.toLocaleString()}
+        aside={<a href="https://ufcantidoping.com/tests" target="_blank" rel="noreferrer" className="text-[11px] text-zinc-400 transition hover:text-zinc-700">UFC Anti-Doping</a>} />
+      <ul className="flex flex-wrap justify-center gap-x-5 gap-y-3 px-4 py-4 sm:px-5">
+        {years.map((row) => (
+          <li key={row.year} className="flex flex-col items-center" title={`${row.tests} test ${row.tests === 1 ? "session" : "sessions"} in ${row.year}${row.year === thisYear ? " so far" : ""}`}>
+            <span className="text-sm font-semibold tabular-nums text-zinc-900">{row.tests}</span>
+            <span className="text-[11px] tabular-nums text-zinc-400">{row.year}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -980,6 +1001,7 @@ export default function FighterPage() {
             <DecisionsPanel fighters={[fighter]} />
           </div> : null}
           <StrikesPanel fighters={[fighter]} />
+          {fighter.antidoping?.length ? <FighterTests years={fighter.antidoping} /> : null}
         </div> : null}
         </div>
 
