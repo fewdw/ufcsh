@@ -8,7 +8,7 @@ import { americanLine, fightIndex, impliedProbability, professionalBouts } from 
 import { fighterNamed, hasUfcFight, ufcFightExistsSql } from "./fighter-identity.ts";
 import { SEARCH_ALIASES } from "./search-aliases.ts";
 import { awardMisses, awardYearDue } from "./awards.ts";
-import { ANTIDOPING_SOURCE, antidopingGaps, syncAntidopingTests } from "./antidoping.ts";
+import { ANTIDOPING_SOURCE, antidopingGaps, syncAntidopingTests, unlinkedAntidopingRows } from "./antidoping.ts";
 import { AWARDS_SOURCE } from "./awards-data.ts";
 import { normName } from "./util.ts";
 import { SCAN_KEY, scanUpcoming, upcomingBouts, type ScanResult } from "./polymarket.ts";
@@ -870,10 +870,11 @@ function awardYearMissing(): BugCheck {
 function antidopingMisses(): BugCheck {
   const synced = Number(getMeta("antidoping_synced_at") ?? 0);
   const thisYear = new Date().getUTCFullYear();
-  const stale: BugItem[] = Date.now() - synced > 3 * 86_400_000 ? [{
+  const error = getMeta("antidoping_error");
+  const stale: BugItem[] = error || Date.now() - synced > 3 * 86_400_000 ? [{
     key: "sync",
-    title: synced ? "Test history not read for 3 days" : "Test history never read",
-    subtitle: getMeta("antidoping_error") || "The daily read hasn't succeeded",
+    title: error ? "Test history refresh failed" : synced ? "Test history not read for 3 days" : "Test history never read online",
+    subtitle: error || "The daily read hasn't succeeded; bundled data stays available",
     facts: [],
     links: [{ label: "UFC Anti-Doping test history", href: ANTIDOPING_SOURCE }],
     actions: [{ id: "antidoping", label: "Read again", target: "all" }],
@@ -882,7 +883,7 @@ function antidopingMisses(): BugCheck {
     id: "antidoping-misses",
     group: "Fighters",
     label: "Fighters with no anti-doping tests in a year they fought",
-    description: "The UFC Anti-Doping Program lists athletes by registered name, so a ring name, a maiden or married name or a different spelling can leave a fighter's year without its tests on the profile. When one of the leads (that year's untied rows sharing a word) is the same person, add it to SOURCE_NAMES in server/src/antidoping.ts. Years before last are graded OK.",
+    description: "The UFC Anti-Doping Program lists athletes by registered name. Review the source before adding a name to SOURCE_NAMES in server/src/antidoping.ts; spelling similarity alone is not identity evidence. Current and previous years refresh daily, history monthly. Read again rechecks every year. Years before last are graded OK.",
     grade: (item) => item.key === "sync" ? "must" : Number(item.key.split(":")[1]) >= thisYear - 1 ? "minor" : "ok",
   }, [...stale, ...antidopingGaps().map((gap): BugItem => ({
     key: `${gap.id}:${gap.year}`,
@@ -892,6 +893,23 @@ function antidopingMisses(): BugCheck {
     links: [fighterLink(gap.id, gap.name), { label: `${gap.year} tests`, href: `${ANTIDOPING_SOURCE}?year=${gap.year}` }],
     actions: [],
   }))]);
+}
+
+function antidopingUnlinked(): BugCheck {
+  return check({
+    id: "antidoping-unlinked",
+    group: "Fighters",
+    label: "Unlinked anti-doping test records",
+    description: "Every source row without a confirmed profile link, including people not yet booked and years without a bout. These rows are retained, never counted as zero or assigned by spelling similarity. Review identity evidence and add a verified SOURCE_NAMES alias when appropriate, then read again.",
+    grade: () => "minor",
+  }, unlinkedAntidopingRows().map((row) => ({
+    key: `${row.year}:${row.name}`,
+    title: row.name,
+    subtitle: `${row.year}: ${row.tests} test sessions, no confirmed profile link`,
+    facts: [],
+    links: [{ label: `${row.year} source table`, href: `${ANTIDOPING_SOURCE}?year=${row.year}` }],
+    actions: [{ id: "antidoping", label: "Read again", target: "all" }],
+  })));
 }
 
 // ---------------------------------------------------------------------------
@@ -2215,6 +2233,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     awardLinkMisses(),
     awardYearMissing(),
     antidopingMisses(),
+    antidopingUnlinked(),
     rosterMovesUnread(),
     rosterHistoryGaps(),
     newsFeedsUnread(),
@@ -2368,10 +2387,11 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     }
     case "antidoping":
       try {
-        await syncAntidopingTests();
+        await syncAntidopingTests(new Date(), { history: true });
         setMeta("antidoping_synced_at", String(Date.now()));
         setMeta("antidoping_error", "");
       } catch (err) {
+        setMeta("antidoping_error", String(err));
         return { ok: false, message: `Couldn't read it (${String(err)}). The stored years stay up.` };
       }
       return { ok: true, message: "Read the test history and tied its names again." };
