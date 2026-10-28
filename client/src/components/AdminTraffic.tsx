@@ -16,6 +16,12 @@ function loadLevel(route: string, p75Ms: number): string {
 }
 const DEVICE: Record<string, string> = { phone: "Phone", tablet: "Tablet", desktop: "Desktop" };
 const SOURCE: Record<string, string> = { direct: "Direct, bookmarks and apps", other: "Other sites" };
+const CRAWLER: Record<string, string> = {
+  google: "Google", bing: "Bing", apple: "Apple", openai: "OpenAI", anthropic: "Anthropic", perplexity: "Perplexity",
+  meta: "Meta", bytedance: "ByteDance", amazon: "Amazon", yandex: "Yandex", baidu: "Baidu", duckduckgo: "DuckDuckGo",
+  commoncrawl: "Common Crawl", seo: "SEO tools", previews: "Link previews", monitors: "Monitors and speed tests",
+  headless: "Headless browsers", scripts: "Scripts (curl, Python…)", none: "No user agent", other: "Other crawlers",
+};
 
 /** Who came, from where, to what, and how the server answered: saved hour by
  *  hour, so it outlives restarts and deploys. */
@@ -85,6 +91,12 @@ export default function AdminTraffic() {
               <MinuteChart title={`Errors per ${unit}`} points={points(point => point.errors)} format={whole} tone="text-rose-500" time={time} span={`last ${label}`} total={whole(t.errors)} />
               <MinuteChart title={`Rate-limited per ${unit}`} points={points(point => point.throttled)} format={whole} tone="text-series-2" time={time} span={`last ${label}`} total={whole(t.throttled)} />
             </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <MinuteChart title={`Crawler requests per ${unit}`} points={points(point => point.crawlerRequests)} format={whole} tone="text-series-2" time={time}
+                span={`${percent(shown.crawlers.total, t.requests)} of requests · last ${label}`} total={whole(shown.crawlers.total)} />
+              <ShareList title="Crawlers by who runs them" data={shown.crawlers} label={value => CRAWLER[value] ?? value}
+                empty="No crawler requests recorded in this range yet." />
+            </div>
             <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[720px] text-xs">
@@ -149,6 +161,7 @@ export default function AdminTraffic() {
               <li>Each browser keeps a random id. It is sent with page views, salted and hashed on the server, and kept 35 days for unique and returning counts. Only daily totals are kept after that. IP addresses are never stored.</li>
               <li>Crawlers and scripts are left out by user agent, automated browsers and admins by the page itself. One address can add at most 50 browsers a day.</li>
               <li>It still undercounts readers whose blocker stops the page-view signal, and counts one person twice on two devices or after clearing site data.</li>
+              <li>Crawlers are told apart by user agent and grouped by who runs them. One that claims to be a browser counts as a browser.</li>
               <li>Client addresses count every request, so link previews, crawlers and monitors inflate them. A phone moving between Wi-Fi and mobile data counts twice, while a household behind one address counts once.</li>
             </ul>
           </section>
