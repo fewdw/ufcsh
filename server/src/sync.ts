@@ -704,6 +704,13 @@ async function refreshEventSummary(fightId: string, row: Record<string, string>)
  *  Logged, retried by the next pass, and kept out of the sync errors. */
 export class SourceCatchingUp extends Error {}
 
+/** A transient failure from a source that answered within `graceMs` (its
+ *  success stamp `readKey`) is waited out; one that outlasts it is news. */
+function waitOut(name: string, readKey: string, graceMs: number, err: unknown): never {
+  if (isTransientUpstream(err) && metaAgeMs(readKey) < graceMs) throw new SourceCatchingUp(`${name}: ${String(err)}`);
+  throw err;
+}
+
 const fightOnFightDay = (fightId: string) =>
   isFightDay((db.prepare("SELECT e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?").get(fightId) as { date: string } | undefined)?.date ?? "");
 
@@ -1905,7 +1912,11 @@ export async function tick(): Promise<void> {
     // 2b. Signings and releases: Wikipedia's list is edited through the day,
     //     so its revision is checked often and the page read only on a change;
     //     ufc.com's athlete pages show departures before anyone reports them.
-    if (metaAgeMs("roster_moves_checked_at") > 10 * 60_000) await guarded("roster_moves", syncRosterMoves);
+    //     Wikipedia answers 503 to part of its API traffic for an hour or two
+    //     at a time, and a release reported a little later loses nothing.
+    if (metaAgeMs("roster_moves_checked_at") > 10 * 60_000) {
+      await guarded("roster_moves", () => syncRosterMoves().catch((err) => waitOut("roster_moves", "roster_moves_synced_at", 2 * HOUR, err)));
+    }
     //     ufc.com lists its newest athlete profiles first: one page every 5
     //     minutes sees a signing as soon as its profile exists.
     if (metaAgeMs("ufc_signings_checked_at") > 5 * 60_000) await guarded("ufc_signings", syncUfcSignings);
@@ -2016,8 +2027,7 @@ export async function tick(): Promise<void> {
           // FightOdds.io drops out for minutes at a time (Cloudflare 502s, rate
           // limits, its database closing connections); the next pass five
           // minutes on reads it again. Only an outage past half an hour is news.
-          if (isTransientUpstream(err) && metaAgeMs("fightodds_read_at") < 30 * 60_000) throw new SourceCatchingUp(`fightodds: ${String(err)}`);
-          throw err;
+          waitOut("fightodds", "fightodds_read_at", 30 * 60_000, err);
         }
       }).finally(() => { fightOddsRunning = false; });
     }
