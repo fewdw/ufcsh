@@ -441,20 +441,6 @@ function Comparison({ data, now }: { data: MarketDetail; now: number }) {
           </div>
         ))}
       </div>
-      {q && data.sports ? (
-        <p className="mt-3 rounded-lg bg-zinc-50 p-3 text-xs dark:bg-zinc-800">
-          Polymarket is{" "}
-          <strong>
-            {Math.abs((q.p - data.sports.p) * 100).toFixed(1)} points{" "}
-            {q.p >= data.sports.p ? "higher" : "lower"}
-          </strong>{" "}
-          on {data.fight.f1.name} than the sportsbook snapshot.
-        </p>
-      ) : null}
-      <p className="mt-2 text-[10px] leading-relaxed text-zinc-500">
-        Pick share measures community preference. Sources update at different
-        times; a difference alone does not establish betting value.
-      </p>
     </div>
   );
 }
@@ -468,13 +454,6 @@ export function PolymarketView({
 }) {
   const now = useNow(true, 3000);
   const q = freshMarketQuote(data, now);
-  const movement = q && data.opening ? (q.p - data.opening.p) * 100 : null;
-  const thin =
-    q &&
-    (q.spread == null ||
-      q.spread > 0.06 + 1e-9 ||
-      q.depth == null ||
-      q.depth < 100);
   const liveHistory = data.history.filter(
     (p) => p.phase === "live" && p.source === "observed",
   );
@@ -503,85 +482,7 @@ export function PolymarketView({
         </div>
       </div>
       <div className="space-y-5 p-4 sm:p-5">
-        {q ? (
-          <>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="truncate text-xs text-zinc-500">
-                  {data.fight.f1.name}
-                </p>
-                <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-blue-700 dark:text-blue-400">
-                  {marketPct(q.p)}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="truncate text-xs text-zinc-500">
-                  {data.fight.f2.name}
-                </p>
-                <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-red-700 dark:text-red-400">
-                  {marketPct(1 - q.p)}
-                </p>
-              </div>
-            </div>
-            <div className="flex h-1.5 overflow-hidden rounded-full bg-red-500">
-              <div className="bg-blue-500" style={{ width: `${q.p * 100}%` }} />
-            </div>
-            <div className="flex flex-wrap justify-between gap-2 text-[11px] text-zinc-500">
-              <span>
-                {movement == null
-                  ? "First pre-fight observation pending"
-                  : `${movement >= 0 ? "+" : ""}${movement.toFixed(1)} pts for ${data.fight.f1.name} since first pre-fight observation`}
-              </span>
-              <span>
-                {q.method} · updated{" "}
-                {Math.max(0, Math.floor((now - q.at) / 1000))}s ago
-              </span>
-            </div>
-            {thin ? (
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                {q.spread != null && q.spread > 0.06 + 1e-9
-                  ? "Wide spread"
-                  : "Limited book depth"}{" "}
-                · Displayed prices may differ from executable quotes.
-              </p>
-            ) : null}
-            {!compact ? (
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px] sm:grid-cols-4">
-                <div>
-                  <span className="block text-zinc-500">
-                    Bid / ask · {data.fight.f1.name}
-                  </span>
-                  <strong>
-                    {marketPct(q.bid)} / {marketPct(q.ask)}
-                  </strong>
-                </div>
-                <div>
-                  <span className="block text-zinc-500">Spread</span>
-                  <strong>
-                    {q.spread == null
-                      ? "—"
-                      : `${(q.spread * 100).toFixed(1)} pts`}
-                  </strong>
-                </div>
-                <div>
-                  <span className="block text-zinc-500">Volume</span>
-                  <strong>{money(data.volume)}</strong>
-                </div>
-                <div>
-                  <span className="block text-zinc-500">
-                    Ask depth within 2¢
-                  </span>
-                  <strong>{money(q.depth)}</strong>
-                </div>
-              </div>
-            ) : null}
-            <p className="text-[10px] text-zinc-500">
-              Displayed probability uses the midpoint or last trade. An
-              executable buy price is the ask and can differ; fees and order
-              size also matter.
-            </p>
-          </>
-        ) : (
+        {!q ? (
           <div
             role="status"
             className="rounded-lg bg-zinc-50 p-4 text-xs leading-relaxed text-zinc-500 dark:bg-zinc-800"
@@ -595,7 +496,7 @@ export function PolymarketView({
               <span className="mt-1 block">{data.error}</span>
             ) : null}
           </div>
-        )}
+        ) : null}
         {!compact ? <Comparison data={data} now={now} /> : null}
         {winnerLow != null ? (
           <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-800 dark:bg-blue-950/30 dark:text-blue-300">
