@@ -13,7 +13,7 @@ test("crawler requests are counted by family beside, not on top of, the totals",
   const history = observability.history = new TrafficHistory(db, () => clock);
   observability.record("GET", "/api/events", 200, 0.004, "10.0.0.1", null);
   observability.record("GET", "/api/events", 200, 0.004, "10.0.0.2", "google");
-  observability.record("GET", "/og/fights/0123456789abcdef.jpg", 200, 0.3, "10.0.0.2", "google");
+  observability.record("GET", "/api/fights/0123456789abcdef", 200, 0.03, "10.0.0.2", "google");
   observability.record("GET", "/api/events", 404, 0.004, "10.0.0.3", "scripts");
   // Admin requests and health probes stay out, whoever sends them.
   observability.record("GET", "/healthz", 200, 0.001, "10.0.0.4", "none");
