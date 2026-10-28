@@ -40,7 +40,6 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
         );
   const point = points[selected];
   const seconds = range.to - range.from < 10 * 60_000;
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const x = (at: number) =>
     range.to === range.from
       ? 367
@@ -234,7 +233,6 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
             <span>{chartTime(range.from, seconds)}</span>
             <span>{chartTime(range.to, seconds)}</span>
           </div>
-          <p className="mt-1 text-[10px] text-zinc-500">Times in {zone}</p>
           {manual && (manual.from !== range.from || manual.to !== range.to) ? (
             <p
               role="status"
@@ -343,7 +341,7 @@ function RangeNavigator({
   return (
     <div
       ref={track}
-      className="relative mx-5 mt-3 h-11 rounded border border-zinc-200 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800"
+      className="relative mx-5 mt-3 h-6 rounded border border-zinc-200 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800"
       aria-label="Chart time range"
     >
       <svg
@@ -372,7 +370,7 @@ function RangeNavigator({
         type="button"
         aria-label="Move selected time window"
         data-own-arrows
-        className="absolute inset-y-0 cursor-grab touch-none border-y-2 border-blue-500/60 bg-blue-500/5 active:cursor-grabbing"
+        className="absolute inset-y-0 cursor-grab touch-none border-y border-blue-500/60 bg-blue-500/5 active:cursor-grabbing"
         style={{ left: `${left}%`, width: `${right - left}%` }}
         onPointerDown={(e) => start(e, "pan")}
         onPointerMove={move}
@@ -439,9 +437,9 @@ function RangeNavigator({
           }}
         >
           {edge === "from" ? (
-            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
           ) : (
-            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+            <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
           )}
         </button>
       ))}

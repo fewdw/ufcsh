@@ -19,8 +19,8 @@ drag the two arrow handles to select a time window, or drag the selection to pan
 Handles also support arrow/Home/End keys (Shift speeds up adjustment). No
 All/Pre-fight/Live buttons are shown. Times use the viewer's browser time zone,
 with the UTC offset on each timestamp to disambiguate daylight-saving changes.
-The range navigator sits directly below the chart, with dates and the time zone
-below it. The raw observations dropdown and chart explanatory footer are omitted.
+The slim range navigator sits directly below the chart, with dates and UTC
+offsets below it. There is no separate time-zone label. The raw observations dropdown and chart explanatory footer are omitted.
 
 The visited Odds panel stays mounted for the current bout, preserving the chart
 range across tab changes. Hidden panels pause their requests; returning refreshes
