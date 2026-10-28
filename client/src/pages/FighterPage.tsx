@@ -239,22 +239,18 @@ function FighterTests({ years }: { years: AntidopingYear[] }) {
   const thisYear = new Date().getFullYear();
   const total = years.reduce((sum, row) => sum + row.tests, 0);
   return (
-    <div className="border-t border-zinc-100 pt-3 sm:pt-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-          Drug tests <span className="ml-1 font-normal normal-case tracking-normal tabular-nums">{total.toLocaleString()}</span>
-        </h2>
-        <a href="https://ufcantidoping.com/tests" target="_blank" rel="noreferrer" className="text-[11px] text-zinc-400 transition hover:text-zinc-700">UFC Anti-Doping</a>
-      </div>
-      <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5">
+    <section className={shell}>
+      <PanelHeading title="Drug tests" subtitle={total.toLocaleString()}
+        aside={<a href="https://ufcantidoping.com/tests" target="_blank" rel="noreferrer" className="text-[11px] text-zinc-400 transition hover:text-zinc-700">UFC Anti-Doping</a>} />
+      <ul className="flex flex-wrap justify-center gap-x-5 gap-y-3 px-4 py-4 sm:px-5">
         {years.map((row) => (
           <li key={row.year} className="flex flex-col items-center" title={`${row.tests} test ${row.tests === 1 ? "session" : "sessions"} in ${row.year}${row.year === thisYear ? " so far" : ""}`}>
-            <span className="text-[13px] font-medium tabular-nums text-zinc-800">{row.tests}</span>
-            <span className="text-[10px] tabular-nums text-zinc-400">{row.year}</span>
+            <span className="text-sm font-semibold tabular-nums text-zinc-900">{row.tests}</span>
+            <span className="text-[11px] tabular-nums text-zinc-400">{row.year}</span>
           </li>
         ))}
       </ul>
-    </div>
+    </section>
   );
 }
 
@@ -978,7 +974,6 @@ export default function FighterPage() {
             </div>
             <BioGrid bio={bio} className="@[40rem]:hidden" />
             {fighter.awards?.length ? <FighterAwards awards={fighter.awards} /> : null}
-            {fighter.antidoping?.length ? <FighterTests years={fighter.antidoping} /> : null}
             {/* Both records at once, side by side while the card is wide
                 enough and stacked when it is not. The professional wheel
                 waits until that history is verified. */}
@@ -1006,6 +1001,7 @@ export default function FighterPage() {
             <DecisionsPanel fighters={[fighter]} />
           </div> : null}
           <StrikesPanel fighters={[fighter]} />
+          {fighter.antidoping?.length ? <FighterTests years={fighter.antidoping} /> : null}
         </div> : null}
         </div>
 
