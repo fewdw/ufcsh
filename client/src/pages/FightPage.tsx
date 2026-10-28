@@ -1095,7 +1095,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 <CareerProfile fight={fight} />
                 <RoundsPanel fighters={[fight.f1, fight.f2]} />
                 <StrikesPanel fighters={[fight.f1, fight.f2]} />
-                <DecisionsPanel fighters={[fight.f1, fight.f2]} />
+                <DecisionsPanel fighters={[fight.f1, fight.f2]} before />
                 <Meetings fight={fight} />
                 <CommonOpponents fight={fight} />
               </> : null}

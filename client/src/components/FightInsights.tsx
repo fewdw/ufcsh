@@ -3,6 +3,7 @@ import type { FightInsights, RoundBout } from "../api";
 import { lastName } from "../format";
 import { resultDot } from "../resultDots";
 import { anchorAbove, useTooltip } from "../tooltip";
+import { DecisionDetails } from "./DecisionDetails";
 import { CHART_TEXT, metaText, PanelHeading, PANEL_SHELL, sectionLabel } from "./FightStats";
 import { Tooltip } from "./Tooltip";
 
@@ -216,7 +217,7 @@ export function StrikesPanel({ fighters }: { fighters: Insightful[] }) {
  *  three- and five-round bouts apart, their totals not being on one scale.
  *  The bar is the margin, winning every round on the left to losing every
  *  round on the right. */
-export function DecisionsPanel({ fighters }: { fighters: Insightful[] }) {
+export function DecisionsPanel({ fighters, before }: { fighters: Insightful[]; before?: boolean }) {
   const two = fighters.length > 1;
   const scored = fighters.some(fighter => fighter.insights?.decisions?.length);
   if (two && !scored) return null;
@@ -259,5 +260,6 @@ export function DecisionsPanel({ fighters }: { fighters: Insightful[] }) {
         </dl>
       </div>) : <p className={`text-center ${CHART_TEXT} text-zinc-500`}>No scored UFC decisions yet.</p>}
     </div>
+    {scored ? <DecisionDetails before={before} sides={fighters.map(fighter => ({ name: fighter.name, decisions: fighter.insights?.decisions ?? [] }))} /> : null}
   </section>;
 }

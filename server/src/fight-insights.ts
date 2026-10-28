@@ -46,8 +46,15 @@ export function roundOutcomes(fights: IndexedFight[], fighterId: string): RoundO
 }
 
 /** The mean card over decisions of one length: this fighter's score, the
- *  opponent's. Three- and five-round totals are never mixed. */
-export type DecisionScores = { rounds: number; fights: number; own: number; opponent: number };
+ *  opponent's. Three- and five-round totals are never mixed. `bouts` are the
+ *  decisions behind it, newest first. */
+export type DecisionScores = { rounds: number; fights: number; own: number; opponent: number; bouts: DecisionBout[] };
+/** One decision's cards from this fighter's side: [theirs, the opponent's]. */
+export type DecisionBout = {
+  fight_id: string; date: string; outcome: "win" | "loss" | "draw"; method: string | null;
+  opponent: { id: string; name: string };
+  judges: [number, number][]; fans: [number, number] | null;
+};
 
 const parse = (text: unknown): any => {
   if (typeof text !== "string" || !text) return null;
@@ -58,7 +65,7 @@ const parse = (text: unknown): any => {
  *  every official judge's card and every bout's community (fan) average,
  *  each one card. */
 export function decisionScores(fights: IndexedFight[], fighterId: string): DecisionScores[] | null {
-  const sums = new Map<number, { fights: number; cards: number; own: number; opponent: number }>();
+  const sums = new Map<number, { fights: number; cards: number; own: number; opponent: number; bouts: DecisionBout[] }>();
   for (const fight of fights) {
     const outcome = sideOf(fight, fighterId).outcome;
     const rounds = fight.round;
@@ -66,25 +73,35 @@ export function decisionScores(fights: IndexedFight[], fighterId: string): Decis
     const first = fight.sides[0].id === fighterId;
     // A total no ten-point card of this length could carry belongs elsewhere.
     const score = (value: unknown) => typeof value === "number" && value >= rounds * 6 && value <= rounds * 10;
+    const ours = (f1: number, f2: number): [number, number] => first ? [f1, f2] : [f2, f1];
     const cards: [number, number][] = [];
     const judges = parse(fight.row?.detail_json)?.judges;
     if (Array.isArray(judges) && judges.every(card => score(card?.f1Score) && score(card?.f2Score))) {
-      for (const card of judges) cards.push([card.f1Score, card.f2Score]);
+      for (const card of judges) cards.push(ours(card.f1Score, card.f2Score));
     }
-    const fans = communityScorecard(fight.row ?? {}, rounds);
-    if (fans && score(fans.avg1) && score(fans.avg2)) cards.push([fans.avg1, fans.avg2]);
-    if (!cards.length) continue;
-    const sum = sums.get(rounds) ?? { fights: 0, cards: 0, own: 0, opponent: 0 };
+    const community = communityScorecard(fight.row ?? {}, rounds);
+    const fans = community && score(community.avg1) && score(community.avg2) ? ours(community.avg1, community.avg2) : null;
+    if (!cards.length && !fans) continue;
+    const sum = sums.get(rounds) ?? { fights: 0, cards: 0, own: 0, opponent: 0, bouts: [] };
     sums.set(rounds, sum);
     sum.fights++;
-    for (const [f1, f2] of cards) {
+    for (const [own, opponent] of fans ? [...cards, fans] : cards) {
       sum.cards++;
-      sum.own += first ? f1 : f2;
-      sum.opponent += first ? f2 : f1;
+      sum.own += own;
+      sum.opponent += opponent;
     }
+    const other = fight.sides.find(side => side.id !== fighterId);
+    sum.bouts.push({
+      fight_id: fight.id, date: fight.date, outcome, method: fight.method,
+      opponent: { id: other?.id ?? "", name: other?.name ?? "" },
+      judges: cards, fans: fans && [Math.round(fans[0] * 10) / 10, Math.round(fans[1] * 10) / 10],
+    });
   }
   const groups = [...sums].sort((a, b) => a[0] - b[0])
-    .map(([rounds, sum]) => ({ rounds, fights: sum.fights, own: sum.own / sum.cards, opponent: sum.opponent / sum.cards }));
+    .map(([rounds, sum]) => ({
+      rounds, fights: sum.fights, own: sum.own / sum.cards, opponent: sum.opponent / sum.cards,
+      bouts: sum.bouts.sort((a, b) => b.date.localeCompare(a.date)),
+    }));
   return groups.length ? groups : null;
 }
 

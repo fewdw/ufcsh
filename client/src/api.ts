@@ -225,7 +225,13 @@ export type FightInsights = {
   decisions?: DecisionScores[] | null;
 };
 export type RoundStrikes = { round: number; fights: number; landed: number; absorbed: number };
-export type DecisionScores = { rounds: number; fights: number; own: number; opponent: number };
+export type DecisionScores = { rounds: number; fights: number; own: number; opponent: number; bouts: DecisionBout[] };
+/** A decision's cards from the fighter's side, [theirs, the opponent's]. */
+export type DecisionBout = {
+  fight_id: string; date: string; outcome: "win" | "loss" | "draw"; method: string | null;
+  opponent: { id: string; name: string };
+  judges: [number, number][]; fans: [number, number] | null;
+};
 
 export type FightOdds = {
   f1: { open: string | null; close: string | null };
