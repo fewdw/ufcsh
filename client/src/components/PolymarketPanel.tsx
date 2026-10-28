@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ExternalLink } from "lucide-react";
+import PolymarketChart from "./PolymarketChart";
+import { groupMarkets, marketLabel } from "../market-groups";
 import PolymarketLogo from "./PolymarketLogo";
 import type {
   ExtraMarket,
@@ -13,19 +15,8 @@ import { useNow } from "../useNow";
 
 export const MARKET_SHELL =
   "rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900";
-export const MARKET_BUTTON =
-  "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 dark:border-zinc-700 dark:hover:bg-zinc-800";
 export const marketPct = (p: number | null | undefined) =>
   p == null ? "—" : `${(p * 100).toFixed(1).replace(/\.0$/, "")}%`;
-const money = (n: number | null) =>
-  n == null
-    ? "—"
-    : new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: "USD",
-        notation: "compact",
-        maximumFractionDigits: 1,
-      }).format(n);
 const time = (at: number) =>
   new Date(at).toLocaleString(undefined, {
     month: "short",
@@ -40,317 +31,63 @@ export function freshMarketQuote(row: MarketSummary, now: number) {
     : null;
 }
 
-export function ExtraMarkets({
-  markets,
-  checkedAt,
-}: {
-  markets: ExtraMarket[];
-  checkedAt?: number | null;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const rows = expanded ? markets : markets.slice(0, 6);
+export function ExtraMarkets({ markets }: { markets: ExtraMarket[] }) {
+  if (!markets.length)
+    return (
+      <p className="text-xs text-zinc-500">
+        No additional markets are listed for this matchup.
+      </p>
+    );
   return (
-    <div>
-      {!markets.length ? (
-        <p className="text-xs text-zinc-500">
-          No additional markets are listed for this matchup.
-        </p>
-      ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {rows.map((m) => (
-            <a
-              key={m.id}
-              href={m.url}
-              target="_blank"
-              rel="noopener noreferrer nofollow"
-              className="rounded-lg border border-zinc-200 p-3 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-            >
-              <span className="flex items-start justify-between gap-2 text-xs font-medium">
-                {m.question}
-                <ExternalLink
-                  className="h-3 w-3 shrink-0 text-zinc-400"
-                  aria-hidden="true"
-                />
-              </span>
-              <span className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-600 dark:text-zinc-300">
-                {m.outcomes.map((o) => (
-                  <span key={o.name}>
-                    {o.name}{" "}
-                    <strong className="tabular-nums">{marketPct(o.p)}</strong>
-                  </span>
-                ))}
-              </span>
-              <span className="mt-2 block text-[10px] text-zinc-500">
-                {m.closed ? "Closed" : "Listed prices"} · Volume{" "}
-                {money(m.volume)} · Liquidity {money(m.liquidity)}
-              </span>
-            </a>
-          ))}
-        </div>
-      )}
-      {markets.length > 6 ? (
-        <button
-          type="button"
-          onClick={() => setExpanded(!expanded)}
-          className={`${MARKET_BUTTON} mt-3`}
+    <div className="grid items-start gap-3 sm:grid-cols-2">
+      {groupMarkets(markets).map((group) => (
+        <details
+          key={group.label}
+          open
+          className="min-w-0 rounded-lg border border-zinc-200 dark:border-zinc-700"
         >
-          {expanded ? "Show fewer" : `Show all ${markets.length} markets`}
-        </button>
-      ) : null}
-      {markets.length ? (
-        <p className="mt-2 text-[10px] text-zinc-500">
-          Source-listed prices
-          {checkedAt ? ` · discovered ${time(checkedAt)}` : ""}. Availability
-          and settlement rules vary; open the market for details.
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-export function ProbabilityChart({ data }: { data: MarketDetail }) {
-  const [mode, setMode] = useState<"all" | "prefight" | "live">(() =>
-    data.fight.state === "live" ||
-    (data.fight.state === "finished" &&
-      data.history.some((p) => p.phase === "live"))
-      ? "live"
-      : "all",
-  );
-  const [cursor, setCursor] = useState<number | null>(null);
-  const points = data.history.filter((p) => mode === "all" || p.phase === mode);
-  const selected =
-    cursor == null ? points.length - 1 : Math.min(cursor, points.length - 1);
-  const point = points[selected];
-  const first = points[0]?.at ?? 0,
-    last = points.at(-1)?.at ?? first;
-  const x = (at: number) =>
-    42 + ((at - first) / Math.max(1, last - first)) * 650;
-  const y = (p: number) => 18 + (1 - p) * 150;
-  const roundMarkers = data.rounds
-    .filter((r) => r.at >= first && r.at <= last)
-    .filter((r, i, rounds) => i === 0 || x(r.at) - x(rounds[i - 1].at) > 22);
-  const gaps = points
-    .slice(1)
-    .map((p, i) => p.at - points[i].at)
-    .sort((a, b) => a - b);
-  const maxGap = Math.max(
-    mode === "live" ? 60_000 : 3_600_000,
-    (gaps[Math.floor(gaps.length / 2)] ?? 0) * 3,
-  );
-  const path = (flip: boolean) =>
-    points
-      .map(
-        (p, i) =>
-          `${i === 0 || p.at - points[i - 1].at > maxGap ? "M" : "L"}${x(p.at).toFixed(1)},${y(flip ? 1 - p.p : p.p).toFixed(1)}`,
-      )
-      .join(" ");
-  const switchMode = (next: typeof mode) => {
-    setMode(next);
-    setCursor(null);
-  };
-  return (
-    <div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">Probability history</h3>
-        <div role="group" aria-label="History range" className="flex gap-1">
-          {(
-            [
-              ["all", "All"],
-              ["prefight", "Pre-fight"],
-              ["live", "Live"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              type="button"
-              key={key}
-              aria-pressed={mode === key}
-              onClick={() => switchMode(key)}
-              className={`${MARKET_BUTTON} ${mode === key ? "bg-zinc-100 dark:bg-zinc-800" : ""}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-      {points.length ? (
-        <>
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs">
-            <span>
-              <span className="font-semibold text-blue-700 dark:text-blue-400">
-                {data.fight.f1.name} {marketPct(point.p)}
-              </span>{" "}
-              <span className="text-zinc-400">/</span>{" "}
-              <span className="font-semibold text-red-700 dark:text-red-400">
-                {data.fight.f2.name} {marketPct(1 - point.p)}
-              </span>
+          <summary className="cursor-pointer px-3 py-2 text-xs font-semibold">
+            {group.label}{" "}
+            <span className="ml-1 font-normal text-zinc-500">
+              {group.markets.length}
             </span>
-            <span className="text-[11px] text-zinc-500">
-              {time(point.at)} ·{" "}
-              {point.source === "observed" ? "Captured" : "Source history"}
-              {point.phase === "live" ? " · live" : ""}
-            </span>
+          </summary>
+          <div className="border-t border-zinc-200 dark:border-zinc-700">
+            {group.markets.map((m) => (
+              <a
+                key={m.id}
+                href={m.url}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                title={m.question}
+                aria-label={m.question}
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-zinc-100 px-3 py-2 text-xs last:border-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800"
+              >
+                <span className="flex min-w-0 items-center gap-1.5">
+                  {marketLabel(m.question)}
+                  {m.closed ? (
+                    <span className="text-[10px] text-zinc-500">Closed</span>
+                  ) : null}
+                  <ExternalLink
+                    className="h-3 w-3 shrink-0 text-zinc-400"
+                    aria-hidden="true"
+                  />
+                </span>
+                <span className="flex shrink-0 gap-3 text-[11px] text-zinc-500">
+                  {m.outcomes.map((o) => (
+                    <span key={o.name}>
+                      {o.name}{" "}
+                      <strong className="tabular-nums text-zinc-900 dark:text-zinc-100">
+                        {marketPct(o.p)}
+                      </strong>
+                    </span>
+                  ))}
+                </span>
+              </a>
+            ))}
           </div>
-          <svg
-            viewBox="0 0 720 200"
-            className="mt-1 w-full overflow-visible"
-            role="img"
-            aria-label={`Win probability history for ${data.fight.f1.name} and ${data.fight.f2.name}. Hover or focus the chart and use arrow keys to inspect observations.`}
-            tabIndex={0}
-            data-own-arrows
-            onKeyDown={(event) => {
-              const next =
-                event.key === "ArrowLeft"
-                  ? selected - 1
-                  : event.key === "ArrowRight"
-                    ? selected + 1
-                    : event.key === "Home"
-                      ? 0
-                      : event.key === "End"
-                        ? points.length - 1
-                        : null;
-              if (next == null) return;
-              event.preventDefault();
-              setCursor(Math.max(0, Math.min(points.length - 1, next)));
-            }}
-            onPointerLeave={() => setCursor(null)}
-            onPointerMove={(event) => {
-              if (event.buttons !== 1 && event.pointerType !== "mouse") return;
-              const rect = event.currentTarget.getBoundingClientRect();
-              const at =
-                first +
-                ((((event.clientX - rect.left) / rect.width) * 720 - 42) /
-                  650) *
-                  (last - first);
-              let nearest = 0;
-              points.forEach((p, i) => {
-                if (Math.abs(p.at - at) < Math.abs(points[nearest].at - at))
-                  nearest = i;
-              });
-              setCursor(nearest);
-            }}
-          >
-            {[0, 0.25, 0.5, 0.75, 1].map((p) => (
-              <g key={p} className="text-zinc-300 dark:text-zinc-700">
-                <line
-                  x1="42"
-                  x2="692"
-                  y1={y(p)}
-                  y2={y(p)}
-                  stroke="currentColor"
-                  strokeDasharray={p === 0.5 ? "4 4" : undefined}
-                />
-                <text
-                  x="32"
-                  y={y(p) + 3}
-                  textAnchor="end"
-                  fill="currentColor"
-                  className="fill-zinc-500 text-[18px] @[30rem]:text-[10px]"
-                >
-                  {Math.round(p * 100)}%
-                </text>
-              </g>
-            ))}
-            {data.fight.cutoff >= first && data.fight.cutoff <= last ? (
-              <g>
-                <line
-                  x1={x(data.fight.cutoff)}
-                  x2={x(data.fight.cutoff)}
-                  y1="18"
-                  y2="168"
-                  stroke="currentColor"
-                  className="text-zinc-400"
-                  strokeDasharray="3 4"
-                />
-                <text
-                  x={Math.min(620, x(data.fight.cutoff) + 4)}
-                  y="12"
-                  className="fill-zinc-500 text-[9px]"
-                >
-                  Card start
-                </text>
-              </g>
-            ) : null}
-            {roundMarkers.map((r) => (
-              <g key={r.round}>
-                <line
-                  x1={x(r.at)}
-                  x2={x(r.at)}
-                  y1="18"
-                  y2="168"
-                  stroke="currentColor"
-                  className="text-zinc-400"
-                  strokeDasharray="2 4"
-                />
-                <text
-                  x={x(r.at)}
-                  y="181"
-                  textAnchor="middle"
-                  className="fill-zinc-500 text-[18px] @[30rem]:text-[10px]"
-                >
-                  R{r.round}
-                </text>
-              </g>
-            ))}
-            <path
-              d={path(false)}
-              fill="none"
-              stroke="#3b82f6"
-              strokeWidth="2.5"
-              strokeLinejoin="round"
-            />
-            <path
-              d={path(true)}
-              fill="none"
-              stroke="#ef4444"
-              strokeWidth="2"
-              strokeLinejoin="round"
-            />
-            <line
-              x1={x(point.at)}
-              x2={x(point.at)}
-              y1="18"
-              y2="168"
-              stroke="currentColor"
-              className="text-zinc-400"
-            />
-            <circle cx={x(point.at)} cy={y(point.p)} r="4" fill="#3b82f6" />
-            <text
-              x="42"
-              y="197"
-              className="fill-zinc-500 text-[18px] @[30rem]:text-[10px]"
-            >
-              {new Date(first).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-              })}
-            </text>
-            <text
-              x="692"
-              y="197"
-              textAnchor="end"
-              className="fill-zinc-500 text-[18px] @[30rem]:text-[10px]"
-            >
-              {time(last)}
-            </text>
-          </svg>
-        </>
-      ) : (
-        <p className="rounded-lg bg-zinc-50 p-4 text-xs text-zinc-500 dark:bg-zinc-800">
-          {mode === "live"
-            ? "No live observations were captured. Historical prices without confirmed fight timing stay in All."
-            : data.historyCheckedAt
-              ? "No price history is available for this range yet."
-              : "Fetching source history. New observations will appear here automatically."}
-        </p>
-      )}
-      {data.historyError ? (
-        <p
-          role="status"
-          className="mt-2 text-xs text-amber-700 dark:text-amber-400"
-        >
-          {data.historyError}
-        </p>
-      ) : null}
+        </details>
+      ))}
     </div>
   );
 }
@@ -451,7 +188,7 @@ export function PolymarketView({
         </div>
       </div>
       <div className="space-y-5 p-4 sm:p-5">
-        <ProbabilityChart key={data.fight.id} data={data} />
+        <PolymarketChart data={data} />
         {!compact ? <Comparison data={data} now={now} /> : null}
         {!q ? (
           <div
@@ -481,10 +218,7 @@ export function PolymarketView({
         {!compact ? (
           <div className="border-t border-zinc-200 pt-4 dark:border-zinc-700">
             <h3 className="mb-3 text-sm font-semibold">More markets</h3>
-            <ExtraMarkets
-              markets={data.extras}
-              checkedAt={data.marketCheckedAt}
-            />
+            <ExtraMarkets markets={data.extras} />
           </div>
         ) : null}
       </div>

@@ -15,8 +15,11 @@ UFC.sh reads public market data only. It does not connect a wallet or place orde
 
 There is no standalone Markets page, watchlist, follow UI, or replay slider.
 Hover over the chart or focus it and use arrow/Home/End keys to inspect points;
-its range buttons remain available. The raw observations dropdown and chart
-explanatory footer are omitted.
+drag the two arrow handles to select a time window, or drag the selection to pan.
+Handles also support arrow/Home/End keys (Shift speeds up adjustment). No
+All/Pre-fight/Live buttons are shown. Times use the viewer's browser time zone,
+with the UTC offset on each timestamp to disambiguate daylight-saving changes.
+The raw observations dropdown and chart explanatory footer are omitted.
 
 The visited Odds panel stays mounted for the current bout, preserving the chart
 range across tab changes. Hidden panels pause their requests; returning refreshes
@@ -51,15 +54,33 @@ The archive contains three new tables:
 
 History uses the Data API v2 price-history endpoint and cursor pagination,
 bounded to eight pages per read. Partial and failed reads stay visible. Source
-history with unconfirmed live timing is shown under All; a bucket is pre-fight
-only if its whole interval precedes the current card cutoff. Samples retain
+history with unconfirmed live timing remains in the historical view; a bucket is
+pre-fight only if its whole interval precedes the current card cutoff. Samples retain
 their identity after a replacement and are excluded from the changed matchup.
-History is retained for replay and analysis; it is not reconstructed from results.
+History is retained for analysis; it is not reconstructed from results.
+
+The chart uses `client/src/market-chart.ts` to validate, sort and deduplicate
+observations. A confirmed live bout automatically switches to captured live
+observations and follows the last ten captured minutes. It waits if none exist;
+it never guesses a fight start from the card cutoff. A completed fight with live
+captures shows the whole captured fight, excluding source settlement history;
+without captures it retains the full historical view. Missing live minutes stay
+disconnected. Round markers use the first observed round timestamps.
+
+Manual ranges use absolute epoch milliseconds, so appending or backfilling history
+does not shift the selected period. Handles cannot cross, extend outside the data,
+or narrow below ten seconds (or the entire domain when shorter). A window without
+samples stays empty. Follow live / Reset range restores automatic behavior. Identity,
+date, opponents, source URL or a transition into live scope resets the selection.
+Pointer gestures freeze their coordinate mapping while polling continues.
 
 The displayed probability is a midpoint or last trade. The Odds panel keeps
 current percentages in the source-comparison table and chart, without repeating
 a large probability summary, movement callout, trading metrics or explanatory
-comparison banners. Props show timestamped listed prices.
+comparison banners. Additional markets are grouped by fight outcome, total rounds,
+finish timing and round winners; unfamiliar types stay in Other. Compact rows keep
+source outcome labels/prices and open the source market. No discovery footer or
+volume/liquidity summary is shown.
 
 ## Comparisons and accuracy
 
@@ -89,9 +110,10 @@ Run `./start` and append the paths below to the printed Tailscale URL.
 
 | Review | URL | What to check |
 | --- | --- | --- |
-| Upcoming matchup | `/fights/FIGHT_ID?tab=odds` | One-line logo/percentage badge, sportsbook comparison, chart range and hover/keyboard interaction |
-| Completed matchup | `/fights/FIGHT_ID?tab=odds` | No hero badge; retained price chart and source observations |
+| Upcoming matchup | `/fights/FIGHT_ID?tab=odds` | One-line logo/percentage badge, sportsbook comparison, draggable window, grouped props and hover/keyboard interaction |
+| Completed matchup | `/fights/FIGHT_ID?tab=odds` | No hero badge; retained chart; full captured fight when available |
 | Card | `/events/EVENT_ID?markets=1` | Expanded probabilities, hide/show and links into Odds |
+| Live bout | `/fights/FIGHT_ID?tab=odds` | Automatic last-ten-minute focus, confirmed captures only, Follow live after manual zoom |
 | Return to Odds | Switch to Matchup and back | Same chart/range, no loading flash; hidden panels pause requests |
 
 Test phone and desktop widths in both themes. The follow/open-market controls,
