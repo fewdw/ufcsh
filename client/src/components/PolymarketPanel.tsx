@@ -333,32 +333,6 @@ export function ProbabilityChart({ data }: { data: MarketDetail }) {
               {time(last)}
             </text>
           </svg>
-          <details className="mt-3 text-[11px] text-zinc-500">
-            <summary className="cursor-pointer">View observations</summary>
-            <div className="mt-2 max-h-48 overflow-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>{data.fight.f1.name}</th>
-                    <th>Source</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {points.slice(-100).map((p, i) => (
-                    <tr key={`${p.at}:${p.source}:${i}`}>
-                      <td>{time(p.at)}</td>
-                      <td>{marketPct(p.p)}</td>
-                      <td>
-                        {p.source}
-                        {p.phase === "live" ? " · live" : ""}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </details>
         </>
       ) : (
         <p className="rounded-lg bg-zinc-50 p-4 text-xs text-zinc-500 dark:bg-zinc-800">
@@ -377,11 +351,6 @@ export function ProbabilityChart({ data }: { data: MarketDetail }) {
           {data.historyError}
         </p>
       ) : null}
-      <p className="mt-2 text-[10px] leading-relaxed text-zinc-500">
-        Round markers show when UFC.sh first observed each live round; they may
-        lag the broadcast. Gaps stay unconnected. Market prices reflect trading,
-        and are not a verified chance of winning.
-      </p>
     </div>
   );
 }
@@ -482,22 +451,23 @@ export function PolymarketView({
         </div>
       </div>
       <div className="space-y-5 p-4 sm:p-5">
+        <ProbabilityChart key={data.fight.id} data={data} />
+        {!compact ? <Comparison data={data} now={now} /> : null}
         {!q ? (
           <div
             role="status"
             className="rounded-lg bg-zinc-50 p-4 text-xs leading-relaxed text-zinc-500 dark:bg-zinc-800"
           >
             {data.status === "closed"
-              ? "This fight has finished or the market is closed. Explore the recorded prices below."
+              ? "This fight has finished or the market is closed."
               : data.status === "missing"
                 ? "No unambiguous Polymarket moneyline was found for both fighters on this date. Other fight information is still available."
-                : "Current Polymarket prices are unavailable. Retrying automatically; historical observations remain below."}
+                : "Current Polymarket prices are unavailable. Retrying automatically; historical observations remain available."}
             {data.error ? (
               <span className="mt-1 block">{data.error}</span>
             ) : null}
           </div>
         ) : null}
-        {!compact ? <Comparison data={data} now={now} /> : null}
         {winnerLow != null ? (
           <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-800 dark:bg-blue-950/30 dark:text-blue-300">
             {data.fight.winner === "f1"
@@ -508,7 +478,6 @@ export function PolymarketView({
             observations.
           </p>
         ) : null}
-        <ProbabilityChart key={data.fight.id} data={data} />
         {!compact ? (
           <div className="border-t border-zinc-200 pt-4 dark:border-zinc-700">
             <h3 className="mb-3 text-sm font-semibold">More markets</h3>
