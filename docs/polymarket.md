@@ -19,7 +19,8 @@ drag the two arrow handles to select a time window, or drag the selection to pan
 Handles also support arrow/Home/End keys (Shift speeds up adjustment). No
 All/Pre-fight/Live buttons are shown. Times use the viewer's browser time zone,
 with the UTC offset on each timestamp to disambiguate daylight-saving changes.
-The raw observations dropdown and chart explanatory footer are omitted.
+The range navigator sits directly below the chart, with dates and the time zone
+below it. The raw observations dropdown and chart explanatory footer are omitted.
 
 The visited Odds panel stays mounted for the current bout, preserving the chart
 range across tab changes. Hidden panels pause their requests; returning refreshes
@@ -87,7 +88,8 @@ volume/liquidity summary is shown.
 American sportsbook prices are converted to implied probabilities, then both
 sides are normalized together to remove the margin. Community share counts
 only picks for the same event and corner identities; it is a pick share, not a
-calibrated forecast.
+calibrated forecast. The comparison omits community picks when the count is zero
+or no community sample exists.
 
 Accuracy uses each completed fight's latest **observed** snapshot in the 24
 hours before the earliest announced card start (midnight UTC when unknown).

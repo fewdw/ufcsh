@@ -217,6 +217,16 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
       )}
       {model.points.length ? (
         <>
+          {model.domain.to > model.domain.from ? (
+            <RangeNavigator
+              model={model}
+              range={range}
+              onChange={(next) => {
+                setManual(next);
+                setCursor(null);
+              }}
+            />
+          ) : null}
           <div
             className="mt-1 flex flex-wrap justify-between gap-x-4 gap-y-1 text-[10px] tabular-nums text-zinc-500"
             aria-label="Selected time window"
@@ -234,19 +244,8 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
               observations.
             </p>
           ) : null}
-          {model.domain.to > model.domain.from ? (
-            <RangeNavigator
-              model={model}
-              range={range}
-              onChange={(next) => {
-                setManual(next);
-                setCursor(null);
-              }}
-            />
-          ) : null}
-          <div className="mt-1 flex min-h-8 flex-wrap items-center justify-between gap-2 text-[10px] text-zinc-500">
-            <span>Drag the arrows to zoom; drag the selection to move.</span>
-            {manual ? (
+          {manual ? (
+            <div className="mt-1 flex justify-end text-[10px]">
               <button
                 type="button"
                 onClick={() => {
@@ -257,8 +256,8 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
               >
                 {data.fight.state === "live" ? "Follow live" : "Reset range"}
               </button>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </>
       ) : null}
       {data.historyError ? (

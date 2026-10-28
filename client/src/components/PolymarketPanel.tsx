@@ -111,19 +111,21 @@ function Comparison({ data, now }: { data: MarketDetail; now: number }) {
         ? `Margin removed · ${time(data.sports.at)}`
         : "No two-sided odds available",
     },
-    {
-      label: "Community picks",
-      p: data.community?.p ?? null,
-      detail: data.community
-        ? `${data.community.n.toLocaleString()} picks · ${data.snapshot ? "frozen pre-fight" : "current tally"}`
-        : "No picks yet",
-    },
+    ...(data.community && data.community.n > 0
+      ? [
+          {
+            label: "Community picks",
+            p: data.community.p,
+            detail: `${data.community.n.toLocaleString()} picks · ${data.snapshot ? "frozen pre-fight" : "current tally"}`,
+          },
+        ]
+      : []),
   ];
   return (
     <div>
       <h3 className="mb-3 text-sm font-semibold">How they compare</h3>
       <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-3 text-xs">
-        <span className="text-[10px] text-zinc-500">Source</span>
+        <span aria-hidden="true" />
         <span className="max-w-28 truncate text-right text-[10px] text-zinc-500">
           {data.fight.f1.name}
         </span>
