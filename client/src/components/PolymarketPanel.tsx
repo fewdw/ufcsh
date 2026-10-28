@@ -367,91 +367,6 @@ export default function PolymarketPanel({
   );
 }
 
-function MarketBoard({ eventId }: { eventId: string }) {
-  const { data, error, retry } = useMarketData<{ fights: MarketSummary[] }>(
-    `/api/polymarket/board?event=${eventId}`,
-    10_000,
-  );
-  const now = useNow(true, 5000);
-  const rows = data?.fights;
-  return (
-    <section
-      className={`${MARKET_SHELL} shrink-0 overflow-hidden`}
-      aria-label="Polymarket fight board"
-    >
-      <div className="flex items-center justify-between gap-2 border-b border-zinc-200 p-4 dark:border-zinc-700">
-        <h2 className="text-sm font-semibold">Polymarket win probabilities</h2>
-      </div>
-      {!rows ? (
-        <p role="status" className="p-4 text-xs text-zinc-500">
-          {error ? (
-            <>
-              Market board unavailable.{" "}
-              <button onClick={retry} className="underline">
-                Retry
-              </button>
-            </>
-          ) : (
-            "Loading markets…"
-          )}
-        </p>
-      ) : !rows.length ? (
-        <p className="p-4 text-xs text-zinc-500">
-          No scheduled matchups to show.
-        </p>
-      ) : (
-        <div className="divide-y divide-zinc-200 dark:divide-zinc-700">
-          {rows.map((row) => {
-            const q = freshMarketQuote(row, now);
-            return (
-              <div
-                key={row.fight.id}
-                className="flex items-center gap-3 px-4 py-3"
-              >
-                <Link
-                  to={`/fights/${row.fight.id}?tab=odds`}
-                  className="min-w-0 flex-1"
-                >
-                  <span className="block truncate text-xs font-medium">
-                    {row.fight.f1.name}{" "}
-                    <span className="text-zinc-400">vs</span>{" "}
-                    {row.fight.f2.name}
-                  </span>
-                  <span className="mt-1 block text-[10px] text-zinc-500">
-                    {q
-                      ? `${row.fight.state === "live" ? "Live · " : ""}${q.spread != null && q.spread > 0.06 + 1e-9 ? "Wide spread · " : ""}updated ${Math.max(0, Math.floor((now - q.at) / 1000))}s ago`
-                      : row.status === "missing"
-                        ? "No matched market"
-                        : row.status === "closed"
-                          ? "Closed · view history"
-                          : "Price unavailable"}
-                  </span>
-                </Link>
-                <Link
-                  to={`/fights/${row.fight.id}?tab=odds`}
-                  className="shrink-0 text-right text-xs font-semibold tabular-nums"
-                >
-                  <span className="text-blue-700 dark:text-blue-400">
-                    {marketPct(q?.p)}
-                  </span>
-                  <span className="px-1 text-zinc-400">/</span>
-                  <span className="text-red-700 dark:text-red-400">
-                    {marketPct(q ? 1 - q.p : null)}
-                  </span>
-                </Link>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <p className="px-4 py-3 text-[10px] text-zinc-500">
-        Blue is the first fighter; red is the second. Open a fight for its
-        history and comparisons.
-      </p>
-    </section>
-  );
-}
-
 export function MarketTeaser({ fightId }: { fightId: string }) {
   const { data } = useMarketData<{ fights: MarketSummary[] }>(
     `/api/polymarket/board?ids=${fightId}`,
@@ -476,29 +391,5 @@ export function MarketTeaser({ fightId }: { fightId: string }) {
         {marketPct(1 - q.p)}
       </span>
     </Link>
-  );
-}
-
-export function EventMarkets({
-  eventId,
-  initialOpen = false,
-}: {
-  eventId: string;
-  initialOpen?: boolean;
-}) {
-  const [open, setOpen] = useState(initialOpen);
-  return (
-    <div className="shrink-0">
-      <button
-        type="button"
-        aria-expanded={open}
-        className="mb-2 flex w-full items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-2.5 text-xs font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-        onClick={() => setOpen(!open)}
-      >
-        <span>Polymarket probabilities</span>
-        <span>{open ? "Hide −" : "Show +"}</span>
-      </button>
-      {open ? <MarketBoard eventId={eventId} /> : null}
-    </div>
   );
 }
