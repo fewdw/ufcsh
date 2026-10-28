@@ -55,6 +55,18 @@ export function cardPay(
   const pay = new Map<string, StoredPay>(card.map((bout) => [bout.id, {}]));
   const issues: PayIssues = { unread: [], conflicts: [], bonusNotes: [], failed: [] };
   const sources: PaySource[] = [];
+  // A later source fills a corner nobody has yet; where one has, it is kept
+  // and the other figure recorded beside it.
+  const addPurse = (bout: PayBout, corner: Corner, theirs: Purse, index: number) => {
+    const entry = pay.get(bout.id)!;
+    const ours = entry.purse?.[corner];
+    if (!ours) entry.purse = { ...entry.purse, sources, [corner]: { ...theirs, source: index, also: null } };
+    else if (ours.total !== theirs.total) {
+      const label = sources[index].label;
+      ours.also = [ours.also, `${label} lists ${usd(theirs.total)}`].filter(Boolean).join("; ");
+      issues.conflicts.push(`${bout[corner]}: ${sources[ours.source].label} ${usd(ours.total)}, ${label} ${usd(theirs.total)}`);
+    }
+  };
 
   const wiki = article ? wikipediaPurses(article.text, card) : null;
   if (wiki && wiki.purses.size) {
@@ -75,16 +87,9 @@ export function cardPay(
     const index = sources.push({ ...report.source, commission: report.commission, caveat: null, cited: null }) - 1;
     issues.unread.push(...report.unread.map((row) => `${report.source.label} salaries: ${row}`));
     for (const row of rows) {
-      const entry = pay.get(row.id)!;
+      const bout = card.find((b) => b.id === row.id)!;
       for (const [i, corner] of (["f1", "f2"] as const).entries()) {
-        const theirs = row.purses[i];
-        if (!theirs) continue;
-        const ours = entry.purse?.[corner];
-        if (!ours) entry.purse = { ...entry.purse, sources, [corner]: { ...theirs, source: index, also: null } };
-        else if (ours.total !== theirs.total) {
-          ours.also = [ours.also, `${report.source.label} lists ${usd(theirs.total)}`].filter(Boolean).join("; ");
-          issues.conflicts.push(`${row.fighters[i]}: ${sources[ours.source].label} ${usd(ours.total)}, ${report.source.label} ${usd(theirs.total)}`);
-        }
+        if (row.purses[i]) addPurse(bout, corner, row.purses[i], index);
       }
     }
   }
@@ -102,17 +107,9 @@ export function cardPay(
     if (read.purses.size) {
       const index = sources.push({ label: "MMA Payout", url: salaries.link, commission: postCommission(salaries.text), caveat: null, cited: null }) - 1;
       for (const [id, corners] of read.purses) {
-        const entry = pay.get(id)!;
+        const bout = card.find((b) => b.id === id)!;
         for (const corner of ["f1", "f2"] as const) {
-          const theirs = corners[corner];
-          if (!theirs) continue;
-          const ours = entry.purse?.[corner];
-          if (!ours) entry.purse = { ...entry.purse, sources, [corner]: { ...theirs, source: index, also: null } };
-          else if (ours.total !== theirs.total) {
-            ours.also = [ours.also, `MMA Payout lists ${usd(theirs.total)}`].filter(Boolean).join("; ");
-            const bout = card.find((b) => b.id === id)!;
-            issues.conflicts.push(`${bout[corner]}: ${sources[ours.source].label} ${usd(ours.total)}, MMA Payout ${usd(theirs.total)}`);
-          }
+          if (corners[corner]) addPurse(bout, corner, corners[corner], index);
         }
       }
     }

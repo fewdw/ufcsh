@@ -129,12 +129,12 @@ function sameGiven(a: string, b: string): boolean {
  *  it holds the win bonus. */
 type Entry = { name: string; purse: Purse | null; marker: string | null; raw: string; between: string; after: string; unclear: boolean };
 
-/** Every name-and-amount on one line of text. */
 /** How a source writes "$X ($W win bonus)": Wikipedia always means the win
  *  bonus is inside $X; MMA Payout has meant both, so it is read only where
  *  the figures settle it. */
 export type WinBonusStyle = "included" | "unclear";
 
+/** Every name-and-amount on one line of text. */
 function lineEntries(line: string, outcomeOf: (name: string) => string | null | undefined, style: WinBonusStyle): Entry[] {
   const entries: Entry[] = [];
   let from = 0;
