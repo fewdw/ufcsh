@@ -7,7 +7,7 @@ const MINUTE = 60_000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 const SOURCES: { key: string; name: string; every: number }[] = [
   { key: "last_tick_at", name: "Scheduler pass", every: 5 * MINUTE },
   { key: "events_list_synced_at", name: "Events list (UFCStats)", every: 10 * MINUTE },
-  { key: "event_schedules_synced_at", name: "Card schedules (ufc.com)", every: HOUR },
+  { key: "event_schedules_synced_at", name: "Card schedules (ufc.com)", every: 10 * MINUTE },
   { key: "fightodds_read_at", name: "Odds (FightOdds.io)", every: 5 * MINUTE },
   { key: "potential_matchups_read_at", name: "Potential matchups", every: 5 * MINUTE },
   { key: "news_checked_at", name: "News feeds", every: 10 * MINUTE },

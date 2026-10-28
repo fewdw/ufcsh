@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assignPositions, assignRounds, assignSegments, byBoutPlace, cardOrder, estimatedStart, matchEventSchedule, sharesBout } from "./card-schedule.ts";
+import { assignPositions, assignRounds, assignSegments, byBoutPlace, cardOrder, CARD_REFRESH_INTERVAL, estimatedStart, matchEventSchedule, sharesBout, upcomingSegmentTargets } from "./card-schedule.ts";
 import type { ScrapedEventSchedule, ScrapedSegmentBout } from "./scrape/ufccom.ts";
 
 const schedule = (slug: string, headline: string, prelims: string, main: string, early?: string): ScrapedEventSchedule => ({
@@ -32,6 +32,26 @@ test("an event with no schedule of its own takes nobody else's", () => {
   assert.equal(matchEventSchedule({ name: "UFC 300", date: "not-a-date" }, [PARIS]), null);
 });
 
+test("ambiguous same-day pages and conflicting event numbers are left unmatched", () => {
+  const other = { ...PARIS, slug: "other-card", headline: "Jones vs Smith" };
+  assert.equal(matchEventSchedule({ name: "UFC Fight Night", date: "2026-09-05" }, [PARIS, other]), null);
+  assert.equal(matchEventSchedule({ name: "UFC Fight Night", date: "2026-09-05" }, [other, PARIS]), null);
+  assert.equal(matchEventSchedule({ name: "UFC Fight Night: Hooker vs Parnasse", date: "2026-09-05" }, [other, PARIS]), PARIS);
+  assert.equal(matchEventSchedule({ name: "UFC 332: Van vs Pantoja 2", date: "2026-09-19" }, [VEGAS]), null);
+});
+
+test("every due upcoming card is refreshed, independently of archive size and beyond 25 events", () => {
+  const now = Date.parse("2027-01-01T00:00:00Z");
+  const upcoming = Array.from({ length: 31 }, (_, id) => ({ id, date: new Date(now + id * 86_400_000).toISOString().slice(0, 10), complete: 0, segments_fetched_at: null }));
+  const archive = Array.from({ length: 40 }, (_, id) => ({ id: 100 + id, date: "2020-01-01", complete: 1, segments_fetched_at: null }));
+  const fresh = { id: 200, date: "2027-01-01", complete: 0, segments_fetched_at: now - 5 * 60_000 };
+  const due = { id: 201, date: "2027-01-01", complete: 0, segments_fetched_at: now - CARD_REFRESH_INTERVAL };
+  const staleIncomplete = { id: 202, date: "2020-01-01", complete: 0, segments_fetched_at: null };
+  const result = upcomingSegmentTargets([...archive, staleIncomplete, ...upcoming.toReversed(), fresh, due], now);
+  assert.deepEqual(result.map(event => event.id), [0, 201, ...upcoming.slice(1).map(event => event.id)]);
+  assert.equal(upcomingSegmentTargets([{ ...fresh, segments_fetched_at: null }], now).length, 1, "a new booking invalidates the otherwise fresh card");
+});
+
 const bouts: ScrapedSegmentBout[] = [
   { segment: "main", f1: "Dan Hooker", f2: "Salahdine Parnasse" },
   { segment: "main", f1: "Michael Venom Page", f2: "Nursulton Ruziboev" },
@@ -51,11 +71,19 @@ test("bouts are placed on the card by name, nickname and corner order aside", ()
   assert.equal(segments.get("b"), "main", "a nickname on one source only must not lose the bout");
 });
 
-test("a bout the other source spells differently is placed by where it sits on the card", () => {
+test("an unmatched replacement is not placed by position, even with equal card sizes", () => {
   const renamed = [{ ...fights[3], f1_name: "Late Replacement", f2_name: "Sofia Montenegro" }];
   const segments = assignSegments([...fights.slice(0, 3), ...renamed], bouts);
-  assert.equal(segments.get("d"), "prelims");
+  assert.equal(segments.has("d"), false);
   assert.equal(segments.get("a"), "main", "the bouts that did match keep their own answer");
+});
+
+test("conflicting assignments and reordered unknown bouts are never guessed", () => {
+  assert.equal(assignSegments(fights, [...bouts, { ...bouts[0], segment: "early" }]).has("a"), false);
+  const changed = [...fights.slice(1), { ...fights[0], ord: 4, f2_name: "New Opponent" }];
+  const assigned = assignSegments(changed, bouts);
+  assert.equal(assigned.has("a"), false);
+  assert.equal(assigned.get("b"), "main");
 });
 
 test("segments are left unassigned rather than guessed from a card of a different size", () => {

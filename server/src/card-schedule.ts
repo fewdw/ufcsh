@@ -3,6 +3,16 @@ import { firstLastName } from "./util.ts";
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
+export const CARD_REFRESH_INTERVAL = 10 * 60_000;
+
+/** Every due upcoming card, nearest first. Archive work must not consume this
+ * budget, and an announcement beyond the first 25 cards still gets checked. */
+export function upcomingSegmentTargets<T extends { date: string; complete: number; segments_fetched_at: number | null }>(events: T[], now: number): T[] {
+  const oldest = new Date(now - 2 * DAY).toISOString().slice(0, 10);
+  return events.filter(event => !event.complete && event.date >= oldest
+    && (event.segments_fetched_at == null || now - event.segments_fetched_at >= CARD_REFRESH_INTERVAL))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
 
 const startOfDay = (at: number) => Math.floor(at / DAY) * DAY;
 
@@ -34,6 +44,7 @@ export function matchEventSchedule(
   if (!Number.isFinite(eventDay)) return null;
   const wanted = nameTokens(event.name);
   let best: { schedule: ScrapedEventSchedule; score: number; distance: number } | null = null;
+  let ambiguous = false;
   for (const schedule of schedules) {
     const start = schedule.earlyPrelimsAt ?? schedule.prelimsAt ?? schedule.mainCardAt;
     if (start == null) continue;
@@ -44,13 +55,19 @@ export function matchEventSchedule(
     );
     if (distance > DAY) continue;
     const score = overlap(wanted, nameTokens(schedule.headline));
+    const number = /\bUFC\s+(\d+)\b/i.exec(event.name)?.[1];
+    const sourceNumber = /(?:^|-)ufc-(\d+)(?:-|$)/i.exec(schedule.slug)?.[1];
+    if (number && sourceNumber && number !== sourceNumber) continue;
     // Two cards can share a day; nothing but the names can separate them.
     if (!score && distance > 0) continue;
     if (!best || score > best.score || (score === best.score && distance < best.distance)) {
       best = { schedule, score, distance };
+      ambiguous = false;
+    } else if (score === best.score && distance === best.distance && schedule.slug !== best.schedule.slug) {
+      ambiguous = true;
     }
   }
-  return best?.schedule ?? null;
+  return !ambiguous ? best?.schedule ?? null : null;
 }
 
 const pairKey = (f1: string, f2: string) => [firstLastName(f1), firstLastName(f2)].sort().join("|");
@@ -67,32 +84,26 @@ export function sharesBout(
 
 /**
  * Which segment of the card each bout belongs to. Names carry the assignment,
- * because either source can reorder a card after a change; the segment sizes
- * fill whatever the names could not match, since both list a card main event
- * first.
+ * because either source can reorder a card after a change. Equal card sizes
+ * and UFCStats' list order cannot establish where an unidentified bout belongs.
  */
 export function assignSegments(
   fights: { id: string; ord: number; f1_name: string; f2_name: string }[],
   bouts: ScrapedSegmentBout[],
 ): Map<string, CardSegment> {
   const byPair = new Map<string, CardSegment>();
-  for (const bout of bouts) byPair.set(pairKey(bout.f1, bout.f2), bout.segment);
+  const ambiguous = new Set<string>();
+  for (const bout of bouts) {
+    const key = pairKey(bout.f1, bout.f2);
+    if (byPair.has(key) && byPair.get(key) !== bout.segment) ambiguous.add(key);
+    byPair.set(key, bout.segment);
+  }
 
   const assigned = new Map<string, CardSegment>();
   for (const fight of fights) {
-    const segment = byPair.get(pairKey(fight.f1_name, fight.f2_name));
-    if (segment) assigned.set(fight.id, segment);
-  }
-  if (assigned.size === fights.length || bouts.length !== fights.length) return assigned;
-
-  const ordered = [...fights].sort((a, b) => a.ord - b.ord);
-  const sizes: [CardSegment, number][] = (["main", "prelims", "early"] as CardSegment[])
-    .map((segment) => [segment, bouts.filter((bout) => bout.segment === segment).length]);
-  let index = 0;
-  for (const [segment, size] of sizes) {
-    for (let n = 0; n < size && index < ordered.length; n++, index++) {
-      if (!assigned.has(ordered[index].id)) assigned.set(ordered[index].id, segment);
-    }
+    const key = pairKey(fight.f1_name, fight.f2_name);
+    const segment = byPair.get(key);
+    if (segment && !ambiguous.has(key)) assigned.set(fight.id, segment);
   }
   return assigned;
 }
