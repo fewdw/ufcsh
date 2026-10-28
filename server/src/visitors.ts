@@ -21,6 +21,36 @@ const PENDING_CAP = 100_000;
 const AUTOMATED = /bot\b|bot\/|crawl|spider|slurp|preview|facebookexternalhit|embedly|headless|lighthouse|pagespeed|gtmetrix|pingdom|uptime|monitor|curl\/|wget|python|axios|node-fetch|undici|go-http|java\/|okhttp|scrapy|phantom|selenium|playwright|puppeteer/i;
 export const isAutomated = (userAgent: string | undefined) => !userAgent || AUTOMATED.test(userAgent);
 
+/** Who runs an automated agent, first match wins. A fixed list, so the
+ *  stored rows stay bounded whatever user agents arrive. */
+const AGENTS: [RegExp, string][] = [
+  [/googlebot|google-|googleother|adsbot-google|mediapartners-google|storebot-google|feedfetcher-google/i, "google"],
+  [/bingbot|bingpreview|msnbot|adidxbot/i, "bing"],
+  [/applebot/i, "apple"],
+  [/gptbot|chatgpt-user|oai-searchbot/i, "openai"],
+  [/claudebot|claude-|anthropic/i, "anthropic"],
+  [/perplexity/i, "perplexity"],
+  [/meta-external|facebookexternalhit|facebookbot|facebookcatalog/i, "meta"],
+  [/bytespider|tiktokspider/i, "bytedance"],
+  [/amazonbot/i, "amazon"],
+  [/yandex/i, "yandex"],
+  [/baiduspider/i, "baidu"],
+  [/duckduckbot|duckassistbot/i, "duckduckgo"],
+  [/ccbot/i, "commoncrawl"],
+  [/ahrefs|semrush|mj12bot|dotbot|dataforseo|blexbot|serpstat|seznam|petalbot|barkrowler/i, "seo"],
+  [/twitterbot|discordbot|slackbot|telegrambot|linkedinbot|redditbot|whatsapp|skypeuripreview|embedly|iframely|preview/i, "previews"],
+  [/lighthouse|pagespeed|gtmetrix|pingdom|uptime|monitor/i, "monitors"],
+  [/headless|phantom|selenium|playwright|puppeteer/i, "headless"],
+  [/curl\/|wget|python|axios|node-fetch|undici|go-http|java\/|okhttp|scrapy/i, "scripts"],
+];
+
+/** The family of an automated agent (`isAutomated`), or null for a browser. */
+export function agentOf(userAgent: string | undefined): string | null {
+  if (!isAutomated(userAgent)) return null;
+  if (!userAgent) return "none";
+  return AGENTS.find(([pattern]) => pattern.test(userAgent))?.[1] ?? "other";
+}
+
 export function deviceOf(userAgent: string): "phone" | "tablet" | "desktop" {
   if (/iPad|Tablet/i.test(userAgent) || (/Android/i.test(userAgent) && !/Mobile/i.test(userAgent))) return "tablet";
   return /Mobi|iPhone|iPod|Android/i.test(userAgent) ? "phone" : "desktop";

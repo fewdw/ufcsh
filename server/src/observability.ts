@@ -25,6 +25,7 @@ export function pageRouteGroup(pathname: string): string | null {
 
 /** Bounded, anonymous labels keep metrics useful even when URLs contain IDs or usernames. */
 export function routeGroup(pathname: string): string {
+  if (pathname.startsWith("/api/polymarket/")) return "polymarket";
   if (/^\/api\/fights\/[a-f0-9]{16}\/scores\/mine$/i.test(pathname)) return "scores_mine";
   if (/^\/api\/fights\/[a-f0-9]{16}\/scores$/i.test(pathname)) return "scores_public";
   if (/^\/api\/fights\/[a-f0-9]{16}\/predictions(\/mine)?$/i.test(pathname)) return "predictions";
@@ -46,7 +47,6 @@ export function routeGroup(pathname: string): string {
   if (pathname === "/api/officials" || /^\/api\/(judges|referees)\//.test(pathname)) return "officials";
   if (pathname === "/api/venues" || pathname.startsWith("/api/venues/")) return "venues";
   if (pathname === "/api/locations" || pathname.startsWith("/api/locations/")) return "locations";
-  if (pathname.startsWith("/og/")) return "share_images";
   if (pathname.startsWith("/cal/")) return "calendar";
   if (/^\/api\/fights\/[a-f0-9]{16}$/i.test(pathname)) return "fight_detail";
   if (/^\/api\/fighters\/[a-f0-9]{16}$/i.test(pathname)) return "fighter_detail";
@@ -135,7 +135,7 @@ export const summarise = (entry: Latency) => ({
 
 export class HttpObservability {
   /** Hourly totals kept on disk for the long-range dashboard. */
-  history?: { record(route: string, status: number, ms: number, visitor?: string): void; view(route: string): void };
+  history?: { record(route: string, status: number, ms: number, visitor?: string, agent?: string | null): void; view(route: string): void };
   private readonly requests = new Map<string, number>();
   private readonly durations = new Map<string, Duration>();
   private readonly routes = new Map<string, Latency>();
@@ -171,8 +171,9 @@ export class HttpObservability {
   }
 
   /** `visitor` is the client address. It is only counted, never reported, and
-   *  is forgotten with its minute an hour later. */
-  record(method: string, pathname: string, status: number, seconds: number, visitor?: string): void {
+   *  is forgotten with its minute an hour later. `agent` is the crawler family
+   *  that sent it (`agentOf`), null for a browser. */
+  record(method: string, pathname: string, status: number, seconds: number, visitor?: string, agent?: string | null): void {
     const route = routeGroup(pathname);
     const ms = seconds * 1000;
     const perRoute = this.routes.get(route) ?? emptyLatency();
@@ -186,7 +187,7 @@ export class HttpObservability {
     minute.routes.set(route, minuteRoute);
     const counted = visitor && !uncounted ? visitor : undefined;
     if (counted && minute.visitors.size < VISITORS_PER_MINUTE) minute.visitors.add(counted);
-    this.history?.record(route, status, ms, counted);
+    this.history?.record(route, status, ms, counted, agent);
     const verb = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(method) ? method : "OTHER";
     const code = Number.isInteger(status) && status >= 100 && status <= 599 ? String(status) : "0";
     const key = `${route}|${verb}|${code}`;

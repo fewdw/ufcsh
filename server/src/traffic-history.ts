@@ -17,6 +17,10 @@ const HOURLY_DAYS = 8;
 const SITE = "*";
 /** Distinct visitors held in memory for the current hour and day. */
 const VISITOR_CAP = 200_000;
+/** Rows counting crawlers' requests by family (`agentOf`), beside the routes
+ *  they also count in. */
+const AGENT = "agent_";
+const isAgentRoute = (route: string) => route.startsWith(AGENT);
 const STEPS = MS_STEPS.map((_upper, index) => `s${index}`);
 const SUMMED = ["requests", "errors", "client_errors", "not_found", "throttled", "slow", "sum_ms", "views", ...STEPS];
 const SUMS = [...SUMMED.map(column => `SUM(${column}) AS ${column}`), "MAX(max_ms) AS max_ms"].join(", ");
@@ -82,8 +86,9 @@ export class TrafficHistory {
     return entry;
   }
 
-  record(route: string, status: number, ms: number, visitor?: string): void {
+  record(route: string, status: number, ms: number, visitor?: string, agent?: string | null): void {
     addLatency(this.entry(route).latency, status, ms);
+    if (agent && !UNCOUNTED_ROUTES.has(route)) addLatency(this.entry(AGENT + agent).latency, status, ms);
     if (!visitor) return;
     const id = createHash("sha256").update(this.salt).update(visitor).digest("base64url").slice(0, 16);
     for (const [span, state] of Object.entries(this.spans)) {
@@ -111,7 +116,7 @@ export class TrafficHistory {
     const site = new Map<number, { hour: number; route: string; latency: Latency; views: number }>();
     for (const row of rows) {
       // Readers' load times are not requests this server answered.
-      if (UNCOUNTED_ROUTES.has(row.route) || isTimingRoute(row.route)) continue;
+      if (UNCOUNTED_ROUTES.has(row.route) || isTimingRoute(row.route) || isAgentRoute(row.route)) continue;
       let total = site.get(row.hour);
       if (!total) site.set(row.hour, total = { hour: row.hour, route: SITE, latency: emptyLatency(), views: 0 });
       mergeLatency(total.latency, row.latency);
@@ -194,7 +199,7 @@ export class TrafficHistory {
 
     const totals = this.db.prepare(`SELECT ${SUMS} FROM traffic_hours WHERE hour >= ? AND route = ?`).get(since, SITE) as Row;
     const rows = this.db.prepare(`SELECT route, ${SUMS} FROM traffic_hours WHERE hour >= ? AND route != ? GROUP BY route`).all(since, SITE) as Row[];
-    const routes = rows.filter(row => !isTimingRoute(String(row.route)))
+    const routes = rows.filter(row => !isTimingRoute(String(row.route)) && !isAgentRoute(String(row.route)))
       .map(row => ({ route: String(row.route), ...summarise(latencyOf(row)), pageViews: Number(row.views ?? 0) }))
       .sort((a, b) => b.requests - a.requests);
     // p75 is how page-load measures are usually read: three loads in four as fast or faster.
@@ -203,9 +208,16 @@ export class TrafficHistory {
       return { route: String(row.route), loads: latency.count, p50Ms: estimatePercentile(latency, 0.5),
         p75Ms: estimatePercentile(latency, 0.75), p95Ms: estimatePercentile(latency, 0.95) };
     });
+    const agents = rows.filter(row => isAgentRoute(String(row.route)))
+      .map(row => ({ value: String(row.route).slice(AGENT.length), count: Number(row.requests ?? 0) }))
+      .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 
     const buckets = new Map((this.db.prepare(`SELECT hour - (hour - ?) % ? AS at, ${SUMS} FROM traffic_hours WHERE hour >= ? AND route = ? GROUP BY at`)
       .all(since, bucket, since, SITE) as Row[]).map(row => [Number(row.at), row]));
+    // The family rows sort together: "agent_" up to the next character, "agent`".
+    const crawled = new Map((this.db.prepare(`SELECT hour - (hour - ?) % ? AS at, SUM(requests) AS requests FROM traffic_hours
+      WHERE hour >= ? AND route >= ? AND route < ? GROUP BY at`).all(since, bucket, since, AGENT, "agent`") as Row[])
+      .map(row => [Number(row.at), Number(row.requests ?? 0)]));
     // Hourly windows count distinct visitors per hour; longer ones per day,
     // averaged across a week's days when the points are weeks.
     const visitorRows = this.db.prepare("SELECT start, visitors FROM traffic_visitors WHERE span = ? AND start >= ?")
@@ -222,7 +234,7 @@ export class TrafficHistory {
       const latency = row ? latencyOf(row) : emptyLatency();
       const counts = visitorBuckets.get(at) ?? [];
       series.push({
-        at, requests: latency.count, errors: latency.errors, throttled: latency.throttled, pageViews: Number(row?.views ?? 0),
+        at, requests: latency.count, crawlerRequests: crawled.get(at) ?? 0, errors: latency.errors, throttled: latency.throttled, pageViews: Number(row?.views ?? 0),
         p95Ms: latency.count ? estimatePercentile(latency, 0.95) : null,
         visitors: counts.length ? Math.round(counts.reduce((sum, value) => sum + value, 0) / counts.length) : 0,
         people: people.series.get(at)?.visitors ?? 0, returning: people.series.get(at)?.returning ?? 0,
@@ -243,6 +255,8 @@ export class TrafficHistory {
       },
       series,
       routes,
+      /** Requests from crawlers, scripts and monitors, by who runs them. */
+      crawlers: { total: agents.reduce((sum, row) => sum + row.count, 0), rows: agents },
       loadTimes,
       people: { firstRecordedAt: people.firstRecordedAt, unique: people.unique, daily: people.daily, windows: people.windows, breakdown: people.breakdown },
     };

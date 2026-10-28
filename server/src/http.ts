@@ -28,6 +28,9 @@ const HOST_GAP_MS: Record<string, number> = {
   // Career pages are a background import; one request at a time keeps it well
   // below ordinary browsing traffic while remaining fast enough to converge.
   "www.sherdog.com": 1200,
+  // FightOdds.io's Cloudflare rule blocked us (error 1015) for over 45 minutes
+  // on 2026-10-26. The half-hourly props pass sends ~100 queries back to back.
+  "api.fightodds.io": 2000,
   // Wayback answers 429 to anything faster than a few pages a minute.
   "web.archive.org": 10000,
 };

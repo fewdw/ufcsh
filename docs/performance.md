@@ -3,6 +3,28 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Matchup Odds tab revisits (2026-10-28)
+
+Measured in the local Vite preview with Chromium, using a 400 ms delay on the
+Polymarket detail request. Before the fix, three returns from Matchup to Market
+remounted the panel and started **six detail requests** (the development React
+Strict Mode mount cycle starts two each time). Its chart controls were reset.
+
+The combined Odds panel now stays mounted after its first visit, with fetching
+paused while hidden. Three quick returns made **zero new detail requests**,
+inserted **zero loading placeholders**, and retained the same panel DOM node,
+Pre-fight selection and replay slider position. A hidden panel made no detail
+requests over 5.5 seconds; returning after that resumed refresh in place without
+a loading placeholder. Prices still expire by their own 15/90-second timestamps.
+
+The replay slider was subsequently removed; the chart and its range selection
+remain, with hover and keyboard point inspection.
+
+The same check covered 375, 768 and 1280 px widths without horizontal overflow,
+light/dark mode, and old Market links opening Odds. On the wide hero, the label
+and Polymarket pill each sit 21 px inside the card edge (including its border),
+with matching 8 px gaps above and below the sportsbook odds box.
+
 ## Anti-doping profile counts (2026-10-27)
 
 Measured on the home server, Node 26, against an isolated archive copy with
@@ -242,7 +264,6 @@ rerun affected checks. No browser was launched for infrastructure verification.
 | Main client bundle (gzip) | under 130 KB; every page beyond Events loads on demand |
 | First load, every script and stylesheet `index.html` names (gzip) | under 185 KB, checked in CI (`client/scripts/bundle-budget.ts`); 166 KB on 2026-10-26 |
 | Real readers' LCP at p75 (Admin → Traffic → Load times) | under 2.5 s on phones |
-| Share image (`/og/*.jpg`) | under 100 KB, first render under 1.5 s alone |
 | Added memory per query worker for a new feature | stated in the change |
 
 ## How to measure
@@ -370,7 +391,7 @@ stats, officials, venues, judges and profiles.
 - The sharp level is a full-resolution WebP (`?size=large`, quality 85),
   not UFC's non-interlaced PNG. Measured on 12 photos from one card
   (2026-10-14): full bodies 329–394 KB → 32–53 KB, headshots 130–167 KB →
-  16–22 KB, visually identical. The PNG stays available for share images.
+  16–22 KB, visually identical.
 - Every remaining loading line stays invisible for its first 350 ms
   (`.appear-late`), and a list refreshing in place dims only after 200 ms.
 
@@ -422,12 +443,10 @@ four filter combinations, before the response cache.
 
 ## What changed because of the numbers
 
-- Share images first rendered at up to 665 KB PNG and 1.6 s under load: they
-  are now JPEG (60–75 KB), rendered at most two at a time with identical
-  requests sharing one render, and shed with `503 Retry-After` past a short
-  queue so a crawler burst cannot starve page requests.
-- Share-card data is read inside query workers, so the main process never
-  builds the fight index.
+- Per-page share images (`/og/*.jpg`) were drawn on request, about 1 s each;
+  crawlers asked for thousands of old bouts once apiece, so nearly every
+  request was a cold render. Removed on 2026-10-28: every page now previews
+  with one static `/og.jpg`.
 
 ## Already in place
 

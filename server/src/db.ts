@@ -49,6 +49,38 @@ CREATE TABLE IF NOT EXISTS meta (
   value TEXT NOT NULL
 );
 
+-- A mapping is invalidated when either fighter or the event date changes.
+-- Observed samples freeze comparison inputs before the card's first start.
+CREATE TABLE IF NOT EXISTS polymarket_bouts (
+  fight_id TEXT PRIMARY KEY,
+  identity TEXT NOT NULL,
+  market_json TEXT,
+  checked_at INTEGER NOT NULL,
+  history_at INTEGER,
+  error TEXT,
+  history_error TEXT
+);
+CREATE TABLE IF NOT EXISTS polymarket_samples (
+  fight_id TEXT NOT NULL,
+  identity TEXT NOT NULL,
+  market_key TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  p REAL NOT NULL CHECK(p >= 0 AND p <= 1),
+  phase TEXT NOT NULL CHECK(phase IN ('prefight', 'live', 'unknown')),
+  source TEXT NOT NULL CHECK(source IN ('observed', 'history')),
+  sports REAL,
+  community REAL,
+  community_n INTEGER,
+  end_at INTEGER,
+  PRIMARY KEY(fight_id, identity, market_key, at, source)
+) WITHOUT ROWID;
+-- Every read filters by the primary key's leading columns.
+DROP INDEX IF EXISTS idx_polymarket_samples_fight;
+CREATE TABLE IF NOT EXISTS polymarket_rounds (
+  fight_id TEXT NOT NULL, identity TEXT NOT NULL, round INTEGER NOT NULL, at INTEGER NOT NULL,
+  PRIMARY KEY(fight_id, identity, round)
+);
+
 CREATE TABLE IF NOT EXISTS events (
   id                TEXT PRIMARY KEY,
   name              TEXT NOT NULL,
@@ -239,6 +271,9 @@ CREATE INDEX IF NOT EXISTS idx_career_bouts_ufc
 `);
 
 const careerBoutColumns = db.prepare("PRAGMA table_info(career_bouts)").all() as { name: string }[];
+if (!(db.prepare("PRAGMA table_info(polymarket_samples)").all() as { name: string }[]).some(column => column.name === "end_at")) {
+  db.exec("ALTER TABLE polymarket_samples ADD COLUMN end_at INTEGER");
+}
 if (!careerBoutColumns.some((column) => column.name === "is_ufc")) {
   db.exec("ALTER TABLE career_bouts ADD COLUMN is_ufc INTEGER NOT NULL DEFAULT 0");
 }
@@ -458,6 +493,12 @@ for (const alter of [
   // Bouts announced for the card that never happened on it, as JSON:
   // [{ f1, f2, f1_id, f2_id, division, reason }].
   "ALTER TABLE events ADD COLUMN cancelled_json TEXT",
+  // What each fighter was paid, as published (fight-pay.ts): disclosed
+  // purses and bonus amounts, as JSON. The card
+  // records when its sources were last read and what in them could not be.
+  "ALTER TABLE fights ADD COLUMN pay_json TEXT",
+  "ALTER TABLE events ADD COLUMN pay_checked_at INTEGER",
+  "ALTER TABLE events ADD COLUMN pay_issues_json TEXT",
 ]) {
   try {
     db.exec(alter);
@@ -785,7 +826,7 @@ for (const [table, revisions] of Object.entries(revisionTables)) {
     "schedule_fetched_at", "segments_fetched_at", "wiki_checked_at", "fetched_at", "checked_at",
     "venue_checked_at", "wiki_info_checked_at", "catch_weight_checked_at", "verdict_checked_at", "verdict_error", "verdict_live_json", "deductions_checked_at",
     // Read live by the matchup alone; no index or list is built from it.
-    "media_scores_json"]);
+    "media_scores_json", "pay_json", "pay_checked_at", "pay_issues_json"]);
   const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
     .map(row => row.name).filter(name => !checkTimestamps.has(name));
   for (const operation of ["INSERT", "UPDATE", "DELETE"]) {

@@ -1,5 +1,6 @@
 import { db, getMeta, setMeta } from "./db.ts";
 import { log, normName } from "./util.ts";
+import type { ExtraMarket } from "../../client/src/polymarket-types.ts";
 
 /**
  * Polymarket's price for the bout on now, shown in the live pill, and the
@@ -44,8 +45,11 @@ export type Market = {
   /** Gamma's last prices; what a resolved market settled at. */
   prices: [number, number] | null;
   closed: boolean;
+  volume?: number | null;
+  liquidity?: number | null;
+  extras?: ExtraMarket[];
 };
-export type Book = { asset_id: string; bids?: { price: string }[]; asks?: { price: string }[]; last_trade_price?: string };
+export type Book = { asset_id: string; bids?: { price: string; size?: string }[]; asks?: { price: string; size?: string }[]; last_trade_price?: string };
 export type Pair = [f1: number, f2: number];
 
 const GENERIC_OUTCOMES = /^(yes|no|over|under)$/i;
@@ -71,7 +75,7 @@ export function parseMarkets(events: unknown): Market[] {
       ?? candidates.find((m) => !m?.sportsMarketType && list(m?.outcomes).length === 2 && !list(m?.outcomes).some((o) => GENERIC_OUTCOMES.test(String(o))));
     if (!moneyline) continue;
     const names = list(moneyline.outcomes).map(String);
-    const tokens = list(moneyline.clobTokenIds).map(String);
+    const tokens = list(moneyline.version === "v2" ? moneyline.positionIds : moneyline.clobTokenIds).map(String);
     if (names.length !== 2 || tokens.length !== 2 || names.some((n) => !n.trim()) || tokens.some((t) => !/^\d+$/.test(t))) continue;
     const prices = list(moneyline.outcomePrices).map(price);
     markets.push({
@@ -82,9 +86,29 @@ export function parseMarkets(events: unknown): Market[] {
       tokens: [tokens[0], tokens[1]],
       prices: prices.length === 2 && prices[0] != null && prices[1] != null ? [prices[0], prices[1]] : null,
       closed: Boolean(moneyline.closed || event.closed),
+      volume: nonnegative(moneyline.volumeNum ?? moneyline.volume),
+      liquidity: nonnegative(moneyline.liquidityNum ?? moneyline.liquidity),
+      extras: candidates.filter(m => m !== moneyline).flatMap(m => parseExtra(m, event.slug)),
     });
   }
   return markets;
+}
+
+function nonnegative(value: unknown): number | null {
+  const n = typeof value === "number" || typeof value === "string" && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** Only source-listed outcomes: props are never inferred from the moneyline. */
+export function parseExtra(m: any, eventSlug: string): ExtraMarket[] {
+  if (!m || typeof m.question !== "string" || !m.question.trim() || (!m.id && !m.slug)) return [];
+  const outcomes = list(m.outcomes), prices = list(m.outcomePrices);
+  if (outcomes.length < 2 || outcomes.length > 40 || outcomes.some(o => typeof o !== "string" || !o.trim())) return [];
+  return [{ id: String(m.id ?? m.slug), question: m.question,
+    url: `https://polymarket.com/event/${encodeURIComponent(eventSlug)}/${encodeURIComponent(m.slug ?? "")}`,
+    type: String(m.sportsMarketType ?? "Other"),
+    outcomes: outcomes.map((name, i) => ({ name: String(name), p: price(prices[i]) })),
+    volume: nonnegative(m.volumeNum ?? m.volume), liquidity: nonnegative(m.liquidityNum ?? m.liquidity), closed: Boolean(m.closed) }];
 }
 
 /** Generational suffixes and Central Asian patronymics ("Akylbek Uulu") are not the name. */
@@ -188,6 +212,8 @@ async function readMarkets(date: string): Promise<Market[]> {
 
 const marketCache = new Map<string, { at: number; markets: Market[] }>();
 const marketReads = new Map<string, Promise<Market[]>>();
+const marketFailures = new Set<string>();
+export const marketDiscoveryFailed = (date: string): boolean => marketFailures.has(date);
 
 /** A date's markets, re-read when older than `maxAgeMs`. A failed read keeps
  *  serving the last good list. */
@@ -198,11 +224,14 @@ export async function marketsFor(date: string, maxAgeMs = MARKETS_TTL_MS, now = 
   if (running) return running;
   const read = readMarkets(date)
     .then((markets) => {
+      marketFailures.delete(date);
       marketCache.set(date, { at: Date.now(), markets });
       if (marketCache.size > 20) marketCache.delete(marketCache.keys().next().value!);
       return markets;
     })
     .catch((err) => {
+      if (marketFailures.size > 40) marketFailures.delete(marketFailures.values().next().value!);
+      marketFailures.add(date);
       log("polymarket markets read failed:", String(err));
       // Don't hammer a failing API: the stale list counts as fresh for 30s.
       if (cached) marketCache.set(date, { at: Date.now() - maxAgeMs + 30_000, markets: cached.markets });

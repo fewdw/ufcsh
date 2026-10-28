@@ -12,6 +12,7 @@ import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
 import BonusIcons from "../components/BonusIcons";
 import OddsPair from "../components/OddsPair";
+import { EventMarkets } from "../components/PolymarketPanel";
 import { Moneyline, moneylineLeg, OddsFormatTabs, OddsMarkets, type FightResult } from "../components/MatchupOdds";
 import { hasOddsMarkets } from "../oddsLayout";
 import FightView from "./FightPage";
@@ -30,6 +31,7 @@ import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { searchList } from "../search";
 import { betFightId } from "../parlay";
+import { cardSections } from "../cardSections";
 
 const shell = PANEL;
 /** The source flags a tournament or TUF final the same way it flags a
@@ -856,12 +858,12 @@ const segmentStart = (schedule: CardSchedule | undefined, segment: CardSegment):
  *  where the card view crosses from one segment (main card, prelims, early
  *  prelims) into the next. The odds view lists every priced fight in one flat
  *  sportsbook-style table instead, so it never renders this. */
-function SegmentBreak({ segment, at }: { segment: CardSegment | null; at: number | null }) {
+function SegmentBreak({ segment, at, unplaced = false }: { segment: CardSegment | null; at: number | null; unplaced?: boolean }) {
   const clock = clockTime(at);
   return (
     // The containing row supplies a matching top rule at segment boundaries.
     <div className="flex items-center justify-between gap-3 border-b border-zinc-200 bg-white px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
-      <h2 className="min-w-0 text-sm font-semibold leading-5 tracking-tight text-zinc-900">{segment ? SEGMENT_LABEL[segment] : "Fight card"}</h2>
+      <h2 className="min-w-0 text-sm font-semibold leading-5 tracking-tight text-zinc-900">{segment ? SEGMENT_LABEL[segment] : unplaced ? "Unplaced bouts" : "Fight card"}</h2>
       {clock ? (
         <span className="shrink-0 rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium leading-4 tabular-nums text-zinc-600 @[34rem]:py-1" title="Announced start, in your time zone">
           {clock}
@@ -1032,8 +1034,9 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   const past = event.status === "past";
   const liveId = liveFightId(event);
   const oddsFights = event.fights.filter(hasFightOdds);
-  const cardFights = openerFirst ? [...event.fights].reverse() : event.fights;
-  const sectionsPending = !past && !event.potential && event.fights.some((fight) => !fight.segment);
+  const showSections = !past && !event.potential;
+  const cardFights = showSections ? cardSections(event.fights, openerFirst) : openerFirst ? [...event.fights].reverse() : event.fights;
+  const hasSections = event.fights.some((fight) => fight.segment);
   const announced = (["main", "prelims", "early"] as CardSegment[])
     .map((segment) => ({ segment, at: segmentStart(event.schedule, segment) }))
     .filter((entry): entry is { segment: CardSegment; at: number } => entry.at != null);
@@ -1104,6 +1107,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
         </div>
       </section>
 
+      {!event.potential && event.status !== "past" ? <EventMarkets key={event.id} eventId={event.id} initialOpen={new URLSearchParams(window.location.search).get("markets") === "1"} /> : null}
       {oddsCard ? (
         // Its own height, not the pane's: squeezed to fit, the list would run
         // out past the pane.
@@ -1130,10 +1134,12 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
             <div className="px-6 py-10 text-center text-sm text-zinc-400">{event.potential ? "No potential matchups have odds available yet." : "Fight card not announced yet."}</div>
           ) : (
             cardFights.map((fight, index) => {
-              const newSegment = sectionsPending ? index === 0 : Boolean(fight.segment) && fight.segment !== cardFights[index - 1]?.segment;
+              const newSegment = showSections
+                ? index === 0 || fight.segment !== cardFights[index - 1]?.segment
+                : Boolean(fight.segment) && fight.segment !== cardFights[index - 1]?.segment;
               return (
                 <div key={fight.id} className={index === 0 ? "" : newSegment ? "border-t border-zinc-200" : "border-t border-zinc-100"}>
-                  {newSegment ? <SegmentBreak segment={sectionsPending ? null : fight.segment!} at={sectionsPending ? null : segmentStart(event.schedule, fight.segment!)} /> : null}
+                  {newSegment ? <SegmentBreak segment={fight.segment} at={fight.segment ? segmentStart(event.schedule, fight.segment) : null} unplaced={hasSections && !fight.segment} /> : null}
                   {/* The bout on now is boxed off from the rows around it. Its live
                       marker sits with the weight class in the centre column, so the
                       box holds one row that centres like every other. */}

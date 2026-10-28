@@ -225,7 +225,13 @@ export type FightInsights = {
   decisions?: DecisionScores[] | null;
 };
 export type RoundStrikes = { round: number; fights: number; landed: number; absorbed: number };
-export type DecisionScores = { rounds: number; fights: number; own: number; opponent: number };
+export type DecisionScores = { rounds: number; fights: number; own: number; opponent: number; bouts: DecisionBout[] };
+/** A decision's cards from the fighter's side, [theirs, the opponent's]. */
+export type DecisionBout = {
+  fight_id: string; date: string; outcome: "win" | "loss" | "draw"; method: string | null;
+  opponent: { id: string; name: string };
+  judges: [number, number][]; fans: [number, number] | null;
+};
 
 export type FightOdds = {
   f1: { open: string | null; close: string | null };
@@ -446,6 +452,24 @@ export type FightDetailBlock = {
 
 export type OfficialRef = { name: string; slug: string | null };
 
+export type PaySource = { label: string; url: string };
+export type FightPaySide = {
+  /** The purse a commission disclosed: its total, and its parts only when the source names them. */
+  purse: { total: number; show: number | null; win: number | null; note: string | null; source: number; also: string | null } | null;
+  bonuses: { label: string; amount: number | null; note: string | null }[];
+  /** Fight-week (compliance) pay: always an estimate from UFC's tiers. */
+  compliance: { amount: number; tier: string; bouts: number; ufc: number; wec: number; strikeforce: number; role: "champion" | "challenger" | null } | null;
+  compliance_gap: string | null;
+};
+export type FightPay = {
+  f1: FightPaySide;
+  f2: FightPaySide;
+  purse_sources: (PaySource & { commission: string | null; caveat: string | null; cited: PaySource | null; archive?: PaySource })[];
+  bonus_source: (PaySource & { cited: PaySource | null }) | null;
+  compliance_source: PaySource | null;
+  read: boolean;
+};
+
 export type Matchup = {
   potential?: boolean;
   /** The server takes bets on this bout now: still to be fought on its schedule. */
@@ -487,6 +511,8 @@ export type Matchup = {
   bonuses: { perf: boolean; perf_kind?: "perf" | "ko" | "sub"; fotn: boolean };
   /** Yearly awards this bout won. */
   awards?: { category: string; label: string; period: string }[];
+  /** A finished bout's pay, as published; null when nothing is known. */
+  pay?: FightPay | null;
   /** On a decision: the stats card, the fans' controversy and each judge's leanings, judges in card order. */
   judging?: {
     stats: StatsCard | null;

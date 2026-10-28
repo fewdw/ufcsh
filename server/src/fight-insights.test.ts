@@ -69,7 +69,8 @@ test("decision scores: every judge's card and fan average, by length, from the f
       community_score_json: fans ? JSON.stringify({ cards: 900, avg1: fans[0], avg2: fans[1], rounds: Array.from({ length: rounds }, (_, index) => ({ round: index + 1, avg1: fans[0] / rounds, avg2: fans[1] / rounds })) }) : null,
     },
   }) as unknown as IndexedFight;
-  assert.deepEqual(decisionScores([scored("a", 5, [[50, 45], [50, 45], [50, 45]], [50, 45])], "a"), [
+  const means = (groups: ReturnType<typeof decisionScores>) => groups?.map(({ bouts: _, ...group }) => group);
+  assert.deepEqual(means(decisionScores([scored("a", 5, [[50, 45], [50, 45], [50, 45]], [50, 45])], "a")), [
     { rounds: 5, fights: 1, own: 50, opponent: 45 },
   ]);
   const result = decisionScores([
@@ -82,10 +83,16 @@ test("decision scores: every judge's card and fan average, by length, from the f
     { ...scored("a", 3, [[30, 27], [30, 27], [30, 27]]), method: "KO/TKO" },
   ], "a")!;
   // Three-rounders: three judges and the fans, then three judges: seven cards.
-  assert.deepEqual(result, [
+  assert.deepEqual(means(result), [
     { rounds: 3, fights: 2, own: (30 + 29 + 28 + 29 + 27 * 3) / 7, opponent: (27 + 28 + 29 + 28 + 30 * 3) / 7 },
     { rounds: 5, fights: 1, own: 143 / 3, opponent: 142 / 3 },
   ]);
+  // Each decision's own cards, from the fighter's side; the fans apart.
+  assert.deepEqual(result[0].bouts.map(({ outcome, judges, fans }) => ({ outcome, judges, fans })), [
+    { outcome: "win", judges: [[30, 27], [29, 28], [28, 29]], fans: [29, 28] },
+    { outcome: "loss", judges: [[27, 30], [27, 30], [27, 30]], fans: null },
+  ]);
+  assert.deepEqual(result[0].bouts[1].opponent, { id: "b", name: "B" });
   assert.equal(decisionScores([bout("win", "KO/TKO", 1)], "a"), null);
 });
 

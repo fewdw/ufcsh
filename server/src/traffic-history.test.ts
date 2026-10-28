@@ -6,6 +6,36 @@ import { TrafficHistory, isTrafficRange } from "./traffic-history.ts";
 
 const HOUR = 3_600_000, DAY = 86_400_000;
 
+test("crawler requests are counted by family beside, not on top of, the totals", () => {
+  const db = new DatabaseSync(":memory:");
+  let clock = Date.UTC(2026, 9, 9, 12, 10);
+  const observability = new HttpObservability(() => clock);
+  const history = observability.history = new TrafficHistory(db, () => clock);
+  observability.record("GET", "/api/events", 200, 0.004, "10.0.0.1", null);
+  observability.record("GET", "/api/events", 200, 0.004, "10.0.0.2", "google");
+  observability.record("GET", "/api/fights/0123456789abcdef", 200, 0.03, "10.0.0.2", "google");
+  observability.record("GET", "/api/events", 404, 0.004, "10.0.0.3", "scripts");
+  // Admin requests and health probes stay out, whoever sends them.
+  observability.record("GET", "/healthz", 200, 0.001, "10.0.0.4", "none");
+  observability.record("GET", "/api/admin/metrics", 200, 0.1, "10.0.0.5", "scripts");
+
+  const day = history.summary("24h");
+  assert.equal(day.totals.requests, 4);
+  assert.deepEqual(day.crawlers, { total: 3, rows: [{ value: "google", count: 2 }, { value: "scripts", count: 1 }] });
+  assert.ok(day.routes.every(route => !route.route.startsWith("agent_")), "families are not routes");
+  assert.equal(day.routes.reduce((sum, route) => sum + (route.route === "admin" ? 0 : route.requests), 0), 5);
+  assert.equal(day.series.at(-1)?.requests, 4);
+  assert.equal(day.series.at(-1)?.crawlerRequests, 3);
+
+  // Folded into days with everything else, and still counted by family.
+  clock += 10 * DAY;
+  history.compact();
+  const month = history.summary("30d");
+  assert.equal(month.totals.requests, 4);
+  assert.equal(month.crawlers.total, 3);
+  assert.equal(month.series.reduce((sum, point) => sum + point.crawlerRequests, 0), 3);
+});
+
 test("traffic history survives a restart and adds to what is already stored", () => {
   const db = new DatabaseSync(":memory:");
   let clock = Date.UTC(2026, 9, 9, 12, 10);

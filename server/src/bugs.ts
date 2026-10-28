@@ -33,11 +33,14 @@ import { judgeNews } from "./news-ai.ts";
 import { judging } from "./judging.ts";
 import { NEWS_FEEDS } from "./scrape/news.ts";
 import { ROSTER_ARTICLE, samePlace } from "./scrape/wikipedia.ts";
+import { storedPay, syncFightPay, VENUM_START, type PayIssues } from "./fight-pay.ts";
+import { PURSE_REPORTS } from "./purse-reports-data.ts";
 import {
   fighterNames,
   forgetUfcPage,
   syncEventDetail,
   syncEventSegments,
+  syncEventSchedules,
   syncFightDetail,
   syncFighterBirthDate,
   syncMethodOddsForEvent,
@@ -72,7 +75,7 @@ export const BUG_LEVELS: BugLevel[] = ["critical", "must", "minor", "ok"];
 type Grade = BugLevel | ((item: BugItem) => BugLevel);
 export type BugCheck = {
   id: string;
-  group: "Accounts" | "Scorecards" | "Odds" | "Records" | "Fights & events" | "Venues & officials" | "Fighters";
+  group: "Accounts" | "Scorecards" | "Odds" | "Records" | "Fights & events" | "Venues & officials" | "Fighters" | "Missing data";
   label: string;
   description: string;
   /** The worst level among its items; "ok" when there are none. */
@@ -243,6 +246,24 @@ function polymarketMissing(): BugCheck {
     facts: [["Last scanned", ago(scan?.at)], ...aliasFact(fight)],
     links: [{ label: "Polymarket UFC", href: "https://polymarket.com/sports/ufc/games" }],
     actions: [{ id: "polymarket", label: "Scan again", target: "all" }],
+  })));
+}
+
+function polymarketData(): BugCheck {
+  const rows = db.prepare(`SELECT ${FIGHT_COLUMNS}, p.error AS market_error, p.history_error,
+    p.checked_at AS market_checked, p.history_at, p.identity AS market_identity
+    FROM polymarket_bouts p JOIN fights f ON f.id=p.fight_id JOIN events e ON e.id=f.event_id
+    WHERE p.error IS NOT NULL OR p.history_error IS NOT NULL
+      OR p.identity != (f.event_id || ':' || e.date || ':' || f.f1_id || ':' || f.f2_id)
+    ORDER BY e.date DESC LIMIT 1000`).all() as (FightRow & { market_error: string | null; history_error: string | null; market_checked: number; history_at: number | null })[];
+  return check({ id: "odds-polymarket-data", group: "Odds", label: "Polymarket feed and history gaps",
+    description: "Source failures and mappings invalidated by a date or fighter change. Historical observations are retained, but old identities and stale prices are never shown as current. Re-read queues mapping and price-history discovery for the next request or background pass.",
+    grade: lastYear(),
+  }, rows.map(fight => fightItem(fight, {
+    facts: [["Market read", ago(fight.market_checked)], ["History read", ago(fight.history_at)],
+      ["Issue", fight.market_error ?? fight.history_error ?? "The matchup or event date changed."]],
+    links: [{ label: "Market analysis", href: `/fights/${fight.id}?tab=odds`, internal: true }],
+    actions: [{ id: "polymarket-data", label: "Re-read market and history", target: fight.id }],
   })));
 }
 
@@ -1331,16 +1352,30 @@ function careerStatGaps(): BugCheck {
   }, items);
 }
 
+export function upcomingCardCoverage(now = Date.now()): BugCheck {
+  const rows = db.prepare(`SELECT id, name, date, ufc_slug, segments_fetched_at FROM events
+    WHERE complete = 0 AND date >= date('now', '-2 day')
+      AND (ufc_slug IS NULL OR segments_fetched_at IS NULL OR segments_fetched_at < ?)
+    ORDER BY date`).all(now - 30 * 60_000) as
+    { id: string; name: string; date: string; ufc_slug: string | null; segments_fetched_at: number | null }[];
+  return check({
+    id: "upcoming-card-coverage", group: "Fights & events", label: "Upcoming cards missing a recent section check",
+    description: "Every announced event needs a matched UFC page and a successful card read, even when it has no bouts yet. Missing pages and reads older than 30 minutes can conceal new sections. Re-read to discover the page and refresh its card; UFC may still have no placements published.",
+    grade: ahead([[3, "must"], [14, "minor"]]),
+  }, rows.map(event => ({
+    key: event.id, title: event.name, date: event.date,
+    facts: [["ufc.com page", event.ufc_slug ?? "not matched"], ["Sections read", ago(event.segments_fetched_at)]],
+    links: [eventLink(event.id), ...(event.ufc_slug ? [{ label: "ufc.com event", href: `https://www.ufc.com/event/${event.ufc_slug}` }] : [])],
+    actions: [{ id: "segments", label: event.ufc_slug ? "Re-read ufc.com card" : "Find ufc.com card", target: event.id }],
+  })));
+}
+
 function upcomingWithoutSegment(): BugCheck {
   const rows = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, e.ufc_slug, e.segments_fetched_at
     FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.complete = 0 AND (
-      (f.segment IS NULL
-        -- ufc.com only splits a card close to the event, so earlier than a week out
-        -- a missing segment is a problem only when the rest of the card is placed.
-        AND (e.date <= date('now', '+7 day')
-          OR EXISTS (SELECT 1 FROM fights o WHERE o.event_id = f.event_id AND o.segment IS NOT NULL)))
+      f.segment IS NULL
       -- Without ufc.com's place, the bout sits where UFCStats lists it, which
       -- for a late addition is the bottom of the card, whatever it is booked on.
       OR (f.card_pos IS NULL
@@ -1351,7 +1386,7 @@ function upcomingWithoutSegment(): BugCheck {
     id: "upcoming-no-segment",
     group: "Fights & events",
     label: "Upcoming bouts not placed on ufc.com's card",
-    description: "A bout is missing its section (early prelims, prelims or main card) or its place on ufc.com's card. Cards with missing sections show a confirmation notice and no bout start estimates. Missing positions fall back to UFCStats' list, which puts a late addition at the bottom. Usually ufc.com hasn't published the full split yet, hasn't listed a new booking, or its names differ from UFCStats.",
+    description: "A bout is missing its section (early prelims, prelims or main card) or its place on ufc.com's card. Confirmed sections remain visible; unplaced bouts have their own confirmation notice. Bout start estimates wait for the full split. Missing positions fall back to UFCStats' list, which puts a late addition at the bottom. Tracked from announcement, even weeks out: ufc.com may not have listed the booking or published its section yet, or its names differ from UFCStats.",
     grade: ahead([[3, "must"], [14, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["ufc.com slug", fight.ufc_slug ?? "none"], ["Segments read", ago(fight.segments_fetched_at)]],
@@ -1417,6 +1452,133 @@ function eventsWithoutWiki(): BugCheck {
     ],
     actions: [{ id: "wiki", label: "Queue re-check", target: event.id }],
   })));
+}
+
+type PayFightRow = {
+  id: string; event_id: string; f1_id: string | null; f2_id: string | null; f1_name: string; f2_name: string;
+  f1_outcome: string | null; f2_outcome: string | null; perf_bonus: number | null; fotn_bonus: number | null;
+  title_fight: number; title_type: string; pay_json: string | null; f1_career: string | null; f2_career: string | null;
+};
+type PayEventRow = { id: string; name: string; date: string; location: string; wiki_title: string | null; pay_checked_at: number | null; pay_issues_json: string | null };
+
+const payLinks = (event: PayEventRow): BugLink[] => [
+  eventLink(event.id),
+  ...PURSE_REPORTS.filter((report) => report.date === event.date).flatMap((report) => [
+    { label: report.source.label, href: report.source.url },
+    ...(report.source.archive ? [{ label: report.source.archive.label, href: report.source.archive.url }] : []),
+  ]),
+  ...(event.wiki_title ? [{ label: "Event article", href: `https://en.wikipedia.org/wiki/${encodeURIComponent(event.wiki_title.replace(/ /g, "_"))}` }] : []),
+  { label: "MMA Payout search", href: `https://mmapayout.com/?s=${encodeURIComponent(event.name.split(":")[0])}` },
+  { label: "CombatReg results", href: "https://www.combatreg.com/events/results" },
+];
+const listed = (names: string[], limit = 6) => names.length > limit ? `${names.slice(0, limit).join(", ")} and ${names.length - limit} more` : names.join(", ");
+
+/** Every finished card with a fighter whose pay for the bout is unknown: no
+ *  purse disclosed, a post-fight bonus without its amount, or (from April
+ *  2021) fight-week pay that can't be estimated. Most commissions never
+ *  disclose purses, so older cards are expected; the last sixty days, and
+ *  any card whose disclosure skipped a bout, stay open. */
+function fightPayUnknown(): BugCheck {
+  const events = db.prepare(`SELECT id, name, date, location, wiki_title, pay_checked_at, pay_issues_json FROM events
+    WHERE complete = 1 ORDER BY date DESC`).all() as PayEventRow[];
+  const fights = db.prepare(`
+    SELECT f.id, f.event_id, f.f1_id, f.f2_id, f.f1_name, f.f2_name, f.f1_outcome, f.f2_outcome, f.perf_bonus, f.fotn_bonus,
+      f.title_fight, f.title_type, f.pay_json, c1.status AS f1_career, c2.status AS f2_career
+    FROM fights f JOIN events e ON e.id = f.event_id
+    LEFT JOIN career_profiles c1 ON c1.fighter_id = f.f1_id LEFT JOIN career_profiles c2 ON c2.fighter_id = f.f2_id
+    WHERE e.complete = 1 AND f.method IS NOT NULL
+  `).all() as PayFightRow[];
+  const byEvent = new Map<string, PayFightRow[]>();
+  for (const fight of fights) byEvent.set(fight.event_id, [...byEvent.get(fight.event_id) ?? [], fight]);
+  const items: BugItem[] = [];
+  const skipped = new Set<string>();
+  for (const event of events) {
+    const card = byEvent.get(event.id) ?? [];
+    if (!card.length) continue;
+    const purseless: string[] = [];
+    const bonusless: string[] = [];
+    const unestimated: string[] = [];
+    let disclosed = 0;
+    for (const fight of card) {
+      const pay = storedPay(fight.pay_json);
+      const corners = [["f1", fight.f1_name, fight.f1_id, fight.f1_outcome, fight.f1_career], ["f2", fight.f2_name, fight.f2_id, fight.f2_outcome, fight.f2_career]] as const;
+      if (pay?.purse?.f1 || pay?.purse?.f2) disclosed++;
+      for (const [corner, name, id, outcome, career] of corners) {
+        if (!pay?.purse?.[corner]) purseless.push(name);
+        const bonuses = pay?.bonuses?.[corner] ?? [];
+        const wants = [...(fight.fotn_bonus ? ["fotn"] : []), ...(fight.perf_bonus && outcome === "win" ? ["perf"] : [])];
+        for (const kind of wants) {
+          const found = bonuses.find((bonus) => kind === "fotn" ? bonus.kind === "fotn" : ["potn", "kotn", "sotn"].includes(bonus.kind));
+          if (found?.amount == null) bonusless.push(`${name} (${kind === "fotn" ? "Fight" : "Performance"} of the Night${found?.note ? `: ${found.note}` : ""})`);
+        }
+        if (event.date >= VENUM_START) {
+          const gap = !id ? "no profile" : fight.title_fight && fight.title_type === "interim" ? "interim title bout"
+            : career !== "verified" ? "record not verified" : null;
+          if (gap) unestimated.push(`${name} (${gap})`);
+        }
+      }
+    }
+    if (!purseless.length && !bonusless.length && !unestimated.length) continue;
+    // A disclosure that skipped some bouts is a reading problem, not an unknown.
+    if (disclosed > 0 && purseless.length > 0) skipped.add(event.id);
+    items.push({
+      key: event.id,
+      title: event.name,
+      subtitle: event.location,
+      date: event.date,
+      facts: [
+        ["Disclosed purses", `${disclosed} of ${card.length} bouts`],
+        ...(purseless.length ? [["No disclosed purse", listed(purseless)] as [string, string]] : []),
+        ...(bonusless.length ? [["Bonus amount unknown", listed(bonusless, 3)] as [string, string]] : []),
+        ...(unestimated.length ? [["Fight-week pay not estimated", listed(unestimated)] as [string, string]] : []),
+        ["Sources read", event.pay_checked_at ? ago(event.pay_checked_at) : "not yet"],
+      ],
+      links: payLinks(event),
+      actions: [{ id: "pay", label: "Re-read pay sources", target: event.id }],
+    });
+  }
+  return check({
+    id: "fight-pay-unknown",
+    group: "Missing data",
+    label: "Fighter pay unknown",
+    description: "Finished cards with a fighter whose pay is unknown on the matchup. Purses are shown only where an athletic commission disclosed them (Wikipedia's \"Reported payout\" section, reviewed historical commission reports and MMA Payout's salary posts); most commissions never do, so older cards are expected here. Bonus amounts come from the article's \"Bonus awards\" section; a forfeited or reassigned bonus is left without an amount until checked. Fight-week pay is estimated from April 2021 when the fighter's record (WEC and Strikeforce bouts count) is verified. Open: the last 60 days, and any card whose disclosure skipped a bout. Re-reading fetches the article and MMA Payout now and reapplies the reviewed historical reports.",
+    grade: (item) => skipped.has(item.key) ? "minor" : recent([[60, "minor"]])(item),
+  }, items);
+}
+
+/** Pay rows a source printed that could not be read or placed on the card,
+ *  and purses two sources disagree on. */
+function fightPayUnread(): BugCheck {
+  const events = db.prepare(`SELECT id, name, date, location, wiki_title, pay_checked_at, pay_issues_json FROM events
+    WHERE pay_issues_json IS NOT NULL ORDER BY date DESC`).all() as PayEventRow[];
+  const disagree = new Set<string>();
+  const items = events.flatMap((event): BugItem[] => {
+    const issues = JSON.parse(event.pay_issues_json!) as PayIssues;
+    if (issues.conflicts.length) disagree.add(event.id);
+    if (!issues.unread.length && !issues.conflicts.length && !issues.failed.length) return [];
+    return [{
+      key: event.id,
+      title: event.name,
+      subtitle: issues.conflicts.length ? "Sources disagree" : issues.failed.length ? "A source could not be read" : "Rows not read",
+      date: event.date,
+      facts: [
+        ...issues.conflicts.map((row): [string, string] => ["Disagree", row]),
+        ...issues.unread.slice(0, 8).map((row): [string, string] => ["Not read", row]),
+        ...(issues.unread.length > 8 ? [["More", `${issues.unread.length - 8} more rows`] as [string, string]] : []),
+        ...issues.failed.map((row): [string, string] => ["Failed", row]),
+        ["Sources read", ago(event.pay_checked_at)],
+      ],
+      links: payLinks(event),
+      actions: [{ id: "pay", label: "Re-read pay sources", target: event.id }],
+    }];
+  });
+  return check({
+    id: "fight-pay-unread",
+    group: "Missing data",
+    label: "Pay rows not read",
+    description: "A payout list named someone or an amount that could not be placed: a bout cancelled on the night (the commission still lists both purses), a name neither UFCStats nor the search aliases know, a bundled report whose bout no longer matches, or a malformed amount (\"$10,00\"), which is never guessed. Also disagreements between Wikipedia, reviewed commission reports and MMA Payout; the matchup keeps the earlier source's figure with the other figure beside it. Reviewed historical reports and their archive copies are linked on the card's item.",
+    grade: (item) => disagree.has(item.key) ? "minor" : recent([[365, "minor"]])(item),
+  }, items);
 }
 
 const DIVISION_LIMITS: Record<string, number> = {
@@ -2187,6 +2349,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     potentialMatchupGaps(),
     upcomingMoneyline(),
     polymarketMissing(),
+    polymarketData(),
     pastMoneyline(),
     upcomingProps(),
     pastProps(),
@@ -2204,12 +2367,15 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     untrustworthyFightStats(),
     careerStatGaps(),
     upcomingWithoutSegment(),
+    upcomingCardCoverage(),
     decisionsWithoutJudges(),
     finishesWithoutDetail(),
     cancelledBoutsUnread(),
     cancelledBoutsUnlinked(),
     ...eventCrewChecks(),
     eventsWithoutWiki(),
+    fightPayUnknown(),
+    fightPayUnread(),
     weightMissesUnderLimit(),
     catchweightsWithoutLimit(),
     replacementIdentityConflicts(),
@@ -2270,7 +2436,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "event-crew" | "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "deductions" | "media" | "antidoping";
+export type BugActionId = "event-crew" | "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "polymarket-data" | "deductions" | "media" | "antidoping" | "pay";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -2367,9 +2533,13 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       return { ok: true, message: `Board read: ${result.bouts} cancelled ${result.bouts === 1 ? "bout" : "bouts"}.` };
     }
     case "segments": {
+      const before = db.prepare("SELECT ufc_slug FROM events WHERE id = ?").get(target) as { ufc_slug: string | null } | undefined;
+      if (!before) return { ok: false, message: "Event not found." };
+      if (!before.ufc_slug) await syncEventSchedules();
       await syncEventSegments(target);
       const row = db.prepare("SELECT ufc_slug FROM events WHERE id = ?").get(target) as { ufc_slug: string | null } | undefined;
-      return { ok: true, message: row?.ufc_slug ? "ufc.com card re-read." : "That page was another event's; forgotten. The archive offers this card its own page on its next pass." };
+      return row?.ufc_slug ? { ok: true, message: "ufc.com card re-read." }
+        : { ok: false, message: "No matching UFC page was found. Page discovery will retry on the next schedule pass." };
     }
     case "forget-ufc":
       forgetUfcPage(target);
@@ -2380,6 +2550,10 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "ufc-status":
       db.prepare("UPDATE ufc_status SET url = NULL, checked_at = 0 WHERE fighter_id = ?").run(target);
       return { ok: true, message: "Queued; ufc.com is searched again on the next pass." };
+    case "polymarket-data": {
+      db.prepare("UPDATE polymarket_bouts SET checked_at=0, history_at=NULL WHERE fight_id=?").run(target);
+      return { ok: true, message: "Queued a new mapping and history read. Open the matchup’s Odds tab to refresh; upcoming bouts also retry in the background." };
+    }
     case "polymarket": {
       const { fights } = await scanUpcoming(upcomingBouts(fighterNames));
       const missing = Object.values(fights).filter((slug) => slug === null).length;
@@ -2440,6 +2614,12 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "wiki":
       db.prepare("UPDATE events SET wiki_checked_at = NULL WHERE id = ?").run(target);
       return { ok: true, message: "Queued for the next weigh-in pass." };
+    case "pay": {
+      const result = await syncFightPay(1, [target]);
+      if (!result.read) return { ok: false, message: "Wikipedia couldn't be reached, or another read is running. Nothing was changed." };
+      const row = db.prepare("SELECT COUNT(*) AS n, SUM(f.pay_json LIKE '%\"purse\"%') AS purses FROM fights f WHERE f.event_id = ?").get(target) as { n: number; purses: number | null };
+      return { ok: true, message: `Read again: ${row.purses ?? 0} of ${row.n} bouts have a disclosed purse.` };
+    }
     case "catchweight": {
       const result = await syncCatchWeights(1, [target]);
       const row = db.prepare("SELECT catch_weight FROM fights WHERE id = ?").get(target) as { catch_weight: number | null } | undefined;
