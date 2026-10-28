@@ -103,8 +103,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-27">October 27, 2026</time></p>
             <ul>
-              <li>Roster: fighters who retire now show up as departures the moment their ufc.com page says Retired.</li>
-              <li>Roster: a signee whose ufc.com profile goes up before they're added to the roster is watched until they are.</li>
+              <li>Fighter profiles now show yearly UFC Anti-Doping test-session counts.</li>
+              <li>Referee profiles now show point deductions by year.</li>
             </ul>
           </Section>
         </div>
