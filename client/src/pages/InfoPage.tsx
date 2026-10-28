@@ -103,10 +103,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-28">October 28, 2026</time></p>
             <ul>
-              <li>Fight odds now include Polymarket probabilities, price charts and more markets.</li>
-              <li>Fight pages now show reported fighter pay where available.</li>
-              <li>Open average scorecards to see every decision behind them.</li>
-              <li>Upcoming cards now show confirmed main card and prelim sections more reliably.</li>
+              <li>Simplified the Report an issue item in the More menu.</li>
             </ul>
           </Section>
         </div>
