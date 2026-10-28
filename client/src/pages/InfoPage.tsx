@@ -101,10 +101,12 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-27">October 27, 2026</time></p>
+            <p><time dateTime="2026-10-28">October 28, 2026</time></p>
             <ul>
-              <li>Fighter profiles now show yearly UFC Anti-Doping test-session counts.</li>
-              <li>Referee profiles now show point deductions by year.</li>
+              <li>Fight odds now include Polymarket probabilities, price charts and more markets.</li>
+              <li>Fight pages now show reported fighter pay where available.</li>
+              <li>Open average scorecards to see every decision behind them.</li>
+              <li>Upcoming cards now show confirmed main card and prelim sections more reliably.</li>
             </ul>
           </Section>
         </div>
