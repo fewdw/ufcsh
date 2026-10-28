@@ -17,6 +17,9 @@ Pre-fight selection and replay slider position. A hidden panel made no detail
 requests over 5.5 seconds; returning after that resumed refresh in place without
 a loading placeholder. Prices still expire by their own 15/90-second timestamps.
 
+The replay slider was subsequently removed; the chart and its range selection
+remain, with hover and keyboard point inspection.
+
 The same check covered 375, 768 and 1280 px widths without horizontal overflow,
 light/dark mode, and old Market links opening Odds. On the wide hero, the label
 and Polymarket pill each sit 21 px inside the card edge (including its border),

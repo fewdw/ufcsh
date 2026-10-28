@@ -4,19 +4,23 @@ UFC.sh reads public market data only. It does not connect a wallet or place orde
 
 ## Reader surfaces
 
-- More → Markets (`/markets`): upcoming fight board, this browser's follows and
-  alerts, historical accuracy, and other currently listed UFC markets.
 - A card's Polymarket probabilities switch (`?markets=1` opens it directly).
 - A matchup's Odds tab (`?tab=odds`): sportsbook moneylines/props, current
-  Polymarket probabilities, first observed
-  pre-fight movement, sportsbook/community comparisons, price history, replay,
-  observed round markers, source-listed props, and fight/fighter follows.
+  Polymarket probabilities, first observed pre-fight movement, sportsbook/community
+  comparisons, the probability chart, observed round markers and source-listed props.
 - During a live fight, the Result and Score tabs also include the compact chart.
+- The hero badge is one line: the official Polymarket symbol and both percentages.
+  It appears only while a fresh quote is available and the fight has no result.
+  A result from the matchup feed hides it even if the price feed has not caught up.
 
-The visited Odds panel stays mounted for the current bout, preserving chart
-range and replay position across tab changes. Hidden panels pause their requests;
-returning refreshes in place when due. Quote expiry still uses the source
-timestamps. Legacy `?tab=market` links open the combined Odds tab.
+There is no standalone Markets page, watchlist, follow UI, or replay slider.
+Hover over the chart or focus it and use arrow/Home/End keys to inspect points;
+its range buttons and observation table remain available.
+
+The visited Odds panel stays mounted for the current bout, preserving the chart
+range across tab changes. Hidden panels pause their requests; returning refreshes
+in place when due. Quote expiry still uses the source timestamps. Legacy
+`?tab=market` links open the combined Odds tab.
 
 ## Data and timing
 
@@ -77,41 +81,19 @@ Admin → Bugs → Odds includes unmatched markets and feed/history/identity gap
 with a re-read action. Repairs invalidate the discovery/history timestamps;
 the next request or background pass retries while preserving observations.
 
-## Follows and alerts
-
-Follows, thresholds, cursors and the last 100 alerts are stored in this browser.
-The monitor runs across the app while it is open and visible. Following a fighter
-includes its upcoming matchups; following a fight tracks that fight alone.
-
-Movement/favourite alerts require two distinct fresh observations at least five
-seconds apart, a spread at most six points, and at least $100 of ask depth within
-two cents. Favourite changes cross a 48%/52% band to reduce flapping. A changed
-market or pairing resets the baseline. After an alert, the new price becomes the
-baseline. Thin/stale/closed markets cannot trigger alerts. This is an in-app feed,
-not background push or account-synced storage.
-
 ## Review on a development preview
 
-Run `./start` and append the paths below to the printed Tailscale URL. Real
-fights/cards can be opened from the board; their Odds tab and card switch
-also have direct URL parameters.
+Run `./start` and append the paths below to the printed Tailscale URL.
 
 | Review | URL | What to check |
 | --- | --- | --- |
-| Real matchup | `/fights/FIGHT_ID?tab=odds` | Freshness, source comparison, chart filters/slider, props, follow buttons |
-| Card | `/events/EVENT_ID?markets=1` | Expanded probabilities, hide/show, links into the matching Odds tab |
-| Live demo | `/markets?demo=live` | Round markers, live-range default, keyboard/touch slider, confirmed alert test |
-| Comeback demo | `/markets?demo=replay` | Winner's 12% low, timeline replay, closed-state copy |
-| Thin demo | `/markets?demo=thin` | Warning, last-trade label, alert test suppressed |
-| No market | `/markets?demo=missing` | Honest empty state; comparison remains available |
-| Offline | `/markets?demo=offline` | No current quote; captured history remains usable |
-| Watchlist | `/markets?view=watchlist` | Follow the real fight/fighter, change threshold, reload, remove, read alerts |
-| Accuracy | `/markets?view=accuracy` | Empty prospective coverage and methodology; populated examples below each demo |
-| Other markets | `/markets?view=explore` | Real available props/questions, source timestamps, external links |
+| Upcoming matchup | `/fights/FIGHT_ID?tab=odds` | One-line logo/percentage badge, sportsbook comparison, chart range and hover/keyboard interaction |
+| Completed matchup | `/fights/FIGHT_ID?tab=odds` | No hero badge; retained price chart and source observations |
+| Card | `/events/EVENT_ID?markets=1` | Expanded probabilities, hide/show and links into Odds |
+| Return to Odds | Switch to Matchup and back | Same chart/range, no loading flash; hidden panels pause requests |
 
-Demos are dev-only, clearly fictional, and never write to the archive or real
-watchlist. Try a phone and a desktop in both themes. Useful refinement feedback:
-the URL/scenario, screen width/theme, what felt unclear, and the desired behavior.
+Test phone and desktop widths in both themes. The follow/open-market controls,
+Markets navigation entry and replay slider should all be absent.
 
 API references: [discovery](https://docs.polymarket.com/market-data/discover-markets),
 [prices/history](https://docs.polymarket.com/market-data/prices-order-books),

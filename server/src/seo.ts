@@ -50,7 +50,6 @@ const DEFAULT: Omit<PageSeo, "canonical"> = {
 };
 
 const STATIC_PAGES: Record<string, { title: string; description: string }> = {
-  "/markets": { title: "UFC Markets: Polymarket Prices & Predictions | ufc.sh", description: "UFC market probabilities, price history, sportsbook comparisons, movement alerts and prediction accuracy." },
   "/rankings": { title: "UFC Rankings by Division | ufc.sh", description: "Current UFC rankings by division, including champions, activity and each fighter's next booking." },
   "/stats": { title: "UFC Statistics Leaderboards | ufc.sh", description: "All-time UFC leaderboards for records, finishes, output, opposition and the betting market, plus the most disputed decisions, biggest upsets, judges and referees." },
   "/officials": { title: "UFC Judges & Referees | ufc.sh", description: "Every UFC judge and referee on record: scorecards, agreement, dissents, stoppages and the bouts behind each number." },

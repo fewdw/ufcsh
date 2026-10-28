@@ -1,7 +1,8 @@
 /* oxlint-disable react/only-export-components -- small shared market views */
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Bell, BellOff, ExternalLink, TrendingUp } from "lucide-react";
+import { ExternalLink } from "lucide-react";
+import PolymarketLogo from "./PolymarketLogo";
 import type {
   ExtraMarket,
   MarketDetail,
@@ -9,8 +10,6 @@ import type {
 } from "../polymarket-types";
 import { useMarketData } from "../useMarketData";
 import { useNow } from "../useNow";
-import { toggleMarketWatch, useMarketWatches } from "../marketWatchStore";
-import type { MarketWatch } from "../market-watch";
 
 export const MARKET_SHELL =
   "rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900";
@@ -39,47 +38,6 @@ export function freshMarketQuote(row: MarketSummary, now: number) {
   return row.status === "open" && row.quote && now - row.quote.at < age
     ? row.quote
     : null;
-}
-
-export function MarketWatchButton({
-  kind = "fight",
-  id,
-  name,
-  demo = false,
-}: {
-  kind?: MarketWatch["kind"];
-  id: string;
-  name: string;
-  demo?: boolean;
-}) {
-  const { watches } = useMarketWatches();
-  const [example, setExample] = useState(false);
-  const watched = demo
-    ? example
-    : watches.some((w) => w.kind === kind && w.id === id);
-  return (
-    <button
-      type="button"
-      aria-pressed={watched}
-      className={MARKET_BUTTON}
-      onClick={() =>
-        demo
-          ? setExample(!example)
-          : toggleMarketWatch({ kind, id, name, threshold: 5, favourite: true })
-      }
-    >
-      {watched ? (
-        <BellOff className="h-3.5 w-3.5" aria-hidden="true" />
-      ) : (
-        <Bell className="h-3.5 w-3.5" aria-hidden="true" />
-      )}
-      {watched
-        ? "Following"
-        : kind === "fighter"
-          ? `Follow ${name}`
-          : "Follow fight"}
-    </button>
-  );
 }
 
 export function ExtraMarkets({
@@ -199,7 +157,7 @@ export function ProbabilityChart({ data }: { data: MarketDetail }) {
             [
               ["all", "All"],
               ["prefight", "Pre-fight"],
-              ["live", "Live / replay"],
+              ["live", "Live"],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -236,7 +194,25 @@ export function ProbabilityChart({ data }: { data: MarketDetail }) {
             viewBox="0 0 720 200"
             className="mt-1 w-full overflow-visible"
             role="img"
-            aria-label={`Win probability history for ${data.fight.f1.name} and ${data.fight.f2.name}. Use the timeline slider to inspect each observation.`}
+            aria-label={`Win probability history for ${data.fight.f1.name} and ${data.fight.f2.name}. Hover or focus the chart and use arrow keys to inspect observations.`}
+            tabIndex={0}
+            data-own-arrows
+            onKeyDown={(event) => {
+              const next =
+                event.key === "ArrowLeft"
+                  ? selected - 1
+                  : event.key === "ArrowRight"
+                    ? selected + 1
+                    : event.key === "Home"
+                      ? 0
+                      : event.key === "End"
+                        ? points.length - 1
+                        : null;
+              if (next == null) return;
+              event.preventDefault();
+              setCursor(Math.max(0, Math.min(points.length - 1, next)));
+            }}
+            onPointerLeave={() => setCursor(null)}
             onPointerMove={(event) => {
               if (event.buttons !== 1 && event.pointerType !== "mouse") return;
               const rect = event.currentTarget.getBoundingClientRect();
@@ -357,25 +333,6 @@ export function ProbabilityChart({ data }: { data: MarketDetail }) {
               {time(last)}
             </text>
           </svg>
-          <label className="mt-2 flex items-center gap-3 text-[11px] text-zinc-500">
-            <span className="shrink-0">Replay timeline</span>
-            <input
-              type="range"
-              min="0"
-              max={Math.max(0, points.length - 1)}
-              value={Math.max(0, selected)}
-              onChange={(e) => setCursor(Number(e.target.value))}
-              className="min-w-0 flex-1 accent-blue-600"
-              aria-valuetext={`${time(point.at)}, ${data.fight.f1.name} ${marketPct(point.p)}`}
-            />
-            <button
-              type="button"
-              className="shrink-0 underline underline-offset-2"
-              onClick={() => setCursor(null)}
-            >
-              Latest
-            </button>
-          </label>
           <details className="mt-3 text-[11px] text-zinc-500">
             <summary className="cursor-pointer">View observations</summary>
             <div className="mt-2 max-h-48 overflow-auto">
@@ -504,11 +461,9 @@ function Comparison({ data, now }: { data: MarketDetail; now: number }) {
 
 export function PolymarketView({
   data,
-  demo = false,
   compact = false,
 }: {
   data: MarketDetail;
-  demo?: boolean;
   compact?: boolean;
 }) {
   const now = useNow(true, 3000);
@@ -516,7 +471,10 @@ export function PolymarketView({
   const movement = q && data.opening ? (q.p - data.opening.p) * 100 : null;
   const thin =
     q &&
-    (q.spread == null || q.spread > 0.06 + 1e-9 || q.depth == null || q.depth < 100);
+    (q.spread == null ||
+      q.spread > 0.06 + 1e-9 ||
+      q.depth == null ||
+      q.depth < 100);
   const liveHistory = data.history.filter(
     (p) => p.phase === "live" && p.source === "observed",
   );
@@ -535,30 +493,12 @@ export function PolymarketView({
     >
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-700">
         <div className="flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-blue-600" aria-hidden="true" />
+          <PolymarketLogo />
           <h2 className="text-sm font-semibold">Polymarket</h2>
           {data.fight.state === "live" && q ? (
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
               {data.stream ? "Streaming" : "Live · polling"}
             </span>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <MarketWatchButton
-            id={data.fight.id}
-            name={`${data.fight.f1.name} vs ${data.fight.f2.name}`}
-            demo={demo}
-          />
-          {data.url ? (
-            <a
-              href={data.url}
-              target="_blank"
-              rel="noopener noreferrer nofollow"
-              className={MARKET_BUTTON}
-            >
-              Open market{" "}
-              <ExternalLink className="h-3 w-3" aria-hidden="true" />
-            </a>
           ) : null}
         </div>
       </div>
@@ -602,7 +542,7 @@ export function PolymarketView({
                 {q.spread != null && q.spread > 0.06 + 1e-9
                   ? "Wide spread"
                   : "Limited book depth"}{" "}
-                · Price movement alerts are paused for this quote.
+                · Displayed prices may differ from executable quotes.
               </p>
             ) : null}
             {!compact ? (
@@ -669,38 +609,13 @@ export function PolymarketView({
         ) : null}
         <ProbabilityChart key={data.fight.id} data={data} />
         {!compact ? (
-          <>
-            <div className="border-t border-zinc-200 pt-4 dark:border-zinc-700">
-              <h3 className="mb-3 text-sm font-semibold">More markets</h3>
-              <ExtraMarkets
-                markets={data.extras}
-                checkedAt={data.marketCheckedAt}
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
-              <span className="mr-1 text-xs text-zinc-500">
-                Follow future matchups
-              </span>
-              <MarketWatchButton
-                kind="fighter"
-                id={data.fight.f1.id}
-                name={data.fight.f1.name}
-                demo={demo}
-              />
-              <MarketWatchButton
-                kind="fighter"
-                id={data.fight.f2.id}
-                name={data.fight.f2.name}
-                demo={demo}
-              />
-            </div>
-            <Link
-              to="/markets?view=watchlist"
-              className="inline-block text-xs text-blue-700 underline underline-offset-2 dark:text-blue-400"
-            >
-              Watchlist, alert settings and market accuracy →
-            </Link>
-          </>
+          <div className="border-t border-zinc-200 pt-4 dark:border-zinc-700">
+            <h3 className="mb-3 text-sm font-semibold">More markets</h3>
+            <ExtraMarkets
+              markets={data.extras}
+              checkedAt={data.marketCheckedAt}
+            />
+          </div>
         ) : null}
       </div>
     </section>
@@ -742,23 +657,13 @@ export default function PolymarketPanel({
   );
 }
 
-export function MarketBoard({
-  eventId,
-  rows: supplied,
-  demo = false,
-}: {
-  eventId?: string;
-  rows?: MarketSummary[];
-  demo?: boolean;
-}) {
+function MarketBoard({ eventId }: { eventId: string }) {
   const { data, error, retry } = useMarketData<{ fights: MarketSummary[] }>(
-    supplied
-      ? null
-      : `/api/polymarket/board${eventId ? `?event=${eventId}` : ""}`,
+    `/api/polymarket/board?event=${eventId}`,
     10_000,
   );
   const now = useNow(true, 5000);
-  const rows = supplied ?? data?.fights;
+  const rows = data?.fights;
   return (
     <section
       className={`${MARKET_SHELL} shrink-0 overflow-hidden`}
@@ -766,12 +671,6 @@ export function MarketBoard({
     >
       <div className="flex items-center justify-between gap-2 border-b border-zinc-200 p-4 dark:border-zinc-700">
         <h2 className="text-sm font-semibold">Polymarket win probabilities</h2>
-        <Link
-          to="/markets"
-          className="text-xs text-blue-700 dark:text-blue-400"
-        >
-          Markets →
-        </Link>
       </div>
       {!rows ? (
         <p role="status" className="p-4 text-xs text-zinc-500">
@@ -800,11 +699,7 @@ export function MarketBoard({
                 className="flex items-center gap-3 px-4 py-3"
               >
                 <Link
-                  to={
-                    demo
-                      ? "/markets?demo=prefight"
-                      : `/fights/${row.fight.id}?tab=odds`
-                  }
+                  to={`/fights/${row.fight.id}?tab=odds`}
                   className="min-w-0 flex-1"
                 >
                   <span className="block truncate text-xs font-medium">
@@ -824,11 +719,7 @@ export function MarketBoard({
                   </span>
                 </Link>
                 <Link
-                  to={
-                    demo
-                      ? "/markets?demo=prefight"
-                      : `/fights/${row.fight.id}?tab=odds`
-                  }
+                  to={`/fights/${row.fight.id}?tab=odds`}
                   className="shrink-0 text-right text-xs font-semibold tabular-nums"
                 >
                   <span className="text-blue-700 dark:text-blue-400">
@@ -846,7 +737,7 @@ export function MarketBoard({
       )}
       <p className="px-4 py-3 text-[10px] text-zinc-500">
         Blue is the first fighter; red is the second. Open a fight for history,
-        comparisons and alerts.
+        and comparisons.
       </p>
     </section>
   );
@@ -860,25 +751,21 @@ export function MarketTeaser({ fightId }: { fightId: string }) {
   const now = useNow(true, 5000);
   const row = data?.fights[0];
   const q = row ? freshMarketQuote(row, now) : null;
+  if (!row || !q || row.fight.state === "finished") return null;
   return (
     <Link
       to={`/fights/${fightId}?tab=odds`}
-      aria-label="Polymarket odds, history and comparison"
-      className="matchup-polymarket flex w-fit max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full border border-zinc-200 px-3 py-1.5 text-[11px] text-zinc-500 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+      aria-label={`Polymarket: ${row.fight.f1.name} ${marketPct(q.p)}, ${row.fight.f2.name} ${marketPct(1 - q.p)}`}
+      className="matchup-polymarket inline-flex w-fit max-w-full flex-nowrap items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-200 px-2 py-1.5 text-[11px] text-zinc-500 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
     >
-      <span>Polymarket</span>
-      {q ? (
-        <span className="whitespace-nowrap font-semibold tabular-nums">
-          <span className="text-blue-700 dark:text-blue-400">
-            {marketPct(q.p)}
-          </span>
-          <span className="px-1">/</span>
-          <span className="text-red-700 dark:text-red-400">
-            {marketPct(1 - q.p)}
-          </span>
-        </span>
-      ) : null}
-      <span className="hidden @[58rem]:inline">History & comparison →</span>
+      <PolymarketLogo />
+      <span className="font-semibold tabular-nums text-blue-700 dark:text-blue-400">
+        {marketPct(q.p)}
+      </span>
+      <span aria-hidden="true">/</span>
+      <span className="font-semibold tabular-nums text-red-700 dark:text-red-400">
+        {marketPct(1 - q.p)}
+      </span>
     </Link>
   );
 }

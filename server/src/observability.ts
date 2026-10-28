@@ -1,6 +1,5 @@
 /** Browser page views use fixed route patterns, never a visitor's username or a fight ID. */
 export function pageRouteGroup(pathname: string): string | null {
-  if (pathname === "/markets") return "page_markets";
   if (pathname === "/") return "page_home";
   if (/^\/events\/[^/]+$/.test(pathname)) return "page_event";
   if (/^\/fights\/[^/]+$/.test(pathname)) return "page_fight";
