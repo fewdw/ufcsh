@@ -1,6 +1,7 @@
 import { db, prepared } from "./db.ts";
 import { fightIndex } from "./fight-index.ts";
 import { SEARCH_ALIASES } from "./search-aliases.ts";
+import { PURSE_REPORTS, type PurseReport } from "./purse-reports-data.ts";
 import { eventSection, fetchArticleByTitle } from "./scrape/wikipedia.ts";
 import {
   BONUS_LABELS, articleSection, mmaPayoutPosts, placeName, postCommission, postForCard, readPurses,
@@ -18,7 +19,7 @@ import { log } from "./util.ts";
  *  is guessed: a purse no commission disclosed stays unknown, and Admin →
  *  Bugs lists every card with one. */
 
-export type PaySource = SourceLink & { commission: string | null; caveat: string | null; cited: SourceLink | null };
+export type PaySource = SourceLink & { commission: string | null; caveat: string | null; cited: SourceLink | null; archive?: SourceLink };
 type StoredPurse = Purse & { source: number; also: string | null };
 type StoredBonus = { kind: BonusKind; amount: number | null; note: string | null };
 export type StoredPay = {
@@ -49,6 +50,7 @@ export function cardPay(
   article: { title: string; text: string } | null,
   posts: PayoutPost[] | null,
   date: string,
+  reports: PurseReport[] = PURSE_REPORTS,
 ): { pay: Map<string, StoredPay>; issues: PayIssues } {
   const pay = new Map<string, StoredPay>(card.map((bout) => [bout.id, {}]));
   const issues: PayIssues = { unread: [], conflicts: [], bonusNotes: [], failed: [] };
@@ -62,6 +64,30 @@ export function cardPay(
     }
   }
   if (wiki) issues.unread.push(...wiki.unread.map((row) => `Wikipedia payout: ${row}`));
+
+  // Reviewed public reports fill historical gaps without depending on archive
+  // availability. Match the date, stable bout id AND both fighter names.
+  for (const report of reports) {
+    if (report.date !== date || !report.rows.some((row) => card.some((bout) => bout.id === row.id))) continue;
+    const rows = report.rows.filter((row) => card.some((bout) => bout.id === row.id && bout.f1 === row.fighters[0] && bout.f2 === row.fighters[1]));
+    issues.unread.push(...report.rows.filter((row) => !rows.includes(row)).map((row) => `${report.source.label} row no longer matches: ${row.fighters.join(" vs. ")}`));
+    if (!rows.length) continue;
+    const index = sources.push({ ...report.source, commission: report.commission, caveat: null, cited: null }) - 1;
+    issues.unread.push(...report.unread.map((row) => `${report.source.label} salaries: ${row}`));
+    for (const row of rows) {
+      const entry = pay.get(row.id)!;
+      for (const [i, corner] of (["f1", "f2"] as const).entries()) {
+        const theirs = row.purses[i];
+        if (!theirs) continue;
+        const ours = entry.purse?.[corner];
+        if (!ours) entry.purse = { ...entry.purse, sources, [corner]: { ...theirs, source: index, also: null } };
+        else if (ours.total !== theirs.total) {
+          ours.also = [ours.also, `${report.source.label} lists ${usd(theirs.total)}`].filter(Boolean).join("; ");
+          issues.conflicts.push(`${row.fighters[i]}: ${sources[ours.source].label} ${usd(ours.total)}, ${report.source.label} ${usd(theirs.total)}`);
+        }
+      }
+    }
+  }
 
   const salaries = posts ? postForCard(posts, date, card) : null;
   if (salaries) {
@@ -83,9 +109,9 @@ export function cardPay(
           const ours = entry.purse?.[corner];
           if (!ours) entry.purse = { ...entry.purse, sources, [corner]: { ...theirs, source: index, also: null } };
           else if (ours.total !== theirs.total) {
-            ours.also = `MMA Payout lists ${usd(theirs.total)}`;
+            ours.also = [ours.also, `MMA Payout lists ${usd(theirs.total)}`].filter(Boolean).join("; ");
             const bout = card.find((b) => b.id === id)!;
-            issues.conflicts.push(`${bout[corner]}: Wikipedia ${usd(ours.total)}, MMA Payout ${usd(theirs.total)}`);
+            issues.conflicts.push(`${bout[corner]}: ${sources[ours.source].label} ${usd(ours.total)}, MMA Payout ${usd(theirs.total)}`);
           }
         }
       }
@@ -297,7 +323,7 @@ export function fightPay(fight: EstimateFight & { pay_json: string | null; event
   const f2 = side("f2");
   // The card's sources, only those this bout's purses came from or are compared with.
   const sources = stored?.purse?.sources ?? [];
-  const used = sources.map((source, i) => [f1, f2].some((s) => s.purse?.source === i || (source.label === "MMA Payout" && s.purse?.also)));
+  const used = sources.map((source, i) => [f1, f2].some((s) => s.purse?.source === i || s.purse?.also?.includes(`${source.label} lists `)));
   const index = used.map((_, i) => used.slice(0, i).filter(Boolean).length);
   for (const s of [f1, f2]) if (s.purse) s.purse = { ...s.purse, source: index[s.purse.source] };
   const known = (s: FightPaySide) => s.purse || s.bonuses.length || s.compliance;

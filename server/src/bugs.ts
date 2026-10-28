@@ -33,6 +33,7 @@ import { judging } from "./judging.ts";
 import { NEWS_FEEDS } from "./scrape/news.ts";
 import { ROSTER_ARTICLE, samePlace } from "./scrape/wikipedia.ts";
 import { storedPay, syncFightPay, VENUM_START, type PayIssues } from "./fight-pay.ts";
+import { PURSE_REPORTS } from "./purse-reports-data.ts";
 import {
   fighterNames,
   forgetUfcPage,
@@ -1383,6 +1384,10 @@ type PayEventRow = { id: string; name: string; date: string; location: string; w
 
 const payLinks = (event: PayEventRow): BugLink[] => [
   eventLink(event.id),
+  ...PURSE_REPORTS.filter((report) => report.date === event.date).flatMap((report) => [
+    { label: report.source.label, href: report.source.url },
+    ...(report.source.archive ? [{ label: report.source.archive.label, href: report.source.archive.url }] : []),
+  ]),
   ...(event.wiki_title ? [{ label: "Event article", href: `https://en.wikipedia.org/wiki/${encodeURIComponent(event.wiki_title.replace(/ /g, "_"))}` }] : []),
   { label: "MMA Payout search", href: `https://mmapayout.com/?s=${encodeURIComponent(event.name.split(":")[0])}` },
   { label: "CombatReg results", href: "https://www.combatreg.com/events/results" },
@@ -1457,7 +1462,7 @@ function fightPayUnknown(): BugCheck {
     id: "fight-pay-unknown",
     group: "Missing data",
     label: "Fighter pay unknown",
-    description: "Finished cards with a fighter whose pay is unknown on the matchup. Purses are shown only where an athletic commission disclosed them (Wikipedia's \"Reported payout\" section, MMA Payout's salary posts); most commissions never do, so older cards are expected here. Bonus amounts come from the article's \"Bonus awards\" section; a forfeited or reassigned bonus is left without an amount until checked. Fight-week pay is estimated from April 2021 when the fighter's record (WEC and Strikeforce bouts count) is verified. Open: the last 60 days, and any card whose disclosure skipped a bout. Re-reading fetches the article and MMA Payout now.",
+    description: "Finished cards with a fighter whose pay is unknown on the matchup. Purses are shown only where an athletic commission disclosed them (Wikipedia's \"Reported payout\" section, reviewed historical commission reports and MMA Payout's salary posts); most commissions never do, so older cards are expected here. Bonus amounts come from the article's \"Bonus awards\" section; a forfeited or reassigned bonus is left without an amount until checked. Fight-week pay is estimated from April 2021 when the fighter's record (WEC and Strikeforce bouts count) is verified. Open: the last 60 days, and any card whose disclosure skipped a bout. Re-reading fetches the article and MMA Payout now and reapplies the reviewed historical reports.",
     grade: (item) => skipped.has(item.key) ? "minor" : recent([[60, "minor"]])(item),
   }, items);
 }
@@ -1492,7 +1497,7 @@ function fightPayUnread(): BugCheck {
     id: "fight-pay-unread",
     group: "Missing data",
     label: "Pay rows not read",
-    description: "A payout list named someone or an amount that could not be placed: a bout cancelled on the night (the commission still lists both purses), a name neither UFCStats nor the search aliases know (add the alias to server/src/search-aliases.ts), or a malformed amount (\"$10,00\"), which is never guessed. Also purses Wikipedia and MMA Payout disagree on; the matchup shows Wikipedia's with MMA Payout's beside it.",
+    description: "A payout list named someone or an amount that could not be placed: a bout cancelled on the night (the commission still lists both purses), a name neither UFCStats nor the search aliases know, a bundled report whose bout no longer matches, or a malformed amount (\"$10,00\"), which is never guessed. Also disagreements between Wikipedia, reviewed commission reports and MMA Payout; the matchup keeps the earlier source's figure with the other figure beside it. Reviewed historical reports and their archive copies are linked on the card's item.",
     grade: (item) => disagree.has(item.key) ? "minor" : recent([[365, "minor"]])(item),
   }, items);
 }

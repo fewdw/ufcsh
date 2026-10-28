@@ -458,7 +458,7 @@ export type FightPaySide = {
 export type FightPay = {
   f1: FightPaySide;
   f2: FightPaySide;
-  purse_sources: (PaySource & { commission: string | null; caveat: string | null; cited: PaySource | null })[];
+  purse_sources: (PaySource & { commission: string | null; caveat: string | null; cited: PaySource | null; archive?: PaySource })[];
   bonus_source: (PaySource & { cited: PaySource | null }) | null;
   compliance_source: PaySource | null;
   read: boolean;

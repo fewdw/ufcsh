@@ -33,14 +33,15 @@ const amount = (name: string) => String.raw`\$\s?(?<${name}>\d[\d,.]*)\s*(?<${na
 // $T)", "($S; $W win bonus)", "$S show/$W win", "$S/$W", and the 2006 form
 // "($275,000—includes $150,000 win bonus)"; then a footnote mark ("^", "*").
 const ENTRY = new RegExp(String.raw`(?<lead>\(\s*)?${amount("amount")}(?<total>\s*total)?(?:`
-  + String.raw`\s*\(?\s*[—–-]?\s*(?<includes>includes\s+)?${amount("win")}\s*(?:win(?:ning)?\s*bonus|to win|win\b)\)?`
+  + String.raw`\s*\(\s*${amount("base")}\s*(?:to\s+)?(?:show|fight)\s*[,;]\s*(?:${amount("baseWin")}\s*(?:to win|win bonus)|(?<baseNone>no win bonus))(?<adjustment>[^)]*)\)`
+  + String.raw`|\s*\(?\s*[—–-]?\s*(?<includes>includes\s+)?${amount("win")}\s*(?:win(?:ning)?\s*bonus|to win|win\b)\)?`
   + String.raw`|\s*\(?\s*[—–;-]?\s*(?<none>no win bonus)\)?`
   + String.raw`|\s*\(\s*${amount("show")}\s*\/\s*${amount("split")}\s*\)`
   + String.raw`|\s*\+\s*${amount("plus")}\s*(?:win(?:\s*bonus)?)?(?:\s*=\s*\$\s?[\d,]+)?`
   + String.raw`|\s*;\s*${amount("semi")}\s*win(?:\s*bonus)?`
   + String.raw`|\s*(?:to\s+)?show\s*\/\s*${amount("shown")}\s*(?:to\s+)?win`
   + String.raw`|\s*\/\s*${amount("slash")}`
-  + String.raw`)?(?<close>\s*\))?(?<marker>\s*[\^*¹²³<>]+)?`, "g");
+  + String.raw`)?(?<close>\s*\))?(?<marker>\s*[\^*+¹²³<>†‡]+)?`, "g");
 
 /** A written amount in whole dollars; null for anything malformed ("$10,00"),
  *  which is a typo to report, never a number to guess at. */
@@ -64,7 +65,8 @@ const SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv"]);
  *  "top earners include Henry Cejudo" name someone; prose that ends in a
  *  verb ("The Last Stylebender earned") does not: null. */
 export function rowName(before: string): string | null {
-  const text = before.replace(/\((?:WEC|DWCS|LFA)\)/gi, " ").replace(/[*#^:•(]+/g, " ")
+  // A nickname in quotes is not part of the name: Mauricio "Shogun" Rua.
+  const text = before.replace(/["“”][^"“”]{1,30}["“”]/g, " ").replace(/\((?:WEC|DWCS|LFA)\)/gi, " ").replace(/[*#^:•(]+/g, " ")
     .replace(/,\s*(Jr\.?|Sr\.?)\s*$/i, " $1").trimEnd();
   const run: string[] = [];
   // Headings and totals are capitalised too: "Disclosed Fighter Payroll: $539,000".
@@ -147,7 +149,14 @@ function lineEntries(line: string, outcomeOf: (name: string) => string | null | 
     const marker = g.marker?.trim() || null;
     let purse: Purse | null = null;
     if (amount != null) {
-      if (g.none) purse = { total: amount, show: amount, win: 0, note: null };
+      if (g.base != null) {
+        const show = money(g.base, g.baseUnit);
+        const win = g.baseNone ? 0 : money(g.baseWin, g.baseWinUnit);
+        const note = g.adjustment?.replace(/^[,\s]+/, "").trim() || null;
+        // A transferred fine can make the stated total differ from show + win.
+        purse = show != null && win != null && (show + win === amount || /fine|dock/i.test(note ?? ""))
+          ? { total: amount, show, win, note } : null;
+      } else if (g.none) purse = { total: amount, show: amount, win: 0, note: null };
       else if (g.win != null) {
         const win = money(g.win, g.winUnit);
         // A win bonus as large as the whole amount can't be inside it: show
@@ -186,12 +195,18 @@ export function readPurses(lines: string[], bouts: PayBout[], notes: Map<string,
   };
   const twice = new Set<string>();
   const unclear = new Map<string, string>();
-  for (const line of lines) {
+  // "Lyoto Machida: $200,000 (no win bonus)" / "def. Mauricio Rua: $155,000" is one row.
+  const rows = lines.reduce<string[]>((joined, line) => {
+    if (joined.length && /^\s*(?:def(?:eated|eats)?\.?|vs\.?|drew with)\s/i.test(line)) joined[joined.length - 1] += ` ${line.trim()}`;
+    else joined.push(line);
+    return joined;
+  }, []);
+  for (const line of rows) {
     const entries = lineEntries(line, outcomeOf, style);
     const placed = entries.map((entry) => ({ entry, at: placeName(entry.name, bouts) }));
     // "A def. B", "A vs. B": the two corners of one bout. A list of many
     // fighters on one line (2006's payrolls) is placed one by one.
-    const paired = entries.length === 2 && /\b(?:def(?:eated)?|vs|drew)\b|[–—]/i.test(entries[1].between);
+    const paired = entries.length === 2 && /\b(?:def(?:eated|eats)?|vs|drew)\b|[–—]/i.test(entries[1].between);
     if (paired) {
       if (placed[0].at && placed[1].at && placed[0].at.bout.id !== placed[1].at.bout.id) { unread.push(line.trim()); continue; }
       // One corner known places the other, whatever name it was written under.
@@ -200,7 +215,7 @@ export function readPurses(lines: string[], bouts: PayBout[], notes: Map<string,
       if (placed[0].at && placed[1].at && placed[0].at.corner === placed[1].at.corner) { unread.push(line.trim()); continue; }
     }
     // "Bobby Green: $300,000 def. Tony Ferguson": the opponent, named without an amount, places the one with it.
-    const opponent = entries.length === 1 && !placed[0].at ? /^\s*(?:def(?:eated)?\.?|vs\.?|drew with)\s+(.+)$/i.exec(entries[0].after)?.[1] : null;
+    const opponent = entries.length === 1 && !placed[0].at ? /^\s*(?:def(?:eated|eats)?\.?|vs\.?|drew with)\s+(.+)$/i.exec(entries[0].after)?.[1] : null;
     const theirs = opponent ? placeName(opponent.replace(/[*^¹²³<>:]+/g, " ").trim(), bouts) : null;
     if (theirs) placed[0].at = { bout: theirs.bout, corner: theirs.corner === "f1" ? "f2" : "f1" };
     for (const { entry, at } of placed) {
@@ -211,7 +226,7 @@ export function readPurses(lines: string[], bouts: PayBout[], notes: Map<string,
         unread.push(`${entry.name} is listed twice: ${usd(previous.total)} and ${usd(entry.purse.total)}`);
         twice.add(`${at.bout.id}:${at.corner}`);
       }
-      const purse = { ...entry.purse, note: entry.marker ? notes.get(entry.marker) ?? null : null };
+      const purse = { ...entry.purse, note: (entry.marker ? notes.get(entry.marker) : null) ?? entry.purse.note };
       purses.set(at.bout.id, { ...purses.get(at.bout.id), [at.corner]: purse });
     }
   }

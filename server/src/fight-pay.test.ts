@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
 import { cardPay, complianceEstimate, complianceTier, VENUM_START } from "./fight-pay.ts";
+import { PURSE_REPORTS, type PurseReport } from "./purse-reports-data.ts";
 
 test("compliance tiers count the bout itself and step at UFC's published boundaries", () => {
   const amounts = [1, 3, 4, 5, 6, 10, 11, 15, 16, 20, 21, 40].map((bouts) => complianceTier(bouts, null).amount);
@@ -31,6 +32,59 @@ const post = {
   date: "2026-05-19", link: "https://mmapayout.com/2026/05/19/ufc-seattle-payouts/", title: "UFC Seattle payouts",
   text: "UFC Seattle payouts were disclosed today by the Washington State Department of Licensing.\nAlexa Grasso $260K total ($130K/$130K) def Maycee Barber $85K\nTerrance McKinney $140K ($70K/$70K) def Kyle Nelson $40K\nTofiq Musayev $70K ($35K/$35K) def Ignacio Bahamondes $120K\nNavajo Stirling $60K ($30K/$30K) def Bruno Lopes $12K",
 };
+
+test("reviewed reports fill a missing purse with archive provenance and keep source disagreements", () => {
+  const report: PurseReport = {
+    event: "Test card", date: "2026-05-16", commission: "Washington State Department of Licensing",
+    source: { label: "MMA Junkie", url: "https://example.test/salaries", archive: { label: "Archived report", url: "https://example.test/archive" } },
+    rows: [
+      { id: "c", fighters: ["Tofiq Musayev", "Ignacio Bahamondes"], purses: [{ total: 70_000, show: 35_000, win: 35_000, note: null }, null] },
+      { id: "b", fighters: ["Terrance McKinney", "Kyle Nelson"], purses: [null, { total: 42_000, show: null, win: null, note: null }] },
+    ], unread: ["An unreadable source amount"],
+  };
+  const original = JSON.stringify(report);
+  const { pay, issues } = cardPay(card, { title: "Test card", text }, [post], report.date, [report]);
+  assert.equal(pay.get("c")!.purse!.f1!.total, 70_000);
+  assert.deepEqual(pay.get("c")!.purse!.sources[1].archive, report.source.archive);
+  assert.equal(pay.get("b")!.purse!.f2!.total, 41_000);
+  assert.equal(pay.get("b")!.purse!.f2!.also, "MMA Junkie lists $42,000; MMA Payout lists $40,000");
+  assert.equal(issues.conflicts.length, 2);
+  assert.deepEqual(issues.unread, ["MMA Junkie salaries: An unreadable source amount"]);
+  assert.equal(JSON.stringify(report), original);
+  assert.equal(cardPay(card, null, null, "2026-05-17", [report]).pay.get("c")!.purse, undefined);
+  report.rows[0].fighters.reverse();
+  const mismatched = cardPay(card, null, null, report.date, [report]);
+  assert.equal(mismatched.pay.get("c")!.purse, undefined);
+  assert.ok(mismatched.issues.unread.some((row) => row.includes("row no longer matches")));
+});
+
+test("bundled commission reports match real bouts and preserve unsupported amounts and weight fines", () => {
+  const seen = new Set<string>();
+  for (const report of PURSE_REPORTS) {
+    for (const row of report.rows) {
+      assert.ok(!seen.has(row.id), `Duplicate salary report for ${row.id}`);
+      seen.add(row.id);
+      const fight = db.prepare(`SELECT f.f1_name, f.f2_name, e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?`).get(row.id) as any;
+      assert.deepEqual([fight?.date, fight?.f1_name, fight?.f2_name], [report.date, ...row.fighters], report.event);
+      for (const purse of row.purses) if (purse) {
+        assert.ok(Number.isSafeInteger(purse.total) && purse.total > 0);
+        assert.ok(purse.show == null || Number.isSafeInteger(purse.show));
+        assert.ok(purse.win == null || Number.isSafeInteger(purse.win));
+      }
+    }
+  }
+  const ufc67 = PURSE_REPORTS.find((report) => report.date === "2007-02-03")!;
+  const silva = ufc67.rows.find((row) => row.fighters.includes("Anderson Silva"))!;
+  assert.equal(silva.purses[0]!.total, 71_000);
+  assert.match(silva.purses[0]!.note!, /1,000.*fine/);
+  assert.equal(silva.purses[0]!.show, null); // The independent report states no show/win split.
+  const ufc66 = PURSE_REPORTS.find((report) => report.date === "2006-12-30")!;
+  assert.equal(ufc66.rows.find((row) => row.fighters.includes("Andrei Arlovski"))!.purses[0], null);
+  assert.ok(ufc66.unread.some((row) => row.includes("Andrei Arlovski")));
+  const ufc68 = PURSE_REPORTS.find((report) => report.date === "2007-03-03")!;
+  assert.equal(ufc68.source.label, "MMA Mania"); // Junkie's version admits altering figures.
+  assert.ok(!PURSE_REPORTS.some((report) => report.event.startsWith("UFC 70:")));
+});
 
 test("a card's pay takes Wikipedia's purses first, fills the rest from MMA Payout, and reports where they disagree", () => {
   const { pay, issues } = cardPay(card, { title: "UFC Fight Night: Adesanya vs. Pyfer", text }, [post], "2026-05-16");

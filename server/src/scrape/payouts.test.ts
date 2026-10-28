@@ -62,6 +62,37 @@ test("a bout cancelled on the night is a row to report, not a purse to place", (
   assert.equal(read.unread.length, 2);
 });
 
+test("split salary rows and quoted nicknames keep the two corners together", () => {
+  const card = [{ id: "a", f1: "Lyoto Machida", f2: "Mauricio Rua" }, { id: "b", f1: "Tito Ortiz", f2: "Forrest Griffin" }];
+  const read = readPurses(['Lyoto Machida: $200,000 (no win bonus)', 'def. Mauricio “Shogun” Rua: $155,000'], card);
+  assert.equal(read.purses.get("a")?.f2?.total, 155_000);
+  assert.deepEqual(read.unread, []);
+  const crossed = readPurses(['Lyoto Machida: $200,000', 'defeats Tito Ortiz: $155,000'], card);
+  assert.equal(crossed.purses.size, 0);
+  assert.equal(crossed.unread.length, 1);
+});
+
+test("explicit show and win parts retain fine adjustments and reject inconsistent totals", () => {
+  const card = [{ id: "a", f1: "Anderson Silva", f2: "Travis Lutter" }, { id: "b", f1: "Chuck Liddell", f2: "Tito Ortiz" }];
+  const read = readPurses([
+    'Anderson Silva: $71,000 ($35,000 to show, $35,000 win bonus, $1,000 awarded for Lutter fine)',
+    'Travis Lutter: $18,000 ($20,000 to show, no win bonus, $2,000 docked as a fine)',
+    'Chuck Liddell: $250,000 ($250,000 to fight; no win bonus)',
+    'Tito Ortiz: $30,000 ($20,000 to show, $20,000 win bonus)',
+  ], card);
+  assert.deepEqual(read.purses.get("a")?.f1, { total: 71_000, show: 35_000, win: 35_000, note: "$1,000 awarded for Lutter fine" });
+  assert.deepEqual(read.purses.get("a")?.f2, { total: 18_000, show: 20_000, win: 0, note: "$2,000 docked as a fine" });
+  assert.deepEqual(read.purses.get("b")?.f1, { total: 250_000, show: 250_000, win: 0, note: null });
+  assert.equal(read.purses.get("b")?.f2, undefined);
+  assert.equal(read.unread.length, 1);
+});
+
+test("plus-sign salary footnotes keep weight-miss deductions", () => {
+  const read = readPurses(['Tony Ferguson: $10,000 def. Anthony Pettis: $6,400+'], ufc229,
+    new Map([["+", "Includes a 20 percent deduction for missing weight."]]));
+  assert.match(read.purses.get("b")?.f2?.note ?? "", /20 percent deduction/);
+});
+
 test("MMA Payout's salary formats read the same purses, and a typo is never guessed", () => {
   const card: PayBout[] = [
     { id: "a", f1: "Jiri Prochazka", f2: "Jamahal Hill", f1Outcome: "win", f2Outcome: "loss" },
