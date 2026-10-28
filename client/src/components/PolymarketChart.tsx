@@ -56,6 +56,14 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
   const rounds = data.rounds
     .filter((r) => r.at >= range.from && r.at <= range.to)
     .filter((r, i, rows) => !i || x(r.at) - x(rows[i - 1].at) > 25);
+  const inspectPoint = (event: PointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    setCursor(
+      range.from +
+        ((event.clientX - rect.left) / rect.width) * (range.to - range.from),
+    );
+  };
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
@@ -94,7 +102,7 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
             <svg
               viewBox="42 0 650 184"
               preserveAspectRatio="none"
-              className="h-44 w-full overflow-visible"
+              className="h-44 w-full touch-none overflow-visible"
               role="img"
               aria-label={`Win probability history for ${data.fight.f1.name} and ${data.fight.f2.name}. Use arrow keys to inspect observations.`}
               tabIndex={0}
@@ -116,16 +124,21 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
                   points[Math.max(0, Math.min(points.length - 1, next))].at,
                 );
               }}
+              onPointerDown={(event) => {
+                if (event.button !== 0) return;
+                event.currentTarget.setPointerCapture(event.pointerId);
+                inspectPoint(event);
+              }}
+              onPointerUp={(event) => {
+                if (event.currentTarget.hasPointerCapture(event.pointerId))
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+              }}
+              onPointerCancel={() => setCursor(null)}
               onPointerLeave={() => setCursor(null)}
               onPointerMove={(event) => {
                 if (event.buttons !== 1 && event.pointerType !== "mouse")
                   return;
-                const rect = event.currentTarget.getBoundingClientRect();
-                setCursor(
-                  range.from +
-                    ((event.clientX - rect.left) / rect.width) *
-                      (range.to - range.from),
-                );
+                inspectPoint(event);
               }}
             >
               {[0, 0.25, 0.5, 0.75, 1].map((p) => (

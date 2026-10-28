@@ -16,8 +16,9 @@ UFC.sh reads public market data only. It does not connect a wallet or place orde
 There is no standalone Markets page, watchlist, follow UI, or replay slider.
 Hover over the chart or focus it and use arrow/Home/End keys to inspect points.
 The selected time uses a gray line; fixed-width percentage readouts keep fighter
-labels still while inspecting prices. Range-mode labels and the selected point’s
-source/timestamp line are omitted.
+labels still while inspecting prices. Touch gestures on the plot stay on the
+chart: horizontal inspection does not scroll the page vertically. Range-mode
+labels and the selected point’s source/timestamp line are omitted.
 Drag the two arrow handles to select a time window, or drag the selection to pan.
 Handles also support arrow/Home/End keys (Shift speeds up adjustment). No
 All/Pre-fight/Live buttons are shown. Times use the viewer's browser time zone,
@@ -86,9 +87,9 @@ The displayed probability is a midpoint or last trade. The Odds panel keeps
 current percentages in the source-comparison table and chart, without repeating
 a large probability summary, movement callout, trading metrics or explanatory
 comparison banners. Additional markets are grouped by fight outcome, total rounds,
-finish timing and round winners; unfamiliar types stay in Other. Each group is a
-collapsible table with shared Yes/No or Over/Under headers and fixed-width numeric
-columns. At 48rem of panel width, groups flow into two balanced columns without
+finish timing and round winners; unfamiliar types stay in Other. Each group is an
+always-visible table with shared Yes/No or Over/Under headers and fixed-width
+numeric columns. At 48rem of panel width, groups flow into two balanced columns without
 empty grid rows. Smaller panels keep one column. Source links stay on each market
 name. The unique higher listed price is emphasized when at least two prices are
 available; ties and incomplete prices receive no emphasis. No discovery footer or
@@ -106,8 +107,8 @@ sides are normalized together to remove the margin. Community share counts
 only picks for the same event and corner identities; it is a pick share, not a
 calibrated forecast. The comparison omits community picks when the count is zero
 or no community sample exists. The comparison has a separate title and a bounded,
-left-aligned table. Blue/red fighter headers align with the matching percentage
-columns; row dividers and uniform padding keep sources easy to compare. Fresh
+horizontally centered table. Blue/red fighter headers align with the matching
+percentage columns; row dividers and uniform padding keep sources easy to compare. Fresh
 quote methods and sportsbook normalization timestamps are omitted; frozen or
 unavailable prices retain their status labels. Community rows retain their pick
 count without repeating a current-tally label.

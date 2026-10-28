@@ -1,7 +1,7 @@
 /* oxlint-disable react/only-export-components -- small shared market views */
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import PolymarketChart from "./PolymarketChart";
 import { marketTables, marketLabel } from "../market-groups";
 import PolymarketLogo from "./PolymarketLogo";
@@ -34,13 +34,12 @@ export function ExtraMarkets({ markets }: { markets: ExtraMarket[] }) {
   return (
     <div className="columns-1 gap-3 @[48rem]:columns-2">
       {marketTables(markets).map((group) => (
-        <details
+        <section
           key={group.key}
-          open
-          className="group mb-3 break-inside-avoid overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700"
+          className="mb-3 break-inside-avoid overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700"
         >
-          <summary
-            className="grid cursor-pointer list-none items-center bg-zinc-50 py-2 text-xs dark:bg-zinc-800/60 [&::-webkit-details-marker]:hidden"
+          <div
+            className="grid items-center bg-zinc-50 py-2 text-xs dark:bg-zinc-800/60"
             style={{
               gridTemplateColumns:
                 group.columns.length > 0 && group.columns.length <= 2
@@ -48,13 +47,7 @@ export function ExtraMarkets({ markets }: { markets: ExtraMarket[] }) {
                   : "minmax(0, 1fr)",
             }}
           >
-            <span className="flex min-w-0 items-center gap-1.5 px-3 font-semibold">
-              <ChevronDown
-                className="h-3 w-3 shrink-0 -rotate-90 group-open:rotate-0"
-                aria-hidden="true"
-              />
-              {group.label}
-            </span>
+            <h4 className="min-w-0 px-3 font-semibold">{group.label}</h4>
             {group.columns.length <= 2
               ? group.columns.map((column, i) => (
                   <span
@@ -65,7 +58,7 @@ export function ExtraMarkets({ markets }: { markets: ExtraMarket[] }) {
                   </span>
                 ))
               : null}
-          </summary>
+          </div>
           <div className="overflow-x-auto">
             <table
               aria-label={group.label}
@@ -156,7 +149,7 @@ export function ExtraMarkets({ markets }: { markets: ExtraMarket[] }) {
               </tbody>
             </table>
           </div>
-        </details>
+        </section>
       ))}
     </div>
   );
@@ -190,7 +183,7 @@ function Comparison({ data, now }: { data: MarketDetail; now: number }) {
       : []),
   ];
   return (
-    <div className="max-w-xl">
+    <div className="mx-auto max-w-xl">
       <h3 className="mb-2 text-sm font-semibold">How they compare</h3>
       <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700">
         <table
