@@ -9,6 +9,7 @@ import { METHOD_LABEL, predictionLabel, predictionPoints, sharePct } from "../pr
 import type { MyPrediction, PredictionDistribution, PredictionMethod, PredictionSummary } from "../predictions";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 import { BUTTON_PRIMARY_LARGE } from "../ui";
+import TopBettors from "./TopBettors";
 
 const METHOD_SHORT: Record<PredictionMethod, string> = { ko: "KO", submission: "Sub", decision: "Dec" };
 /** A method or round choice: a full-width cell in an even grid. */
@@ -26,6 +27,7 @@ export default function FightPredictions({ fight }: { fight: Matchup }) {
     {error ? <>{error} <button className="underline" onClick={retry}>Retry</button></> : "Loading predictions…"}
   </section>;
   return <>
+    <TopBettors fight={fight} />
     {data.total ? <CommunityPicks distribution={data.distribution} scheduledRounds={data.scheduledRounds} /> : null}
     {accountsEnabled ? <PredictionGate key={fight.id} fight={fight} status={data} onSaved={saved} />
       : <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Sign-in must be configured to save predictions.</section>}

@@ -57,3 +57,10 @@ export async function removeBet(token: string, id: string): Promise<void> {
     throw new Error(data.error ?? "That bet could not be removed.");
   }
 }
+
+/** A return in percent, always signed. */
+export function signedPercent(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  if (!rounded) return "0%";
+  return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded).toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
+}

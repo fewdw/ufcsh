@@ -3,7 +3,7 @@ import type { IncomingMessage } from "node:http";
 
 const listRoutes = new Set([
   "/api/events", "/api/live", "/api/rankings", "/api/rankings/history", "/api/stats", "/api/search",
-  "/api/officials", "/api/venues", "/api/locations", "/api/roster", "/api/news", "/api/awards", "/api/controversial",
+  "/api/officials", "/api/venues", "/api/locations", "/api/roster", "/api/news", "/api/awards", "/api/controversial", "/api/betting-trends",
 ]);
 export function publicApi(path: string): boolean {
   return path === "/api/events/potential-matchups" || /^\/api\/fights\/potential-[a-z0-9-]{1,180}$/.test(path) || listRoutes.has(path) || /^\/api\/(events|fights|fighters|previews)\/[a-f0-9]{16}$/i.test(path)
@@ -15,7 +15,7 @@ export function publicApi(path: string): boolean {
 
 /** Lists that change a few times a day at most: a reader is always answered
  *  from memory, and the first one past expiry triggers the rebuild. */
-const slowRoutes = new Set(["/api/rankings", "/api/rankings/history", "/api/stats"]);
+const slowRoutes = new Set(["/api/rankings", "/api/rankings/history", "/api/stats", "/api/betting-trends"]);
 
 /** How long past its lifetime a copy is still served while a fresh one is
  *  built behind it. A reader is answered from memory unless nobody has asked

@@ -322,6 +322,23 @@ export class PredictionStore {
   forget(user: string): void {
     this.db.prepare("DELETE FROM predictions WHERE user_id = ?").run(user);
   }
+  /** Every saved pick with its bout and how it stands, for the betting pages. */
+  picks() {
+    const stored = this.db.prepare("SELECT fight_id, user_id, pick_json FROM predictions WHERE pick_json IS NOT NULL").all() as
+      { fight_id: string; user_id: string; pick_json: string }[];
+    const ids = [...new Set(stored.map(row => row.fight_id))];
+    const fights = new Map<string, PredictionFight>();
+    for (let index = 0; index < ids.length; index += 500) {
+      for (const fight of this.readFights(ids.slice(index, index + 500))) fights.set(fight.id, fight);
+    }
+    return stored.flatMap(row => {
+      const pick = JSON.parse(row.pick_json) as Pick;
+      const fight = fights.get(row.fight_id);
+      if (!fight) return [];
+      const { state } = predictionResult(pick, fight);
+      return [{ user: row.user_id, fight, fighterId: pick.fighterId, method: pick.method, round: pick.round, state }];
+    });
+  }
   /** Points and accuracy per scorer over every pick, for the leaderboards. */
   standings() {
     const stored = this.db.prepare("SELECT fight_id, user_id, pick_json FROM predictions WHERE pick_json IS NOT NULL").all() as

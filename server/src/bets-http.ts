@@ -4,19 +4,22 @@ import { authenticateScorer, scoringOrigins } from "./scoring-http.ts";
 import { ScoringError } from "./scoring.ts";
 import type { BetStore } from "./bets.ts";
 import type { Leaderboards } from "./leaderboards.ts";
+import type { BettingHub } from "./betting.ts";
 
 const MAX_BODY = 16_384;
 
-export function createBetsHandler(store: BetStore, leaderboards: () => Leaderboards, authenticate = authenticateScorer) {
+export function createBetsHandler(store: BetStore, leaderboards: () => Leaderboards, hub: BettingHub | null = null, authenticate = authenticateScorer) {
   const limiter = new RateLimiter();
   return async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> => {
     const place = url.pathname === "/api/bets";
     const removal = /^\/api\/bets\/([0-9a-f-]{36})$/.exec(url.pathname);
     const board = url.pathname === "/api/leaderboards";
+    const overview = url.pathname === "/api/betting";
+    const card = /^\/api\/betting\/events\/([a-f0-9]{16})$/i.exec(url.pathname);
     const profile = /^\/api\/profiles\/([0-9a-f-]{36}|[a-z0-9]{3,20})\/bets$/.exec(url.pathname);
-    if (!place && !removal && !board && !profile) return false;
+    if (!place && !removal && !board && !profile && !((overview || card) && hub)) return false;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.setHeader("Cache-Control", board ? "public, max-age=30" : "private, no-store");
+    res.setHeader("Cache-Control", board || overview || card ? "public, max-age=30" : "private, no-store");
     const send = (data: unknown, status = 200) => { res.statusCode = status; res.end(req.method === "HEAD" ? undefined : JSON.stringify(data)); };
     try {
       const allowed = place ? ["POST"] : removal ? ["DELETE"] : ["GET", "HEAD"];
@@ -26,6 +29,12 @@ export function createBetsHandler(store: BetStore, leaderboards: () => Leaderboa
       }
       if (!limiter.allow(`ip:${clientAddress(req)}`, 240, 30)) throw new ScoringError(429, "Too many requests. Try again shortly.");
       if (board) return send(leaderboards()), true;
+      if (overview) return send(hub!.overview()), true;
+      if (card) {
+        const view = hub!.card(card[1].toLowerCase());
+        if (!view) throw new ScoringError(404, "Event not found.");
+        return send(view), true;
+      }
       if (profile) {
         const raw = url.searchParams.get("offset") ?? "0";
         if (!/^\d{1,7}$/.test(raw)) throw new ScoringError(400, "Invalid page offset.");

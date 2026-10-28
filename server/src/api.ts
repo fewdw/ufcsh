@@ -10,10 +10,12 @@ import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { createScoringHandler, scoringOrigins } from "./scoring-http.ts";
 import { PredictionStore } from "./predictions.ts";
 import { createPredictionsHandler } from "./predictions-http.ts";
-import { betContext, betOpen, betsOpen, potentialBooking, cardPlaces, predictionContext, predictionFights } from "./predictions-data.ts";
+import { betContext, betOpen, betsOpen, potentialBooking, cardPlaces, eventFightIds, predictionContext, predictionFights } from "./predictions-data.ts";
 import { BetStore } from "./bets.ts";
 import { createBetsHandler } from "./bets-http.ts";
 import { createLeaderboards } from "./leaderboards.ts";
+import { createBettingHub } from "./betting.ts";
+import { bettingTrends, trendSample, TREND_PERIODS, type TrendPeriod } from "./betting-trends.ts";
 import { cardOrder, estimatedStart, scheduledBout, type SegmentTimes } from "./card-schedule.ts";
 import { calendarAnswer, calendarFileName, calendarOptions, calendarQuery, calendarStart } from "./calendar.ts";
 import http from "node:http";
@@ -2444,6 +2446,13 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
     return { updated_at: syncedAt("rankings_synced_at"), divisions: getRankings(rankingType) };
   }
   if (p === "/api/stats") return getStats(url.searchParams);
+  if (p === "/api/betting-trends") {
+    const period = url.searchParams.get("period") ?? "all";
+    if (!(TREND_PERIODS as readonly string[]).includes(period)) return undefined;
+    const sample = url.searchParams.get("sample");
+    if (sample !== null) return trendSample(fightIndex(), period as TrendPeriod, sample) ?? undefined;
+    return bettingTrends(fightIndex(), period as TrendPeriod);
+  }
   if (p === "/api/roster") return rosterView();
   if (p === "/api/news") return newsView(url.searchParams);
   if (p === "/api/search") return search(url.searchParams.get("q") ?? "");
@@ -2509,7 +2518,15 @@ export function startApi(port: number): http.Server {
   const predictionStore = new PredictionStore(scoreStore, predictionContext, predictionFights);
   const predictions = createPredictionsHandler(predictionStore);
   const betStore = new BetStore(scoreStore, betContext, predictionFights, Date.now, potentialBooking);
-  const bets = createBetsHandler(betStore, createLeaderboards(scoreStore, predictionStore, betStore));
+  // A card's bouts in running order, main event first.
+  const cardFights = (eventId: string) => {
+    const ids = eventFightIds(eventId);
+    if (!ids) return undefined;
+    const fights = new Map(predictionFights(ids).map(fight => [fight.id, fight]));
+    return ids.flatMap(id => fights.get(id) ?? []);
+  };
+  const bets = createBetsHandler(betStore, createLeaderboards(scoreStore, predictionStore, betStore),
+    createBettingHub(scoreStore, predictionStore, betStore, cardFights));
   const reportStore = new ReportStore(scoreStore);
   const googleCalendars = new GoogleCalendars(scoreStore.db);
   const googleCalendar = createGoogleCalendarHandler(googleCalendars, user => { scoreStore.identity(user); });

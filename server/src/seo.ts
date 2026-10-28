@@ -58,6 +58,7 @@ const STATIC_PAGES: Record<string, { title: string; description: string }> = {
   "/controversial": { title: "Controversial UFC Decisions: Closest Fights & Robberies | ufc.sh", description: "Every UFC decision the fans' scorecards call close or got the other way, with each judge's card, the fans' average round by round and what the stats say." },
   "/awards": { title: "MMA Awards: Fighter, Fight & Knockout of the Year | ufc.sh", description: "Sherdog's year-end awards since 2008: Fighter, Breakthrough and Comeback Fighter of the Year, and Fight, Knockout, Submission and Upset of the Year." },
   "/news": { title: "UFC News: Latest from Every Outlet | ufc.sh", description: "The latest UFC news from MMA Fighting, Sherdog, BBC Sport, The Guardian and more, in one list: top stories first, every headline linked to its source." },
+  "/betting": { title: "UFC Betting: Top Bettors' Picks, Slips & Betting Trends | ufc.sh", description: "What ufc.sh's best play-money bettors and predictors are picking on every UFC card, their slips, and how favourites, underdogs and every price band have done." },
   "/roster": { title: "UFC Roster Changes: Signings & Releases | ufc.sh", description: "Fighters the UFC has recently signed and recently released, with division, record and date." },
   "/info": { title: "About | ufc.sh", description: "UFC data for hardcore fans. About, shortcuts, community rules, privacy, support and the latest changes." },
 };

@@ -217,6 +217,14 @@ export function betResult(legs: StoredLeg[], stakeCents: number, fights: Map<str
   return { state, legStates: states, net, payout: Math.round(stakeCents * decimal) };
 }
 
+/** The price a settled moneyline leg's side closed at, read from the same
+ *  stored line the bout's odds show; null for any other market. */
+function closingLine(leg: StoredLeg & { state: LegState }, fight: PredictionFight | undefined): string | null {
+  if (leg.market !== "Moneyline" || !leg.outcome.winner || !fight || (leg.state !== "won" && leg.state !== "lost")) return null;
+  const picked = leg.outcome.winner === 1 ? leg.f1Id : leg.f2Id;
+  return validLine(picked === fight.f1_id ? fight.f1_line : picked === fight.f2_id ? fight.f2_line : null);
+}
+
 type StoredBet = { id: string; user_id: string; placed_at: number; stake_cents: number; legs_json: string };
 
 export class BetStore {
@@ -304,11 +312,28 @@ export class BetStore {
       throw Object.assign(new ScoringError(409, changed.length === 1 ? "The odds moved on one of your picks. Check the new price and add it again."
         : "The odds moved on some of your picks. Check the new prices and add it again."), { changed });
     }
+    this.limit(user, legs, stake);
     this.scores.identity(user);
     const id = randomUUID();
     const row = { id, user_id: user, placed_at: this.now(), stake_cents: stake, legs_json: JSON.stringify(legs) };
     this.db.prepare("INSERT INTO bets VALUES (?, ?, ?, ?, ?)").run(row.id, row.user_id, row.placed_at, row.stake_cents, row.legs_json);
     return this.present(row, this.fightsFor([row]));
+  }
+  /** No climbing the boards by backing one side over and over: straight bets
+   *  on a bout share one stake limit, and the same slip is placed once. */
+  private limit(user: string, legs: StoredLeg[], stake: number) {
+    const slip = (entries: StoredLeg[]) => entries.map(leg => `${legKey(leg)}|${outcomeKey(leg.outcome)}`).sort().join(",");
+    const mine = (this.db.prepare("SELECT stake_cents, legs_json FROM bets WHERE user_id = ?").all(user) as Pick<StoredBet, "stake_cents" | "legs_json">[])
+      .map(row => ({ stake: row.stake_cents, legs: JSON.parse(row.legs_json) as StoredLeg[] }));
+    if (mine.some(bet => slip(bet.legs) === slip(legs))) throw new ScoringError(409, "You already have this bet.");
+    if (legs.length !== 1) return;
+    const used = mine.filter(bet => bet.legs.length === 1 && legKey(bet.legs[0]) === legKey(legs[0]))
+      .reduce((sum, bet) => sum + bet.stake, 0);
+    if (used + stake <= MAX_STAKE_CENTS) return;
+    const label = `${legs[0].f1Name} vs ${legs[0].f2Name}`;
+    throw new ScoringError(409, used >= MAX_STAKE_CENTS
+      ? `You already have $${MAX_STAKE_CENTS / 100} on ${label}, the most straight bets can carry on one bout.`
+      : `Straight bets on one bout share $${MAX_STAKE_CENTS / 100}; $${(MAX_STAKE_CENTS - used) / 100} is left on ${label}.`);
   }
   private present(row: StoredBet, fights: Map<string, PredictionFight>) {
     const legs = JSON.parse(row.legs_json) as StoredLeg[];
@@ -376,17 +401,28 @@ export class BetStore {
   forget(user: string): void {
     this.db.prepare("DELETE FROM bets WHERE user_id = ?").run(user);
   }
+  /** Every bet with its result, newest first, for the betting pages. A settled
+   *  moneyline leg also carries the price its side closed at. */
+  ledger() {
+    const rows = this.db.prepare("SELECT * FROM bets ORDER BY placed_at DESC, id").all() as StoredBet[];
+    const fights = this.fightsFor(rows);
+    return rows.map(row => {
+      const bet = this.present(row, fights);
+      return { ...bet, user: row.user_id, legs: bet.legs.map(leg => ({ ...leg, close: closingLine(leg, fights.get(leg.fightId)) })) };
+    });
+  }
   /** Net result per scorer over settled bets, for the leaderboard. */
   standings() {
     const rows = this.db.prepare("SELECT * FROM bets").all() as StoredBet[];
     const fights = this.fightsFor(rows);
-    const byUser = new Map<string, { net: number; won: number; settled: number; legs: number }>();
+    const byUser = new Map<string, { net: number; staked: number; won: number; settled: number; legs: number }>();
     for (const row of rows) {
       const legs = JSON.parse(row.legs_json) as StoredLeg[];
       const result = betResult(legs, row.stake_cents, fights);
       if (result.state !== "won" && result.state !== "lost") continue;
-      const entry = byUser.get(row.user_id) ?? { net: 0, won: 0, settled: 0, legs: 0 };
+      const entry = byUser.get(row.user_id) ?? { net: 0, staked: 0, won: 0, settled: 0, legs: 0 };
       entry.net += result.net;
+      entry.staked += row.stake_cents;
       entry.settled++;
       // A parlay counts once per leg toward the leaderboard minimum.
       entry.legs += legs.length;

@@ -132,6 +132,19 @@ test("places bets at the server's price and caps the stake", t => {
   assert.match(error(() => store.place(user, { stake: 5, legs: [leg(bouts[1].id, { winner: 1 }, "-200")] })).message, /closed for betting/);
 });
 
+test("straight bets on one bout share the stake limit, and a slip is placed once", t => {
+  const { bouts, store } = fixture(t);
+  const error = (fn: () => unknown) => { try { fn(); } catch (e) { return e as ScoringError; } assert.fail("expected an error"); };
+  store.place("user_1", { stake: 15, legs: [leg(bouts[4].id, { winner: 1 }, "-200")] });
+  assert.match(error(() => store.place("user_1", { stake: 15, legs: [leg(bouts[4].id, { winner: 1 }, "-200")] })).message, /already have this bet/);
+  assert.match(error(() => store.place("user_1", { stake: 10, legs: [leg(bouts[4].id, { decision: true }, "-130")] })).message, /\$5 is left/);
+  store.place("user_1", { stake: 5, legs: [leg(bouts[4].id, { decision: true }, "-130")] });
+  assert.match(error(() => store.place("user_1", { stake: 1, legs: [leg(bouts[4].id, { winner: 2 }, "+170")] })).message, /already have \$20/);
+  // Parlays and other fans are not counted against it.
+  store.place("user_1", { stake: 20, legs: [leg(bouts[4].id, { winner: 1 }, "-200"), leg(bouts[5].id, { winner: 1 }, "-200")] });
+  store.place("user_2", { stake: 20, legs: [leg(bouts[4].id, { winner: 1 }, "-200")] });
+});
+
 test("a card beyond the predicting window still takes bets, and a lock left from it is dropped", t => {
   const { bouts, scores, store } = fixture(t);
   const far = new PredictionStore(scores, id => { const fight = bouts.find(row => row.id === id); return fight && { fight, bouts, eventOpen: false }; },
@@ -201,7 +214,7 @@ test("bet removal closes at the betting cutoff before a result exists", t => {
   assert.throws(() => store.remove(user, bet.id), (error: unknown) => error instanceof ScoringError && error.status === 409);
 });
 
-test("leaderboards rank fans by points, accuracy and betting profit", t => {
+test("leaderboards rank fans by points, accuracy and return on their bets", t => {
   const { bouts, scores, store, predictions } = fixture(t);
   const users = ["user_a", "user_b"];
   for (const user of users) scores.identity(user);
@@ -220,7 +233,7 @@ test("leaderboards rank fans by points, accuracy and betting profit", t => {
   assert.equal(board.winner.length, 2);
   assert.equal(board.method[0].value, 100);
   assert.equal(board.method.length, 1);
-  assert.deepEqual(board.bets.map(entry => [entry.value, entry.detail]), [[-20, "0–1"]]);
+  assert.deepEqual(board.bets.map(entry => [entry.value, entry.detail]), [[-100, "0–1"]]);
 });
 
 test("a potential matchup takes bets at board prices and settles on the bout the pair is booked as", t => {

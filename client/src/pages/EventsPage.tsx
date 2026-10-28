@@ -2,11 +2,11 @@ import EventCrew from "../components/EventCrew";
 import { PANEL } from "../components/chartTokens";
 import { CareerStatModal } from "../components/CareerStatDetails";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type Ref } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type Ref } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CancelledBout, CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { boutChange, clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankingTitle, rankLabel, roundsLabel } from "../format";
+import { boutChange, clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, lastName, outcomeClasses, rankingTitle, rankLabel, roundsLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
@@ -30,6 +30,7 @@ import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { searchList } from "../search";
 import { betFightId } from "../parlay";
+import { topSplit, type BettingCard, type CardBout } from "../bettingHub";
 
 const shell = PANEL;
 /** The source flags a tournament or TUF final the same way it flags a
@@ -523,6 +524,19 @@ const CONTROVERSY: Record<NonNullable<EventFight["controversy"]>, string> = {
 };
 
 /** A decision the fans' cards call into question. */
+/** Each bout's betting-page summary, for the top bettors' tag on its row. */
+const TopBets = createContext<Map<string, CardBout> | null>(null);
+
+/** How the top bettors split on a bout, leaning side named: "Top 4–1 Moicano". */
+function TopBettorsTag({ fight }: { fight: EventFight }) {
+  const split = topSplit(useContext(TopBets)?.get(fight.id));
+  if (!split) return null;
+  const leader = split.leader === 1 ? fight.f1 : split.leader === 2 ? fight.f2 : null;
+  return <span className="rounded bg-sky-100 px-1 py-px text-[9px] font-bold leading-3 text-sky-700" title={split.title}>
+    TOP {split.text}{leader ? ` ${lastName(leader.name)}` : ""}
+  </span>;
+}
+
 function ControversyTag({ fight }: { fight: EventFight }) {
   if (!fight.controversy) return null;
   return <span className="rounded bg-amber-100 px-1 py-px text-[9px] font-bold uppercase leading-3 text-amber-800" title={CONTROVERSY[fight.controversy]}>Controversial</span>;
@@ -584,6 +598,7 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
         </span>
       ) : null}
       <ControversyTag fight={fight} />
+      <TopBettorsTag fight={fight} />
     </div>
   );
 
@@ -695,6 +710,7 @@ function CompactFightRow({ fight, done, live, cancellation }: { fight: EventFigh
         {fight.scheduled_rounds ? <span>{roundsLabel(fight.scheduled_rounds)}</span> : null}
         {title ? <span className={`rounded px-1 py-px text-[9px] font-bold uppercase leading-3 ${title.className}`}>{title.label}</span> : null}
         <ControversyTag fight={fight} />
+        <TopBettorsTag fight={fight} />
         {cancellation ? <span className="ml-auto font-semibold text-red-700 dark:text-red-300">Cancelled</span> : null}
         {result ? <span className="ml-auto text-right" title={fight.method_details ?? result}>{result}</span> : null}
         {expected ? <span className="ml-auto tabular-nums" title="Approximate start in your time zone.">~{expected}</span> : null}
@@ -948,6 +964,8 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   const { data: event, loading, error } = useApi<EventDetail>(url,
     data => data?.refreshing ? 5_000 : isFightDay(data?.date) ? 15_000 : data?.status !== "past" ? 5 * 60_000 : 0);
   const isLive = isFightDay(event?.date);
+  const { data: betting } = useApi<BettingCard>(/^[a-f0-9]{16}$/.test(eventId) ? `/api/betting/events/${eventId}` : null, 60_000);
+  const topBets = useMemo(() => betting ? new Map(betting.bouts.map(bout => [bout.fightId, bout])) : null, [betting]);
   const eventScroll = useRouteScrollRestoration<HTMLDivElement>("event:card", Boolean(event), eventId);
   // Any card still ahead of us counts down; a finished one has nothing left
   // to count, so its clock never starts.
@@ -1125,6 +1143,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
           </div>
         </div>
       ) : (
+        <TopBets.Provider value={topBets}>
         <section className={`${shell} shrink-0 overflow-hidden`}>
           {event.fights.length === 0 ? (
             <div className="px-6 py-10 text-center text-sm text-zinc-400">{event.potential ? "No potential matchups have odds available yet." : "Fight card not announced yet."}</div>
@@ -1146,6 +1165,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
           )}
           {event.cancelled?.length ? <CancelledBouts bouts={event.cancelled} eventId={event.id} /> : null}
         </section>
+        </TopBets.Provider>
       )}
       {!event.potential && !oddsCard ? <EventCrew key={event.id} eventId={event.id} /> : null}
     </div>

@@ -39,7 +39,9 @@ export function createLeaderboards(scores: ScoringStore, predictions: Prediction
       points: board(picks, row => row.points > 0 && row.settled >= minimums.points, row => row.points, row => row.settled, row => `${row.settled} settled ${row.settled === 1 ? "pick" : "picks"}`),
       winner: board(picks, row => row.settled >= minimums.winner, row => pct(row.winners, row.settled), row => row.settled, row => `${row.winners} of ${row.settled}`),
       method: board(picks, row => row.methodCalls >= minimums.method, row => pct(row.methods, row.methodCalls), row => row.methodCalls, row => `${row.methods} of ${row.methodCalls}`),
-      bets: board(wagers, row => row.legs >= minimums.bets, row => row.net / 100, row => row.settled, row => `${row.won}–${row.settled - row.won}`),
+      // Return on what was staked, so volume alone never climbs the board.
+      bets: board(wagers, row => row.legs >= minimums.bets, row => Math.round(row.net / row.staked * 1000) / 10, row => row.net,
+        row => `${row.won}–${row.settled - row.won}`),
       minimums,
       updatedAt: now(),
     };

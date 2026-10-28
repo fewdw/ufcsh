@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useApi } from "../api";
-import { signedMoney, type LeaderboardEntry, type Leaderboards as BoardsData } from "../bets";
+import { signedPercent, type LeaderboardEntry, type Leaderboards as BoardsData } from "../bets";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 import FanAvatar from "./FanAvatar";
 
@@ -47,8 +47,8 @@ export default function Leaderboards({ handle }: { handle: string }) {
         format={entry => ({ text: `${entry.value.toLocaleString()} pts` })} />
       <Board title="Winner accuracy" subtitle={`Right winner · ${data.minimums.winner}+ settled picks`} entries={data.winner} tab="predictions" current={handle} format={pct} />
       <Board title="Method accuracy" subtitle={`Right method · ${data.minimums.method}+ method calls`} entries={data.method} tab="predictions" current={handle} format={pct} />
-      <Board title="Top bettors" subtitle={`Profit · ${data.minimums.bets}+ settled bets (per leg)`} entries={data.bets} tab="bets" current={handle}
-        format={entry => ({ text: signedMoney(entry.value), tone: entry.value > 0 ? "text-emerald-600" : entry.value < 0 ? "text-rose-600" : undefined })} />
+      <Board title="Top bettors" subtitle={`Return on stake · ${data.minimums.bets}+ settled legs`} entries={data.bets} tab="bets" current={handle}
+        format={entry => ({ text: signedPercent(entry.value), tone: entry.value > 0 ? "text-emerald-600" : entry.value < 0 ? "text-rose-600" : undefined })} />
     </div>
   );
 }
