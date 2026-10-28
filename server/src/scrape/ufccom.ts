@@ -584,8 +584,8 @@ export function parseFightIds(html: string): number[] {
  * "5 Rnd (5-5-5-5-5)" — and a bout is only kept when the two agree, so a
  * malformed or unusual rule set yields no number rather than a wrong one.
  */
-export function parseCardRounds(feed: unknown, fightIds: number[]): ScrapedBoutRounds[] {
-  const card = pageFeedCard(feed, fightIds);
+export function parseCardRounds(feed: unknown, fightIds: number[], pageEventId?: number | null): ScrapedBoutRounds[] {
+  const card = pageFeedCard(feed, fightIds, pageEventId);
   if (!card) return [];
   const bouts: ScrapedBoutRounds[] = [];
   for (const fight of card) {
@@ -601,12 +601,13 @@ export function parseCardRounds(feed: unknown, fightIds: number[]): ScrapedBoutR
   return bouts;
 }
 
-/** The feed's bouts, when the feed is this page's card: every bout the page
- * lists has to be on it. The feed can hold bouts the page has not rendered
- * yet, and those are kept — they belong to the same card. */
-function pageFeedCard(feed: unknown, fightIds: number[]): any[] | null {
+/** The page's explicit event id identifies a feed even before it renders any
+ * bouts, or while it still lists a cancelled fight. Legacy pages without that
+ * id must identify the card by every listed fight instead. */
+function pageFeedCard(feed: unknown, fightIds: number[], pageEventId?: number | null): any[] | null {
   const card = (feed as any)?.LiveEventDetail?.FightCard;
   if (!Array.isArray(card)) return null;
+  if (pageEventId != null) return Number((feed as any).LiveEventDetail.EventId) === pageEventId ? card : null;
   const onFeed = new Set(card.map((fight: any) => Number(fight?.FightId)));
   return fightIds.length && fightIds.every((id) => onFeed.has(id)) ? card : null;
 }
@@ -615,10 +616,10 @@ function pageFeedCard(feed: unknown, fightIds: number[]): any[] | null {
  * Every bout's segment, in card order, as the feed has it. The event page is
  * cached and can go days without a bout the feed already places, so this is
  * the fresher list. An incomplete bout does not withhold other bouts' explicit
- * assignments. The feed must still contain every fight id from this page.
+ * assignments. The feed must identify this page's event.
  */
-export function parseFeedSegments(feed: unknown, fightIds: number[]): ScrapedSegmentBout[] {
-  const card = pageFeedCard(feed, fightIds);
+export function parseFeedSegments(feed: unknown, fightIds: number[], pageEventId?: number | null): ScrapedSegmentBout[] {
+  const card = pageFeedCard(feed, fightIds, pageEventId);
   if (!card) return [];
   const bouts: (ScrapedSegmentBout & { order: number })[] = [];
   for (const fight of card) {
@@ -706,21 +707,39 @@ async function fetchJson(url: string): Promise<unknown> {
  * broadcasters and referees the same feed names. */
 export async function scrapeEventCard(slug: string): Promise<{
   segments: ScrapedSegmentBout[]; feedSegments: ScrapedSegmentBout[]; rounds: ScrapedBoutRounds[] | null; info: ScrapedEventInfo | null;
+  feedError?: string;
 }> {
   const html = await fetchHtml(`https://www.ufc.com/event/${slug}`, { timeoutMs: 40000 });
   const segments = parseEventSegments(html);
   const fightIds = parseFightIds(html);
-  if (!fightIds.length) return { segments, feedSegments: [], rounds: null, info: null };
+  const pageEventId = parseEventFeedId(html);
+  if (!fightIds.length && pageEventId === null) return { segments, feedSegments: [], rounds: null, info: null };
   // A listed fight can have a broken or empty feed even while its event feed
   // is complete. Use the page's event id; keep fight lookup for older pages.
-  let eventId = parseEventFeedId(html);
-  if (eventId === null) {
-    const fight = await fetchJson(`${LIVE_CARD_API}/fight/live/${fightIds[0]}.json`) as any;
-    eventId = Number(fight?.LiveFightDetail?.Event?.EventId);
-    if (!Number.isSafeInteger(eventId) || eventId < 1) throw new Error(`ufc.com fight ${fightIds[0]} named no event`);
+  try {
+    let eventId = pageEventId;
+    if (eventId === null) {
+      const fight = await fetchJson(`${LIVE_CARD_API}/fight/live/${fightIds[0]}.json`) as any;
+      eventId = Number(fight?.LiveFightDetail?.Event?.EventId);
+      if (!Number.isSafeInteger(eventId) || eventId < 1) throw new Error(`ufc.com fight ${fightIds[0]} named no event`);
+    }
+    const feed = await fetchJson(`${LIVE_CARD_API}/event/live/${eventId}.json`);
+    const info = parseEventInfo(feed);
+    if (info?.eventId !== eventId) throw new Error(`ufc.com event ${eventId} returned no matching event`);
+    const feedCard = (feed as any)?.LiveEventDetail?.FightCard;
+    // A newly announced card can genuinely have no bouts yet. That confirms
+    // no booked lengths; it is not evidence to clear any stored ones.
+    if (Array.isArray(feedCard) && !feedCard.length && !fightIds.length && !segments.length) {
+      return { segments, feedSegments: [], rounds: null, info };
+    }
+    if (!Array.isArray(feedCard) || !feedCard.length) {
+      throw new Error(`ufc.com event ${eventId} carried no fight card`);
+    }
+    return { segments, feedSegments: parseFeedSegments(feed, fightIds, pageEventId), rounds: parseCardRounds(feed, fightIds, pageEventId), info };
+  } catch (error) {
+    // A failed optional feed must not discard the event page's explicit split,
+    // or clear stored rounds/venue/officials as though the feed confirmed none.
+    if (!segments.length) throw error;
+    return { segments, feedSegments: [], rounds: null, info: null, feedError: String(error) };
   }
-  const feed = await fetchJson(`${LIVE_CARD_API}/event/live/${eventId}.json`);
-  const info = parseEventInfo(feed);
-  if (info?.eventId !== eventId) throw new Error(`ufc.com event ${eventId} returned no matching event`);
-  return { segments, feedSegments: parseFeedSegments(feed, fightIds), rounds: parseCardRounds(feed, fightIds), info };
 }

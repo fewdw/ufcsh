@@ -38,6 +38,7 @@ import {
   forgetUfcPage,
   syncEventDetail,
   syncEventSegments,
+  syncEventSchedules,
   syncFightDetail,
   syncFighterBirthDate,
   syncMethodOddsForEvent,
@@ -1331,6 +1332,24 @@ function careerStatGaps(): BugCheck {
   }, items);
 }
 
+export function upcomingCardCoverage(now = Date.now()): BugCheck {
+  const rows = db.prepare(`SELECT id, name, date, ufc_slug, segments_fetched_at FROM events
+    WHERE complete = 0 AND date >= date('now', '-2 day')
+      AND (ufc_slug IS NULL OR segments_fetched_at IS NULL OR segments_fetched_at < ?)
+    ORDER BY date`).all(now - 30 * 60_000) as
+    { id: string; name: string; date: string; ufc_slug: string | null; segments_fetched_at: number | null }[];
+  return check({
+    id: "upcoming-card-coverage", group: "Fights & events", label: "Upcoming cards missing a recent section check",
+    description: "Every announced event needs a matched UFC page and a successful card read, even when it has no bouts yet. Missing pages and reads older than 30 minutes can conceal new sections. Re-read to discover the page and refresh its card; UFC may still have no placements published.",
+    grade: ahead([[3, "must"], [14, "minor"]]),
+  }, rows.map(event => ({
+    key: event.id, title: event.name, date: event.date,
+    facts: [["ufc.com page", event.ufc_slug ?? "not matched"], ["Sections read", ago(event.segments_fetched_at)]],
+    links: [eventLink(event.id), ...(event.ufc_slug ? [{ label: "ufc.com event", href: `https://www.ufc.com/event/${event.ufc_slug}` }] : [])],
+    actions: [{ id: "segments", label: event.ufc_slug ? "Re-read ufc.com card" : "Find ufc.com card", target: event.id }],
+  })));
+}
+
 function upcomingWithoutSegment(): BugCheck {
   const rows = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, e.ufc_slug, e.segments_fetched_at
@@ -2200,6 +2219,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     untrustworthyFightStats(),
     careerStatGaps(),
     upcomingWithoutSegment(),
+    upcomingCardCoverage(),
     decisionsWithoutJudges(),
     finishesWithoutDetail(),
     cancelledBoutsUnread(),
@@ -2363,9 +2383,13 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       return { ok: true, message: `Board read: ${result.bouts} cancelled ${result.bouts === 1 ? "bout" : "bouts"}.` };
     }
     case "segments": {
+      const before = db.prepare("SELECT ufc_slug FROM events WHERE id = ?").get(target) as { ufc_slug: string | null } | undefined;
+      if (!before) return { ok: false, message: "Event not found." };
+      if (!before.ufc_slug) await syncEventSchedules();
       await syncEventSegments(target);
       const row = db.prepare("SELECT ufc_slug FROM events WHERE id = ?").get(target) as { ufc_slug: string | null } | undefined;
-      return { ok: true, message: row?.ufc_slug ? "ufc.com card re-read." : "That page was another event's; forgotten. The archive offers this card its own page on its next pass." };
+      return row?.ufc_slug ? { ok: true, message: "ufc.com card re-read." }
+        : { ok: false, message: "No matching UFC page was found. Page discovery will retry on the next schedule pass." };
     }
     case "forget-ufc":
       forgetUfcPage(target);

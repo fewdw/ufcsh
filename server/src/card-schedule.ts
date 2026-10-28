@@ -3,6 +3,16 @@ import { firstLastName } from "./util.ts";
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
+export const CARD_REFRESH_INTERVAL = 10 * 60_000;
+
+/** Every due upcoming card, nearest first. Archive work must not consume this
+ * budget, and an announcement beyond the first 25 cards still gets checked. */
+export function upcomingSegmentTargets<T extends { date: string; complete: number; segments_fetched_at: number | null }>(events: T[], now: number): T[] {
+  const oldest = new Date(now - 2 * DAY).toISOString().slice(0, 10);
+  return events.filter(event => !event.complete && event.date >= oldest
+    && (event.segments_fetched_at == null || now - event.segments_fetched_at >= CARD_REFRESH_INTERVAL))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
 
 const startOfDay = (at: number) => Math.floor(at / DAY) * DAY;
 
@@ -34,6 +44,7 @@ export function matchEventSchedule(
   if (!Number.isFinite(eventDay)) return null;
   const wanted = nameTokens(event.name);
   let best: { schedule: ScrapedEventSchedule; score: number; distance: number } | null = null;
+  let ambiguous = false;
   for (const schedule of schedules) {
     const start = schedule.earlyPrelimsAt ?? schedule.prelimsAt ?? schedule.mainCardAt;
     if (start == null) continue;
@@ -44,13 +55,19 @@ export function matchEventSchedule(
     );
     if (distance > DAY) continue;
     const score = overlap(wanted, nameTokens(schedule.headline));
+    const number = /\bUFC\s+(\d+)\b/i.exec(event.name)?.[1];
+    const sourceNumber = /(?:^|-)ufc-(\d+)(?:-|$)/i.exec(schedule.slug)?.[1];
+    if (number && sourceNumber && number !== sourceNumber) continue;
     // Two cards can share a day; nothing but the names can separate them.
     if (!score && distance > 0) continue;
     if (!best || score > best.score || (score === best.score && distance < best.distance)) {
       best = { schedule, score, distance };
+      ambiguous = false;
+    } else if (score === best.score && distance === best.distance && schedule.slug !== best.schedule.slug) {
+      ambiguous = true;
     }
   }
-  return best?.schedule ?? null;
+  return !ambiguous ? best?.schedule ?? null : null;
 }
 
 const pairKey = (f1: string, f2: string) => [firstLastName(f1), firstLastName(f2)].sort().join("|");

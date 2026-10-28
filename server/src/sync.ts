@@ -16,7 +16,7 @@ import {
   type ScrapedEventDetail,
 } from "./scrape/ufcstats.ts";
 import { scrapeAthleteDirectoryPage, scrapeEventCard, scrapeEventSchedules, scrapeFighterImages, scrapeRankings } from "./scrape/ufccom.ts";
-import { assignPerBout, assignPositions, assignRounds, assignSegments, cardOrder, matchEventSchedule, sharesBout } from "./card-schedule.ts";
+import { assignPerBout, assignPositions, assignRounds, assignSegments, cardOrder, CARD_REFRESH_INTERVAL as CARD_INTERVAL, matchEventSchedule, sharesBout, upcomingSegmentTargets } from "./card-schedule.ts";
 import {
   alignScrapedOdds,
   findOddsEventPages,
@@ -49,7 +49,6 @@ import { boutLines, boutProps, fightOddsBoard, fightOddsEvents, fightOddsOpeners
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
-const CARD_INTERVAL = 10 * 60_000;
 
 // ---------------------------------------------------------------------------
 // events list
@@ -318,12 +317,17 @@ export async function syncEventSegments(eventId: string): Promise<void> {
   const event = db.prepare("SELECT ufc_slug, location FROM events WHERE id = ?").get(eventId) as { ufc_slug: string | null; location: string } | undefined;
   if (!event?.ufc_slug) return;
   const card = await scrapeEventCard(event.ufc_slug);
+  const feedJob = `card_feed ${event.ufc_slug}`;
+  if (card.feedError) {
+    if (outageReport(feedJob, card.feedError)) recordSyncError(feedJob, card.feedError);
+    log(`card feed unavailable for ${event.ufc_slug}; using its event page: ${card.feedError}`);
+  } else if (card.info) outageReport(feedJob, null, Date.now(), true);
   const fights = db.prepare("SELECT id, ord, f1_name, f2_name FROM fights WHERE event_id = ?")
     .all(eventId) as { id: string; ord: number; f1_name: string; f2_name: string }[];
   // The archive index has paired pages with the wrong dates before. A page
   // whose card shares no bout with ours is another event's: forget it and
   // everything read from it, so the next archive pass offers the right one.
-  if (fights.length && card.segments.length && !sharesBout(fights, card.segments)) {
+  if (fights.length && card.segments.length && !sharesBout(fights, card.segments) && !sharesBout(fights, card.feedSegments)) {
     forgetUfcPage(eventId);
     log(`card segments: ${event.ufc_slug} is another event's page; forgotten`);
     return;
@@ -371,8 +375,23 @@ export async function syncEventSegments(eventId: string): Promise<void> {
     const setReferee = db.prepare("UPDATE fights SET referee_assigned = ? WHERE id = ?");
     for (const fight of fights) setReferee.run(referees.get(fight.id) ?? null, fight.id);
   }
-  db.prepare("UPDATE events SET segments_fetched_at = ?, venue_checked_at = ? WHERE id = ?").run(Date.now(), Date.now(), eventId);
+  // A page read can succeed while its optional feed fails. Keep the feed's
+  // previous check time so archive metadata backfill can still retry it.
+  db.prepare(`UPDATE events SET segments_fetched_at = ?,
+    venue_checked_at = CASE WHEN ? THEN venue_checked_at ELSE ? END WHERE id = ?`)
+    .run(Date.now(), card.feedError ? 1 : 0, Date.now(), eventId);
   log(`card segments synced for ${event.ufc_slug} (${segments.size}/${fights.length} bouts placed, ${booked} with booked rounds${card.info?.venue ? `, ${card.info.venue}` : ""})`);
+}
+
+/** Upcoming cards are independent of the archive budget and run before slow
+ * roster/archive backfills. Re-read after detail imports invalidate a booking. */
+export async function syncUpcomingCardSections(now = Date.now()): Promise<void> {
+  const events = db.prepare(`SELECT id, name, date, complete, segments_fetched_at FROM events
+    WHERE complete = 0 AND ufc_slug IS NOT NULL`).all() as
+    { id: string; name: string; date: string; complete: number; segments_fetched_at: number | null }[];
+  for (const event of upcomingSegmentTargets(events, now)) {
+    await guarded(`card_segments ${event.name}`, () => syncEventSegments(event.id));
+  }
 }
 
 export function forgetUfcPage(eventId: string): void {
@@ -1861,13 +1880,21 @@ export async function tick(): Promise<void> {
     // 1. Events list: every 10 minutes, so a new card appears almost at once.
     if (metaAgeMs("events_list_synced_at") > CARD_INTERVAL) await guarded("events_list", syncEventsList);
 
-    // 1b. Card schedules: one page for every announced card. Hourly is enough
-    //     for a time that rarely moves, but a card being fought re-checks
-    //     often — a delayed broadcast moves the segments that are left.
-    const liveToday = db.prepare("SELECT COUNT(*) AS c FROM events WHERE complete = 0 AND date >= date('now', '-1 day') AND date <= date('now')").get() as { c: number };
-    if (metaAgeMs("event_schedules_synced_at") > (liveToday.c ? 10 * 60_000 : HOUR)) {
+    // 1b. Discover newly announced pages as often as their card sections.
+    if (metaAgeMs("event_schedules_synced_at") >= CARD_INTERVAL) {
       await guarded("event_schedules", syncEventSchedules);
     }
+
+    const events = db.prepare("SELECT id, name, date, complete, detail_fetched_at FROM events ORDER BY date DESC").all() as EventRow[];
+    const now = Date.now();
+    // Upcoming bookings and sections take priority over daily backfills.
+    const upcoming = events.filter((e) => e.date > today).sort((a, b) => a.date.localeCompare(b.date));
+    for (const e of upcoming) {
+      if (!e.detail_fetched_at || now - e.detail_fetched_at >= CARD_INTERVAL) {
+        await guarded(`upcoming_event ${e.name}`, () => syncEventDetail(e.id));
+      }
+    }
+    await syncUpcomingCardSections(Date.now());
 
     // 2. Roster: daily, or right after an event completes.
     if (metaAgeMs("roster_synced_at") > DAY || getMeta("roster_stale") === "1") {
@@ -1885,34 +1912,16 @@ export async function tick(): Promise<void> {
     if (metaAgeMs("news_checked_at") > 10 * 60_000) await guarded("news", () => syncNews());
     await guarded("ufc_statuses", () => syncUfcStatuses());
 
-    const events = db.prepare("SELECT id, name, date, complete, detail_fetched_at FROM events ORDER BY date DESC").all() as EventRow[];
-    const now = Date.now();
-
-    // 4. Upcoming events: every card every 10 minutes. Bouts are added and
-    //    changed weeks out, and a dozen pages is nothing for the source.
-    const upcoming = events.filter((e) => e.date > today).sort((a, b) => a.date.localeCompare(b.date));
-    for (const e of upcoming) {
-      if (!e.detail_fetched_at || now - e.detail_fetched_at > CARD_INTERVAL) {
-        await guarded(`upcoming_event ${e.name}`, () => syncEventDetail(e.id));
-      }
-    }
-
-    // 4b. Which bouts sit on which segment of a card. An announced card is
-    //     reshuffled weeks ahead: re-read all upcoming cards every 10
-    //     minutes; a card already fought is read
-    //     once and never again, which is what fills the archive in behind us.
+    // 4. Archive discovery and placement follow upcoming cards. A completed
+    //    card is read once, in bounded batches; it cannot block a future card.
     if (getMeta("schedule_archive_done") !== "1" && metaAgeMs("schedule_archive_at") > 60_000) {
       await guarded("schedule_archive", syncScheduleArchive);
       touchMeta("schedule_archive_at");
     }
     const segmentTargets = db.prepare(`SELECT id, name, date, complete, segments_fetched_at FROM events
-      WHERE ufc_slug IS NOT NULL AND (segments_fetched_at IS NULL OR complete = 0)
-      ORDER BY complete ASC, date DESC`).all() as { id: string; name: string; date: string; complete: number; segments_fetched_at: number | null }[];
-    const dueSegments = segmentTargets.filter(e => !e.segments_fetched_at || (!e.complete && now - e.segments_fetched_at > CARD_INTERVAL));
-    // Due cards only consume the budget. Later announcements cannot starve
-    // tonight's card, and already-fetched cards cannot block archive backfill.
-    dueSegments.sort((a, b) => a.complete - b.complete || (a.complete ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date)));
-    for (const e of dueSegments.slice(0, 25)) {
+      WHERE ufc_slug IS NOT NULL AND segments_fetched_at IS NULL AND complete = 1
+      ORDER BY date DESC LIMIT 25`).all() as { id: string; name: string }[];
+    for (const e of segmentTargets) {
       await guarded(`card_segments ${e.name}`, () => syncEventSegments(e.id));
     }
 
