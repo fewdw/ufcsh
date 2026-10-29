@@ -58,7 +58,7 @@ const InfoPage = page(pages.info, module => module.default);
 const RosterPage = page(pages.roster, module => module.default);
 const NewsPage = page(pages.news, module => module.default);
 
-const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
+const NAV_ITEM = "px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
 /** Admin, just before More, as a shield: listed only for the few who have it. */
 function AdminLink({ active }: { active: boolean }) {
@@ -178,7 +178,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
         </Link>
         {/* The shared pill group, tightened on a phone so the row still fits a
             320px screen with nothing clipped and nothing dropped. */}
-        <nav className="flex shrink-0 items-center gap-0.5 rounded-full bg-zinc-100 p-0.5 sm:gap-1 sm:p-1">
+        <nav className="flex shrink-0 items-stretch bg-zinc-100">
           {links.map((link) => (
             <Link
               key={link.href}

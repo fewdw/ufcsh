@@ -99,7 +99,7 @@ export default function AdminAdmins({ email }: { email: string | null }) {
                   Remove
                 </button>
               ) : (
-                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-500">Permanent</span>
+                <span className="bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-500">Permanent</span>
               )}
             </li>
           ))}

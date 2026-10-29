@@ -22,7 +22,7 @@ type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 
 const primary = BUTTON_PRIMARY;
 const quiet = BUTTON_QUIET;
-const action = "inline-flex h-7 items-center gap-1 rounded-full px-2 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
+const action = "inline-flex h-7 items-center gap-1 px-2 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
 /** The writing box, and its signed-out and muted stand-ins. */
 const box = "min-w-0 rounded-2xl border border-zinc-200 bg-white transition-colors focus-within:border-zinc-400";
 const SORTS: { id: CommentSort; label: string }[] = [{ id: "top", label: "Top" }, { id: "new", label: "New" }, { id: "old", label: "Old" }];
@@ -265,7 +265,7 @@ function DiscussionPanel({ fightId, viewerKey, getToken, signedIn, signIn }: {
           {/* A permalink shows one thread; this goes back to the rest. */}
           {focus ? (
             <button type="button" onClick={showAll}
-              className="rounded-full px-2.5 py-1 text-xs font-semibold text-zinc-800 transition-colors hover:bg-zinc-100">
+              className="px-2.5 py-1 text-xs font-semibold text-zinc-800 transition-colors hover:bg-zinc-100">
               Show all threads
             </button>
           ) : null}
@@ -292,7 +292,7 @@ function DiscussionPanel({ fightId, viewerKey, getToken, signedIn, signIn }: {
       </section>
 
       {notice ? (
-        <div role="status" className="fixed inset-x-0 bottom-5 z-50 mx-auto w-fit max-w-[calc(100%-2rem)] rounded-full bg-zinc-900 px-4 py-2 text-xs font-medium text-white shadow-lg">
+        <div role="status" className="fixed inset-x-0 bottom-5 z-50 mx-auto w-fit max-w-[calc(100%-2rem)] bg-zinc-900 px-4 py-2 text-xs font-medium text-white shadow-lg">
           {notice}
         </div>
       ) : null}
@@ -309,7 +309,7 @@ function SortMenu({ sort, onChange }: { sort: CommentSort; onChange: (sort: Comm
     <label className="relative inline-flex shrink-0 items-center gap-1 text-xs text-zinc-500">
       Sort by:
       <select value={sort} onChange={event => onChange(event.target.value as CommentSort)}
-        className="cursor-pointer appearance-none rounded-full bg-transparent py-1 pl-1.5 pr-6 text-xs font-semibold text-zinc-800 outline-none transition-colors hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-zinc-300">
+        className="cursor-pointer appearance-none bg-transparent py-1 pl-1.5 pr-6 text-xs font-semibold text-zinc-800 outline-none transition-colors hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-zinc-300">
         {SORTS.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
       </select>
       <ChevronDown className="pointer-events-none absolute right-1.5 h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
@@ -416,7 +416,7 @@ function PickTag({ pick }: { pick: CommentPick }) {
   const said = `Predicted ${pick.fighter}${pick.method ? ` by ${PICK_METHOD_WORDS[pick.method]}` : ""}${pick.round ? ` in round ${pick.round}` : ""}`;
   return (
     <span title={said} aria-label={said}
-      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-px text-[10px] font-semibold leading-4 tracking-wide ring-1 ring-inset ${pick.corner === 1 ? "bg-f1-soft text-f1-ink ring-f1/25" : "bg-f2-soft text-f2-ink ring-f2/25"}`}>
+      className={`inline-flex shrink-0 items-center whitespace-nowrap px-2 py-px text-[10px] font-semibold leading-4 tracking-wide ring-1 ring-inset ${pick.corner === 1 ? "bg-f1-soft text-f1-ink ring-f1/25" : "bg-f2-soft text-f2-ink ring-f2/25"}`}>
       {pickLabel(pick)}
     </span>
   );
@@ -427,7 +427,7 @@ function Votes({ node }: { node: CommentNode }) {
   const disabled = node.mine || node.state !== "visible" || Boolean(discussion.viewer?.mutedUntil);
   const title = node.mine ? "You can’t vote on your own comment" : undefined;
   return (
-    <div className="flex items-center rounded-full bg-zinc-50" title={title}>
+    <div className="flex items-center bg-zinc-50" title={title}>
       <button type="button" aria-label="Upvote" aria-pressed={node.myVote === 1} disabled={disabled}
         onClick={() => discussion.vote(node, node.myVote === 1 ? 0 : 1)}
         className={`grid h-7 w-7 place-items-center rounded-full transition-colors hover:bg-zinc-100 disabled:hover:bg-transparent ${node.myVote === 1 ? "text-orange-700" : "text-zinc-400"}`}>

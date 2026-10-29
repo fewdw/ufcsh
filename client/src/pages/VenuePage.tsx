@@ -175,7 +175,7 @@ function PlacePage({ kind }: { kind: "venue" | "location" }) {
       subtitle={venue?.location_slug && place
         ? <Link to={`/locations/${venue.location_slug}`} title={`${place}: every card held here`} className="transition hover:text-zinc-900 dark:hover:text-zinc-100">{place} <span aria-hidden="true">↗</span></Link>
         : place || (venue ? "Location not recorded" : null)}
-      badge={venue?.former_names.length ? <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-600">Formerly {venue.former_names.join(", ")}</span> : null}
+      badge={venue?.former_names.length ? <span className="bg-zinc-100 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-600">Formerly {venue.former_names.join(", ")}</span> : null}
       facts={[
         ["Events", s.events.toLocaleString()],
         ["Bouts", s.fights.toLocaleString()],

@@ -271,7 +271,7 @@ function PolymarketView({
           <PolymarketLogo />
           <h2 className="text-sm font-semibold">Polymarket</h2>
           {data.fight.state === "live" && q ? (
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+            <span className="bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
               {data.stream ? "Streaming" : "Live · polling"}
             </span>
           ) : null}
@@ -380,7 +380,7 @@ export function MarketTeaser({ fightId }: { fightId: string }) {
     <Link
       to={`/fights/${fightId}?tab=odds`}
       aria-label={`Polymarket: ${row.fight.f1.name} ${marketPct(q.p)}, ${row.fight.f2.name} ${marketPct(1 - q.p)}`}
-      className="matchup-polymarket inline-flex w-fit max-w-full flex-nowrap items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-200 px-2 py-1.5 text-[11px] text-zinc-500 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+      className="matchup-polymarket inline-flex w-fit max-w-full flex-nowrap items-center justify-center gap-1.5 whitespace-nowrap border border-zinc-200 px-2 py-1.5 text-[11px] text-zinc-500 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
     >
       <PolymarketLogo />
       <span className="font-semibold tabular-nums text-blue-700 dark:text-blue-400">

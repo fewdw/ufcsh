@@ -386,7 +386,7 @@ function DivisionCard({
         <h3 className="truncate text-sm font-semibold text-zinc-900">{division.division}</h3>
         {borrowed ? (
           <span
-            className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200"
+            className="shrink-0 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200"
             title={division.division.includes("Pound-for-Pound")
               ? "The meta view publishes no pound-for-pound list, so this one is the media list."
               : "Media rankings are used before the first Meta list."}
@@ -396,7 +396,7 @@ function DivisionCard({
         ) : null}
         {division.as_of ? <span className="shrink-0 text-[10px] text-zinc-500" title="Published list date">{formatDateShortWithYear(division.as_of)}</span> : null}
         {!division.as_of && division.weight_limit ? (
-          <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
+          <span className="shrink-0 bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
             {division.weight_limit}
           </span>
         ) : null}
@@ -688,7 +688,7 @@ export default function RankingsPage() {
         <div className={`${shell} mb-2 flex flex-wrap items-center gap-2 px-2.5 py-2.5 sm:mb-3 sm:px-3 sm:py-3 lg:gap-3`}>
           <div className="flex min-w-0 flex-1 items-center gap-3 lg:contents">
             <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto overscroll-x-contain py-1.5 [scrollbar-width:none] lg:contents" aria-label="Ranking tabs">
-              <div className={`${segmentedGroup} shrink-0 p-1`} role="group" aria-label="Ranking view">
+              <div className={`${segmentedGroup} shrink-0`} role="group" aria-label="Ranking view">
                 {SOURCES.map((source) => (
                   <button
                     key={source.key}
@@ -696,7 +696,7 @@ export default function RankingsPage() {
                     aria-pressed={settings.rankingSource === source.key}
                     onClick={() => { setHighlightedId(null); update("rankingSource", source.key); }}
                     title={source.help}
-                    className={`rounded-full px-2 py-1 text-xs font-medium transition sm:px-3 lg:px-3.5 ${
+                    className={`px-2 py-1 text-xs font-medium transition sm:px-3 lg:px-3.5 ${
                       settings.rankingSource === source.key ? segmentedSelected : segmentedIdle
                     }`}
                   >
@@ -704,14 +704,14 @@ export default function RankingsPage() {
                   </button>
                 ))}
               </div>
-              <div className={`${segmentedGroup} ml-auto shrink-0 p-1 lg:order-1`} role="group" aria-label="Divisions shown">
+              <div className={`${segmentedGroup} ml-auto shrink-0 lg:order-1`} role="group" aria-label="Divisions shown">
                 {FILTERS.map((f) => (
                   <button
                     key={f.key}
                     type="button"
                     aria-pressed={view === f.key}
                     onClick={() => { setHighlightedId(null); setView(f.key); }}
-                    className={`rounded-full px-1.5 py-1 text-xs font-medium transition min-[375px]:px-2 sm:px-3 lg:px-3.5 ${
+                    className={`px-1.5 py-1 text-xs font-medium transition min-[375px]:px-2 sm:px-3 lg:px-3.5 ${
                       view === f.key ? segmentedSelected : segmentedIdle
                     }`}
                   >

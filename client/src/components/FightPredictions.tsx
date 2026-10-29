@@ -184,7 +184,7 @@ function PredictionGate(props: EditorProps) {
 /** The one place the open/closed state is stated. */
 function PredictionHeading({ open }: { open: boolean }) {
   return <PanelHeading title="Your prediction" divider={false} aside={
-    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${open ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"}`}>
+    <span className={`px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${open ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"}`}>
       {open ? "Open" : "Closed"}
     </span>
   } />;

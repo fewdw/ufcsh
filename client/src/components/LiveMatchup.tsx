@@ -11,7 +11,7 @@ const NEXT_WINDOW_MS = 12 * 3_600_000;
 /** Before the card begins, the opener is "next" only this close to its start. */
 const OPENER_NEXT_MS = 10 * 60_000;
 
-const PILL = "flex max-w-full items-center gap-2 rounded-full border border-zinc-200 bg-white py-1 pl-2.5 pr-3 transition-colors hover:border-zinc-300 hover:bg-zinc-50";
+const PILL = "flex max-w-full items-center gap-2 border border-zinc-200 bg-white py-1 pl-2.5 pr-3 transition-colors hover:border-zinc-300 hover:bg-zinc-50";
 
 /** The bout on now while a card runs, nothing otherwise — with Polymarket's
  *  price for each side, and for a few minutes after a bout ends, its result.

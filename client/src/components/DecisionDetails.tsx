@@ -50,7 +50,7 @@ function DecisionsDialog({ id, sides, selected, select, before, close }: {
       </div>
       {sides.length > 1 ? <div role="group" aria-label="Fighter" className={`${segmentedGroup} mt-3 h-10`}>
         {sides.map((option, index) => <button key={index} type="button" aria-pressed={selected === index} onClick={() => select(index)}
-          className={`min-h-8 min-w-0 flex-1 truncate rounded-full px-2 py-1.5 text-xs font-medium focus-visible:outline-2 focus-visible:outline-zinc-900 ${selected === index ? segmentedSelected : segmentedIdle}`}>{option.name}</button>)}
+          className={`min-h-8 min-w-0 flex-1 truncate px-2 py-1.5 text-xs font-medium focus-visible:outline-2 focus-visible:outline-zinc-900 ${selected === index ? segmentedSelected : segmentedIdle}`}>{option.name}</button>)}
       </div> : null}
     </div>
     <div data-sheet-scroll className="min-h-0 flex-1 overflow-auto overscroll-y-none px-4 pb-4 sm:px-5">
@@ -62,7 +62,7 @@ function DecisionsDialog({ id, sides, selected, select, before, close }: {
             <span className={sectionLabel}>{group.rounds} rounds</span>
             <span className="text-[11px] text-zinc-400">{group.fights} {group.fights === 1 ? "fight" : "fights"}</span>
           </span>
-          <span className="flex items-baseline gap-2 rounded-full bg-zinc-100 px-3 py-1 text-xs">
+          <span className="flex items-baseline gap-2 bg-zinc-100 px-3 py-1 text-xs">
             <span className="text-[11px] text-zinc-500">Average</span>
             <Card score={[group.own, group.opponent]} digits={1} />
             <span className="text-[11px] font-semibold tabular-nums text-zinc-700">{margin < 0 ? "−" : "+"}{Math.abs(margin).toFixed(1)}</span>

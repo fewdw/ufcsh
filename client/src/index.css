@@ -11,6 +11,19 @@
    its legend. `deep` is the darker shade a bar fills with to mark the part of
    a total that was significant. */
 @theme {
+  /* Flat panels: every box, field and tag is square-cornered. Only true
+     circles (portraits, result dots, switches) and chart marks stay round;
+     they use rounded-full or an exact radius. */
+  --radius: 0;
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
+
   --color-f1: #3b82f6;
   --color-f1-ink: #1e40af;
   --color-f1-soft: #dbeafe;
@@ -72,6 +85,17 @@
   --color-round-3: #3b82f6;
   --color-round-4: #2563eb;
   --color-round-5: #1d4ed8;
+}
+
+/* Flat panels laid edge to edge: no gap, and each one overlaps the one
+   before it by a hairline, so two borders meet as one line. */
+@utility flush-y {
+  gap: 0;
+  & > * + * { margin-top: -1px; margin-left: 0; }
+}
+@utility flush-x {
+  gap: 0;
+  & > * + * { margin-left: -1px; margin-top: 0; }
 }
 
 html,

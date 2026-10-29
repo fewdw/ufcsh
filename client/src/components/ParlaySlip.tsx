@@ -62,10 +62,10 @@ export default function ParlaySlip() {
   const { settings } = useSettings();
   const [stakeText, setStakeText] = useState(() => String(stake));
   if (!legs.length && placed) return createPortal(
-    <div className="fixed bottom-4 right-4 z-[90] flex items-center gap-2 rounded-full border border-zinc-200 bg-white py-1.5 pl-4 pr-1.5 text-sm shadow-2xl" role="status">
+    <div className="fixed bottom-4 right-4 z-[90] flex items-center gap-2 border border-zinc-200 bg-white py-1.5 pl-4 pr-1.5 text-sm shadow-2xl" role="status">
       <Check className="h-4 w-4 text-emerald-600" aria-hidden="true" />
       <span className="font-semibold text-zinc-900">Added to your profile</span>
-      <Link to="/profiles/me?tab=bets" onClick={() => markPlaced(false)} className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-semibold text-zinc-900 hover:bg-zinc-200">View</Link>
+      <Link to="/profiles/me?tab=bets" onClick={() => markPlaced(false)} className="bg-zinc-100 px-2.5 py-0.5 text-xs font-semibold text-zinc-900 hover:bg-zinc-200">View</Link>
       <button type="button" onClick={() => markPlaced(false)} aria-label="Dismiss" className="grid h-7 w-7 place-items-center rounded-full text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900">
         <X className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
@@ -157,11 +157,11 @@ export default function ParlaySlip() {
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-1 rounded-full border border-zinc-200 bg-white py-1.5 pl-4 pr-1.5 shadow-2xl transition hover:border-zinc-300 hover:shadow-[0_20px_40px_-16px_rgb(0_0_0/0.35)]">
+        <div className="flex items-center gap-1 border border-zinc-200 bg-white py-1.5 pl-4 pr-1.5 shadow-2xl transition hover:border-zinc-300 hover:shadow-[0_20px_40px_-16px_rgb(0_0_0/0.35)]">
           <button type="button" onClick={() => setOpen(true)} className="flex items-center gap-2 py-0.5 pr-2 text-sm font-semibold text-zinc-900">
             <Ticket className="h-4 w-4 text-zinc-400" aria-hidden="true" />
             <span>Parlay · {legs.length} {legs.length === 1 ? "leg" : "legs"}</span>
-            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-bold tabular-nums text-zinc-900">{combinedPrice}</span>
+            <span className="bg-zinc-100 px-2 py-0.5 text-xs font-bold tabular-nums text-zinc-900">{combinedPrice}</span>
           </button>
           <span className="h-5 w-px shrink-0 bg-zinc-200" aria-hidden="true" />
           <button type="button" onClick={clear} aria-label="Clear parlay" title="Clear parlay" className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-900">

@@ -299,7 +299,7 @@ export function FailingUrlRow({ row, now }: { row: FailingUrl; now: number }) {
         {sameSite(row.path)
           ? <a href={row.path} target="_blank" rel="noreferrer" className="min-w-0 break-all font-mono text-[11px] text-zinc-900 hover:underline">{row.path}</a>
           : <span className="min-w-0 break-all font-mono text-[11px] text-zinc-900">{row.path}</span>}
-        {row.fromSite ? <span className="rounded-full bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700">linked from the site</span> : null}
+        {row.fromSite ? <span className="bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700">linked from the site</span> : null}
       </p>
       <p className="mt-0.5 text-zinc-500">
         <b className="font-semibold text-zinc-700">{whole(row.count)}×</b> · last {relativeAge(row.lastAt, now)}

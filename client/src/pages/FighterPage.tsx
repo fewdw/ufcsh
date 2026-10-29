@@ -679,7 +679,7 @@ function CancelledSwitch({ count, on, onChange }: { count: number; on: boolean; 
   return (
     <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)}
       title={`${on ? "Hide" : "Show"} ${count} cancelled or moved ${count === 1 ? "booking" : "bookings"}`}
-      className="-my-1 flex items-center gap-2 rounded-full py-1 pl-2.5 pr-1.5 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-800">
+      className="-my-1 flex items-center gap-2 py-1 pl-2.5 pr-1.5 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-800">
       <span>Cancelled <span className="tabular-nums text-zinc-400">{count}</span></span>
       <span aria-hidden="true" className={`relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors ${on ? "bg-sky-500" : "bg-zinc-300"}`}>
         <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${on ? "translate-x-3.5" : "translate-x-0.5"}`} />
@@ -963,7 +963,7 @@ export default function FighterPage() {
                       until then the pro record has no wheel, so it stays here. */}
                   {fighter.record_verified ? null : <span className="font-semibold tabular-nums text-zinc-900" title="Professional record"><span className="text-[10px] font-bold text-zinc-400">PRO</span> {fighter.record}</span>}
                   {fighter.ranking ? (
-                    <span title="Current ranking from the source chosen on the Rankings page" className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${fighter.ranking.rank === "C" ? "bg-amber-100 text-belt" : fighter.ranking.rank === "IC" ? "bg-slate-100 text-belt-interim" : "bg-zinc-100 text-zinc-600"}`}>
+                    <span title="Current ranking from the source chosen on the Rankings page" className={`px-2.5 py-0.5 text-[11px] font-bold ${fighter.ranking.rank === "C" ? "bg-amber-100 text-belt" : fighter.ranking.rank === "IC" ? "bg-slate-100 text-belt-interim" : "bg-zinc-100 text-zinc-600"}`}>
                       {fighter.ranking.rank === "C" ? "Champion" : fighter.ranking.rank === "IC" ? "Interim champion" : `#${fighter.ranking.rank}`} · {fighter.ranking.division}
                     </span>
                   ) : null}

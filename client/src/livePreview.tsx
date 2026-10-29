@@ -119,7 +119,7 @@ function useMovingPrice(s: PreviewSettings) {
 }
 
 const SCENES: [Scene, string][] = [["next", "Next"], ["live", "Live"], ["none", "No market"], ["final", "Result"]];
-const chip = (on: boolean) => `rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${on ? "bg-zinc-100 text-zinc-900" : "text-zinc-400 hover:text-zinc-100"}`;
+const chip = (on: boolean) => `px-2 py-0.5 text-[11px] font-medium transition-colors ${on ? "bg-zinc-100 text-zinc-900" : "text-zinc-400 hover:text-zinc-100"}`;
 
 /** The panel pinned bottom left while the preview is on. */
 export function LivePreviewPanel() {

@@ -57,7 +57,7 @@ export default function AdminErrors() {
         {sync.failingLastDay.length ? (
           <div className="flex flex-wrap gap-1.5">
             {sync.failingLastDay.map(job => (
-              <span key={job.kind} className="rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-700" title={`last ${stamp(job.lastAt)}`}>
+              <span key={job.kind} className="border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-700" title={`last ${stamp(job.lastAt)}`}>
                 <b className="font-semibold text-zinc-900">{job.kind}</b> · {whole(job.count)}
               </span>
             ))}

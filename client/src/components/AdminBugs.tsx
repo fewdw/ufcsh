@@ -390,7 +390,7 @@ export default function AdminBugs() {
               aria-pressed={level === entry.id}
               onClick={() => setParam("level", level === entry.id ? null : entry.id)}
               title={entry.hint}
-              className={`flex min-w-0 flex-col items-center gap-0.5 rounded-xl border px-1 py-1.5 text-xs tabular-nums transition sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-2.5 sm:py-1 ${
+              className={`flex min-w-0 flex-col items-center gap-0.5 rounded-xl border px-1 py-1.5 text-xs tabular-nums transition sm:flex-row sm:gap-1.5 sm:px-2.5 sm:py-1 ${
                 level === entry.id
                   ? "border-zinc-900 bg-zinc-900 text-white"
                   : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50"

@@ -7,7 +7,7 @@
  * primary button turns light instead of disappearing into the panel.
  */
 
-const BUTTON = "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full text-xs font-semibold transition-colors disabled:pointer-events-none disabled:opacity-40";
+const BUTTON = "inline-flex items-center justify-center gap-1.5 whitespace-nowrap text-xs font-semibold transition-colors disabled:pointer-events-none disabled:opacity-40";
 
 /** The one action a panel is for: save, post, submit. */
 export const BUTTON_PRIMARY = `ui-primary ${BUTTON} bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-700`;
@@ -29,7 +29,7 @@ export const CLOSE_BUTTON = "grid h-9 w-9 shrink-0 place-items-center rounded-fu
 export const CLOSE_ICON = "h-[18px] w-[18px]";
 /** How a bout ended, in a small coloured pill: "KO/TKO R1/3 3:12". */
 export const RESULT_PILL =
-  "inline-flex shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
+  "inline-flex shrink-0 px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
 
 /** A dialog's or sheet's own title. */
 export const DIALOG_TITLE = "text-base font-semibold text-zinc-900";

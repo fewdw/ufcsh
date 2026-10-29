@@ -125,7 +125,7 @@ export function RoundByRound({ cards, fans, numbers, stats, names }: {
   );
   return (
     <details className={`group/rounds mt-1 ${ROW_CONTROL}`}>
-      <summary className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50 [&::-webkit-details-marker]:hidden">
+      <summary className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1 px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50 [&::-webkit-details-marker]:hidden">
         Round by Round
         <ChevronDown className="h-3.5 w-3.5 transition-transform group-open/rounds:rotate-180" aria-hidden="true" />
       </summary>

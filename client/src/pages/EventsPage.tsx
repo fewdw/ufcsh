@@ -47,7 +47,7 @@ function beltTag(fight: EventFight) {
   return fight.title_type === "interim" ? TITLE_TAG.interim
     : fight.title_type === "title" ? TITLE_TAG.title : null;
 }
-const METHOD_TAG = "shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
+const METHOD_TAG = "shrink-0 px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
 const MONTHS = [
   "January",
   "February",
@@ -89,14 +89,14 @@ const DOCK = {
   // A phone's sheet is two panels, the search and filters over the list;
   // docked beside the card they join into one panel.
   // `docked` is the breakpoint below as a media query (Tailwind's md and xl).
-  card: { docked: "(min-width: 48rem)", sidebar: "md:flex md:w-72 md:shrink-0 md:flex-none lg:w-80", toggle: "md:hidden", main: "md:block", row: "md:flex-row",
-    aside: "gap-2 md:gap-0 md:rounded-2xl md:border md:border-zinc-200 md:shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
-    head: "md:rounded-none md:border-x-0 md:border-t-0 md:shadow-none",
-    list: "md:rounded-none md:border-0 md:shadow-none" },
-  matchup: { docked: "(min-width: 80rem)", sidebar: "xl:flex xl:w-80 xl:shrink-0 xl:flex-none", toggle: "xl:hidden", main: "xl:block", row: "xl:flex-row",
-    aside: "gap-2 xl:gap-0 xl:rounded-2xl xl:border xl:border-zinc-200 xl:shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
-    head: "xl:rounded-none xl:border-x-0 xl:border-t-0 xl:shadow-none",
-    list: "xl:rounded-none xl:border-0 xl:shadow-none" },
+  card: { docked: "(min-width: 48rem)", sidebar: "md:flex md:w-72 md:shrink-0 md:flex-none lg:w-80", toggle: "md:hidden", main: "md:block", row: "md:flex-row md:flush-x",
+    aside: "max-md:flush-y md:border md:border-zinc-200",
+    head: "md:border-x-0 md:border-t-0",
+    list: "md:border-0" },
+  matchup: { docked: "(min-width: 80rem)", sidebar: "xl:flex xl:w-80 xl:shrink-0 xl:flex-none", toggle: "xl:hidden", main: "xl:block", row: "xl:flex-row xl:flush-x",
+    aside: "max-xl:flush-y xl:border xl:border-zinc-200",
+    head: "xl:border-x-0 xl:border-t-0",
+    list: "xl:border-0" },
 } as const;
 
 /** Scrolls a card as low as it goes while still on screen, so everything still
@@ -135,7 +135,7 @@ const EventListRow = memo(function EventListRow({ event, selected, tag, anchor, 
       data-anchor={anchor ? "" : undefined}
       aria-current={selected ? "page" : undefined}
       className={[
-        "scroll-mt-10 rounded-xl border border-transparent px-3 py-2 transition-colors",
+        "scroll-mt-10 border border-transparent px-4 py-2 transition-colors",
         // Selection borrows the header nav's token outright: a
         // clean surface inside a hairline ring with a soft
         // shadow, rather than inverting to a solid block.
@@ -319,7 +319,7 @@ function EventSidebar({
               autoCorrect="off"
               autoCapitalize="none"
               spellCheck={false}
-              className="h-10 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
+              className="h-10 w-full min-w-0 border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
             />
           </label>
           <SubscribeCalendarButton className={`shrink-0 ${CLOSE_BUTTON}`} />
@@ -335,7 +335,7 @@ function EventSidebar({
               aria-pressed={kind === option.value}
               onClick={() => setKind(option.value)}
               title={`${option.title} · ${countByKind[option.value]}`}
-              className={`min-h-8 flex-1 whitespace-nowrap rounded-full px-2 py-1.5 text-[13px] font-medium transition sm:min-h-0 sm:py-1 sm:text-xs ${
+              className={`min-h-8 flex-1 whitespace-nowrap px-2 py-1.5 text-[13px] font-medium transition sm:min-h-0 sm:py-1 sm:text-xs ${
                 kind === option.value ? segmentedSelected : segmentedIdle
               }`}
             >
@@ -352,16 +352,16 @@ function EventSidebar({
           // shares the panel's white surface, so a row is told apart by its
           // ring and shadow rather than by the tone it happens to sit on. A
           // phone keeps Top at the bottom, so the last card scrolls clear of it.
-          className="h-full overflow-y-auto bg-white px-2 pb-16 sm:pb-2"
+          className="h-full overflow-y-auto bg-white pb-16 sm:pb-2"
           onClick={openEvent}
         >
           {(drawn ? groups : []).map(([yearMonth, list]) => (
             <div key={yearMonth}>
-              {yearMonth && yearMonth !== "potential" ? <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
+              {yearMonth && yearMonth !== "potential" ? <div className="sticky top-0 z-10 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
                 <span>{yearMonth.slice(0, 4)}</span>
                 <span>{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
               </div> : null}
-              <div className="flex flex-col gap-1 pb-2">
+              <div className="flex flex-col pb-2">
                 {list.map((event) => (
                   <EventListRow key={event.id} event={event} warm={warm}
                     selected={event.id === selectedId}
@@ -388,7 +388,7 @@ function EventSidebar({
             // "auto" so a page-level scroll-behavior can never reintroduce it.
             onClick={backToAnchor}
             aria-label="Scroll events back to the next card"
-            className="absolute bottom-3 left-1/2 z-20 inline-flex -translate-x-1/2 sm:bottom-auto sm:left-auto sm:right-3 sm:top-3 sm:translate-x-0 h-9 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 text-[13px] font-semibold sm:h-8 sm:px-3 sm:text-[11px] text-zinc-600 shadow-md transition hover:border-zinc-300 hover:text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+            className="absolute bottom-3 left-1/2 z-20 inline-flex -translate-x-1/2 sm:bottom-auto sm:left-auto sm:right-3 sm:top-3 sm:translate-x-0 h-9 items-center gap-1.5 border border-zinc-200 bg-white px-3.5 text-[13px] font-semibold sm:h-8 sm:px-3 sm:text-[11px] text-zinc-600 shadow-md transition hover:border-zinc-300 hover:text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
           >
             <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
               <path d="M8 12V4m0 0L4.5 7.5M8 4l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -834,7 +834,7 @@ const STATUS_TAG = {
   next: { label: "Next", className: "bg-amber-100 text-amber-700" },
 } as const;
 
-const TAG_SHAPE = "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em]";
+const TAG_SHAPE = "shrink-0 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em]";
 
 const SEGMENT_LABEL: Record<CardSegment, string> = {
   main: "Main card",
@@ -916,7 +916,7 @@ function eventNeighbours(events: EventListItem[], id: string): { prev: EventList
   return { prev: byDate[at - 1] ?? null, next: byDate[at + 1] ?? null };
 }
 
-const STEP = "inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
+const STEP = "inline-flex h-8 items-center gap-1 px-2.5 text-xs font-semibold transition";
 function StepLink({ event, direction, className = STEP }: { event: EventListItem | null; direction: "prev" | "next"; className?: string }) {
   const { settings } = useSettings();
   const label = direction === "prev" ? "Prev" : "Next";
@@ -979,7 +979,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   // Read from the opener up, the card runs in the order it is fought.
   const openerFirst = settings.cardOrder === "opener";
   const oddsCard = oddsMode && (!event || event.fights.some(hasFightOdds));
-  const pane = "@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+3.25rem)] sm:gap-3 sm:pb-0 sm:pr-1";
+  const pane = "@container flex h-full min-h-0 flex-col flush-y overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+3.25rem)] sm:pb-0";
   // Stepping through cards one after another, the next is already here.
   const loaded = Boolean(event);
   const prevUrl = nav.prev ? withRanking(`/api/events/${nav.prev.id}`, settings.rankingSource) : null;
@@ -1113,7 +1113,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
           <div className="flex flex-wrap items-center justify-end gap-2 px-1">
             <OddsFormatTabs format={settings.oddsFormat} onChange={(oddsFormat) => update("oddsFormat", oddsFormat)} />
           </div>
-          <div className="flex flex-col gap-2 pb-3">
+          <div className="flex flex-col flush-y pb-3">
             {oddsFights.map((fight) => (
               <CardOddsRow
                 key={fight.id}
@@ -1141,7 +1141,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
                   {/* The bout on now is boxed off from the rows around it. Its live
                       marker sits with the weight class in the centre column, so the
                       box holds one row that centres like every other. */}
-                  <div className={fight.id === liveId ? "m-1.5 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/30" : ""}>
+                  <div className={fight.id === liveId ? "overflow-hidden border border-emerald-200 bg-emerald-50/30" : ""}>
                     <FightRow fight={fight} live={fight.id === liveId} past={past || fight.f1.outcome != null || fight.f2.outcome != null} eventId={event.id} />
                   </div>
                 </div>
@@ -1222,7 +1222,7 @@ export default function EventsPage() {
 
   return (
     <>{statModal}
-    <div className={`flex h-full min-h-0 flex-col gap-2 p-2 sm:gap-3 sm:p-3 ${dock.row}`}>
+    <div className={`-m-px flex h-[calc(100%+2px)] min-h-0 flex-col flush-y ${dock.row}`}>
       {/* The event and matchup views have their own route back to the card. */}
       {!mobileEventsOpen && !fightId && !shownEventId ? (
         <button

@@ -109,7 +109,7 @@ function WeightClassLabel({ fight }: { fight: Matchup }) {
   const tournament = belt === "tuf" || belt === "tournament";
   return (
     <span
-      className={`inline-flex flex-col items-center text-balance rounded-xl border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[9px] uppercase leading-[13px] tracking-[0.05em] @[30rem]:flex-row @[30rem]:rounded-full @[30rem]:px-2.5 @[30rem]:text-[10px] @[30rem]:leading-4 @[30rem]:tracking-[0.14em] ${
+      className={`inline-flex flex-col items-center text-balance rounded-xl border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[9px] uppercase leading-[13px] tracking-[0.05em] @[30rem]:flex-row @[30rem]:px-2.5 @[30rem]:text-[10px] @[30rem]:leading-4 @[30rem]:tracking-[0.14em] ${
         belt === "interim"
           ? "font-bold text-belt-interim"
           : belt
@@ -942,7 +942,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
       <div className="relative h-full min-h-0 min-w-0 flex-1">
         {changingMatchup ? (
           <div className="appear-late absolute inset-0 z-30 flex cursor-wait items-start justify-center bg-zinc-100/50 pt-6 backdrop-blur-[1px]">
-            <span className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-500 shadow-sm">
+            <span className="border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-500 shadow-sm">
               {error ? <button type="button" onClick={retry}>Couldn’t load matchup · Retry</button> : "Loading matchup…"}
             </span>
           </div>
@@ -1078,7 +1078,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                       type="button"
                       onClick={() => setTapeOpenFor(tapeOpen ? null : fightId)}
                       aria-expanded={tapeOpen}
-                      className="mx-auto mt-2 flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50 @[40rem]:hidden"
+                      className="mx-auto mt-2 flex items-center gap-1 px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50 @[40rem]:hidden"
                     >
                       {tapeOpen ? "Show less" : "Show more"}
                       <ChevronDown className={`h-3.5 w-3.5 transition-transform ${tapeOpen ? "rotate-180" : ""}`} aria-hidden="true" />

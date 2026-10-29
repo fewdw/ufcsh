@@ -76,7 +76,7 @@ export default function RefereePage() {
 
   const identity = (
     <IdentityCard title={data.name} subtitle="Referee"
-      badge={s.title_fights && !filtered ? <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-belt">{s.title_fights} title bouts</span> : null}
+      badge={s.title_fights && !filtered ? <span className="bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-belt">{s.title_fights} title bouts</span> : null}
       facts={[
         ["Bouts", data.career.fights.toLocaleString()],
         ["Events", s.events.toLocaleString()],

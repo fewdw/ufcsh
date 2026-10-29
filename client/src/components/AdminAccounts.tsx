@@ -102,8 +102,8 @@ export default function AdminAccounts() {
                             {account.deletedAt == null
                               ? <Link to={`/profiles/${account.handle}`} className="font-medium text-zinc-900 hover:underline">{account.displayName}</Link>
                               : <span className="font-medium">Deleted {date(account.deletedAt)}</span>}
-                            {muted ? <span className="rounded-full bg-rose-50 px-1.5 text-[10px] font-semibold text-rose-700">{account.mutedUntil === PERMANENT ? "banned" : `muted until ${date(account.mutedUntil)}`}</span> : null}
-                            {account.signIn.map(provider => <span key={provider} className="rounded-full bg-zinc-100 px-1.5 text-[10px] text-zinc-500">{provider}</span>)}
+                            {muted ? <span className="bg-rose-50 px-1.5 text-[10px] font-semibold text-rose-700">{account.mutedUntil === PERMANENT ? "banned" : `muted until ${date(account.mutedUntil)}`}</span> : null}
+                            {account.signIn.map(provider => <span key={provider} className="bg-zinc-100 px-1.5 text-[10px] text-zinc-500">{provider}</span>)}
                           </p>
                           <p className="truncate text-[11px] text-zinc-500">{account.email ?? (account.username ? `@${account.handle}` : "no username yet")}</p>
                         </div>

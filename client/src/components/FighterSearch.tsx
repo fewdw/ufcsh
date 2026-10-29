@@ -142,7 +142,7 @@ export default function FighterSearch({
                 setQuery("");
                 setOpen(false);
               }}
-              className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+              className="shrink-0 px-1.5 py-0.5 text-[9px] font-medium text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
             >
               Clear
             </button>

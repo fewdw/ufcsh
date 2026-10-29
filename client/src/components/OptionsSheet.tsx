@@ -116,7 +116,7 @@ export default function OptionsSheet({
           if (!open && Date.now() - closedAt.current < 500) return;
           setOpen((value) => !value);
         }}
-        className={`flex h-8 items-center gap-1.5 rounded-full border border-zinc-200 bg-white text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 ${iconOnlyOnPhone === "lg" ? "px-2 lg:px-3" : iconOnlyOnPhone ? "px-2 sm:px-3" : "px-3"}`}
+        className={`flex h-8 items-center gap-1.5 border border-zinc-200 bg-white text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 ${iconOnlyOnPhone === "lg" ? "px-2 lg:px-3" : iconOnlyOnPhone ? "px-2 sm:px-3" : "px-3"}`}
       >
         <SlidersHorizontal className="h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
         <span className={phoneHidden}>{label}</span>
@@ -146,7 +146,7 @@ export default function OptionsSheet({
               <div className="flex items-center justify-between">
                 <span className={DIALOG_TITLE}>{label}</span>
                 <div className="flex items-center gap-1">
-                  <button type="button" onClick={onReset} className="rounded-full px-2 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900">
+                  <button type="button" onClick={onReset} className="px-2 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900">
                     Reset
                   </button>
                   <button type="button" onClick={() => close(true)} aria-label={`Close ${label.toLowerCase()}`} className={`-mr-2 ${CLOSE_BUTTON}`}>

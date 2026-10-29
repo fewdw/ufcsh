@@ -42,7 +42,7 @@ function FlagRow({ report, onChanged }: { report: Flag; onChanged: (report: Flag
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-semibold text-zinc-900">{report.title}</h3>
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusTone[report.status]}`}>{STATUS[report.status]}</span>
+          <span className={`px-2 py-0.5 text-[10px] font-semibold ${statusTone[report.status]}`}>{STATUS[report.status]}</span>
           <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">{CATEGORY[report.category]}</span>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
