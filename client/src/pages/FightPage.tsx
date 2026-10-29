@@ -990,10 +990,11 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraitOf(fight.f1)} onPortraitError={portraitUnavailable(fight.f1)} past={fight.status === "past"} />
                   </div>
                   {/* The centre column shares the portraits' padded height:
-                      label above, odds in the middle, Polymarket below. Both
-                      gaps around the odds and both card-edge insets match. */}
-                  <div className="matchup-market col-start-2 row-start-1 grid w-auto max-w-[8.5rem] grid-rows-[auto_minmax(0,1fr)_auto] justify-items-center self-stretch text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem]">
-                    {/* The grid supplies equal gaps above and below the odds. */}
+                      label, odds and Polymarket stack from the top, each 8px
+                      apart like weight class and referee, whichever are
+                      present; tall portraits leave their slack below. With no
+                      label the stack centres between the portraits. */}
+                  <div className={`matchup-market col-start-2 row-start-1 flex w-auto max-w-[8.5rem] flex-col items-center ${labelled || referee ? "justify-start" : "justify-center"} self-stretch text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem]`}>
                     {labelled || referee ? (
                       <div className="flex flex-col items-center">
                         {labelled ? <div><WeightClassLabel fight={fight} /></div> : null}
@@ -1006,15 +1007,17 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                         ) : null}
                       </div>
                     ) : null}
-                    <div className="matchup-prices row-start-2 self-center">
-                      <MatchupOdds key={fight.id} f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
-                        f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
-                        f1Name={fight.f1.name} f2Name={fight.f2.name}
-                        props={fight.odds?.props}
-                        fightId={betFightId(fight, fight.status !== "upcoming")} />
-                    </div>
+                    {fight.odds?.f1.close || fight.odds?.f2.close || fight.odds?.props ? (
+                      <div className="matchup-prices">
+                        <MatchupOdds key={fight.id} f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
+                          f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
+                          f1Name={fight.f1.name} f2Name={fight.f2.name}
+                          props={fight.odds?.props}
+                          fightId={betFightId(fight, fight.status !== "upcoming")} />
+                      </div>
+                    ) : null}
                     {!fight.potential && fight.status !== "past" && fight.f1.outcome == null && fight.f2.outcome == null
-                      ? <MarketTeaser key={fight.id} fightId={fight.id} /> : null}
+                      ? <MarketTeaser fightId={fight.id} eventId={fight.event.id} /> : null}
                   </div>
                   <div className="matchup-corner col-start-3 min-w-0">
                     <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraitOf(fight.f2)} onPortraitError={portraitUnavailable(fight.f2)} past={fight.status === "past"} />
