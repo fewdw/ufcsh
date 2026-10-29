@@ -216,7 +216,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
           >
             <SearchGlyph />
             <span className="hidden sm:inline">Search anything</span>
-            <kbd className="ml-auto hidden border border-zinc-200 bg-white px-1 font-mono text-[10px] leading-4 text-zinc-500 lg:inline">⌘K</kbd>
+            <kbd className="ml-auto hidden border border-zinc-200 bg-white px-1 font-mono text-[10px] leading-4 text-zinc-500 lg:inline">⌘<span className="ml-1">K</span></kbd>
           </button>
           <button
             type="button"
