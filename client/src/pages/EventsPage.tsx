@@ -19,16 +19,13 @@ import { NAV_STEP, EventPlace, CardNavigation } from "../components/CardHeader";
 import { useShortcutNav } from "../shortcuts";
 import type { Matchup } from "../api";
 import { SITE_URL, useSeo } from "../seo";
-import { useHistoryState, useRememberedState, useRouteScrollRestoration } from "../navigationState";
+import { useRememberedState, useRouteScrollRestoration } from "../navigationState";
 import { oneOf } from "../preferences";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
-import SearchGlyph from "../components/SearchGlyph";
-import { AddToCalendarButton, SubscribeCalendarButton } from "../components/CalendarDialog";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
-import { searchList } from "../search";
 import { betFightId } from "../parlay";
 import { cardSections } from "../cardSections";
 
@@ -185,7 +182,6 @@ function EventSidebar({
   onBack: () => void;
   dock: (typeof DOCK)[keyof typeof DOCK];
 }) {
-  const [filter, setFilter] = useHistoryState("events:filter", "");
   const [kind, setKind] = useRememberedState<KindFilter>("events:kind", "all", oneOf("all", "ppv", "fight_night"));
   const [showTop, setShowTop] = useState(false);
   const { settings: { rankingSource } } = useSettings();
@@ -228,14 +224,6 @@ function EventSidebar({
   const [drawn, setDrawn] = useState(false);
   if (!drawn && (docked || mobileOpen)) setDrawn(true);
 
-  // A search is for the one visit: once the phone's sheet folds away — ✕, a
-  // pick, or any other way out — it opens again on the whole list.
-  const [wasOpen, setWasOpen] = useState(mobileOpen);
-  if (wasOpen !== mobileOpen) {
-    setWasOpen(mobileOpen);
-    if (!mobileOpen) setFilter("");
-  }
-
   // Derived from every event, not from the filtered view, so a filter never
   // promotes another row into the tag's place.
   const tagged = useMemo(() => taggedEvent(events), [events]);
@@ -252,17 +240,12 @@ function EventSidebar({
     return counts;
   }, [scheduledEvents]);
 
-  // Tier first, then text: the count in the placeholder and the empty state
-  // both describe the tier the reader is actually looking at.
   const scoped = useMemo(
     () => (kind === "all" ? scheduledEvents : scheduledEvents.filter((e) => eventKind(e.name) === kind || e.id === tonightId)),
     [scheduledEvents, kind, tonightId],
   );
 
-  const filtered = useMemo(() => {
-    const matches = searchList(scoped, filter, (e) => `${e.name} ${e.location} ${e.date}`);
-    return potential ? [potential, ...matches] : matches;
-  }, [scoped, filter, potential]);
+  const filtered = useMemo(() => (potential ? [potential, ...scoped] : scoped), [scoped, potential]);
 
   const groups = useMemo(() => {
     const byMonth = new Map<string, EventListItem[]>();
@@ -301,33 +284,10 @@ function EventSidebar({
 
   return (
     <aside id="events-sidebar" className={`${mobileOpen ? "flex" : "hidden"} min-h-0 w-full flex-1 flex-col overflow-hidden ${dock.sidebar} ${dock.aside}`}>
-      <div className={`${shell} space-y-2 p-3 ${dock.head}`}>
-        {/* Built from the same pill, border and glyph as the header's search
-            button, so the two read as one control in two places. On a phone
-            the ✕ that closes the sheet back to the card sits beside it. */}
-        <div className="flex items-center gap-2">
-          <label className="relative block min-w-0 flex-1">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
-              <SearchGlyph />
-            </span>
-            <input
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              aria-label={`Filter ${KIND_NOUN[kind]}`}
-              placeholder={`Search ${countByKind[kind].toLocaleString()} ${KIND_NOUN[kind]}…`}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              className="h-10 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
-            />
-          </label>
-          <SubscribeCalendarButton className={`shrink-0 ${CLOSE_BUTTON}`} />
-          <button type="button" onClick={onBack} aria-label="Close events" title="Back to card" className={`shrink-0 ${CLOSE_BUTTON} ${dock.toggle}`}>
-            <X className={CLOSE_ICON} aria-hidden="true" />
-          </button>
-        </div>
-        <div className={segmentedGroup} role="group" aria-label="Event tier">
+      {/* On a phone the ✕ that closes the sheet back to the card sits beside
+          the tiers. */}
+      <div className={`${shell} flex items-center gap-2 p-3 ${dock.head}`}>
+        <div className={`min-w-0 flex-1 ${segmentedGroup}`} role="group" aria-label="Event tier">
           {KIND_FILTERS.map((option) => (
             <button
               key={option.value}
@@ -343,6 +303,9 @@ function EventSidebar({
             </button>
           ))}
         </div>
+        <button type="button" onClick={onBack} aria-label="Close events" title="Back to card" className={`shrink-0 ${CLOSE_BUTTON} ${dock.toggle}`}>
+          <X className={CLOSE_ICON} aria-hidden="true" />
+        </button>
       </div>
 
       <div className={`relative min-h-0 flex-1 overflow-hidden ${shell} ${dock.list}`}>
@@ -374,7 +337,7 @@ function EventSidebar({
           ))}
           {filtered.length === 0 ? (
             <div className="px-3 py-8 text-center text-sm text-zinc-400">
-              {filter.trim() ? <>No {KIND_NOUN[kind]} match “{filter}”</> : <>No {KIND_NOUN[kind]} on record</>}
+              No {KIND_NOUN[kind]} on record
             </div>
           ) : null}
         </div>
@@ -1072,10 +1035,6 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
                 </span>
               ) : <span className="whitespace-nowrap font-medium text-zinc-600">No date</span>}
               <EventPlace venue={event.venue} location={event.location} locationSlug={event.location_slug} />
-              {!underway && !event.potential && announced.length ? <>
-                <span aria-hidden="true" className="text-zinc-300">·</span>
-                <AddToCalendarButton event={event} />
-              </> : null}
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end justify-center gap-1 text-right empty:hidden">
