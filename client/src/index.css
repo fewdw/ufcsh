@@ -1,3 +1,5 @@
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 @import "tailwindcss";
 
 /* Follow the app setting, including inside browsers with a dark device theme. */
@@ -11,6 +13,10 @@
    its legend. `deep` is the darker shade a bar fills with to mark the part of
    a total that was significant. */
 @theme {
+  /* Geist for reading, Geist Mono for labels and figures. */
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+
   /* Flat panels: every box, field and tag is square-cornered. Only true
      circles (portraits, result dots, switches) and chart marks stay round;
      they use rounded-full or an exact radius. */
@@ -124,6 +130,18 @@ body {
 body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  /* Figures line up in every column: odds, records, ages. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Every small uppercase label — a stat's name, a weight class, a tag, a
+   month — is set in the mono face at one even spacing, so labels read as one
+   system against the sans figures and names beside them. Unlayered, so it
+   wins over each label's own tracking utility. */
+.uppercase {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.04em;
 }
 
 .search-dialog::backdrop {

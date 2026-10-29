@@ -5,7 +5,7 @@ import { useLayoutEffect, useRef } from "react";
 import Avatar from "./Avatar";
 import { CARD_STEP } from "./CardHeader";
 import { PANEL_SHELL } from "./FightStats";
-import { segmentedSelected } from "./segmented";
+import { rowSelected } from "./segmented";
 import { formatMethod, lastName } from "../format";
 import { isFightDay, liveFightId } from "../liveEvent";
 import { useSettings, withRanking } from "../settings";
@@ -150,7 +150,7 @@ export function FightRail({ eventId, currentId, returnDepth, onReselect }: {
                 "relative grid w-full grid-cols-2 items-start gap-x-3 gap-y-2 rounded-xl border px-2 py-3 transition-colors",
                 // The bout on now keeps its border whether or not it is also
                 // the matchup being read, so the two markings can coexist.
-                isCurrent ? segmentedSelected : "hover:bg-zinc-50",
+                isCurrent ? rowSelected : "hover:bg-zinc-50",
                 isLive ? "border-emerald-200" : "border-transparent",
               ].join(" ")}
             >

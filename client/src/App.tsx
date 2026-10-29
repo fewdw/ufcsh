@@ -58,7 +58,9 @@ const InfoPage = page(pages.info, module => module.default);
 const RosterPage = page(pages.roster, module => module.default);
 const NewsPage = page(pages.news, module => module.default);
 
-const NAV_ITEM = "px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
+/** A header tab: full height, so the chosen one's underline sits on the
+ *  header's own bottom edge. */
+const NAV_ITEM = "flex items-center px-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-3 sm:text-[13px]";
 
 /** Admin, just before More, as a shield: listed only for the few who have it. */
 function AdminLink({ active }: { active: boolean }) {
@@ -98,20 +100,20 @@ function MoreMenu({ pathname, active, open, setOpen, onReport }: { pathname: str
     if (!wide() || pointer !== "mouse") { e.preventDefault(); setOpen(!open); }
     else if (active) e.preventDefault();
   };
-  return <div ref={ref} className="relative"
+  return <div ref={ref} className="relative flex"
     onPointerEnter={(e) => { if (e.pointerType === "mouse" && wide()) setOpen(true); }}
     onPointerLeave={(e) => { if (e.pointerType === "mouse") setOpen(false); }}>
     <Link to={MORE_HOME} onClick={press} aria-expanded={open} aria-haspopup="true"
       aria-current={active ? "page" : undefined}
-      className={`${NAV_ITEM} flex items-center gap-0.5 ${open || active ? segmentedSelected : segmentedIdle}`}>
+      className={`${NAV_ITEM} gap-0.5 ${open || active ? segmentedSelected : segmentedIdle}`}>
       More
       <ChevronDown className={`hidden h-3.5 w-3.5 transition-transform md:block ${open ? "rotate-180" : ""}`} aria-hidden="true" />
     </Link>
     {/* A thin triangle beside the button catches a pointer cutting across
         to a far link; the top padding bridges the gap below it. */}
     {open ? <div aria-hidden="true" className="absolute left-full top-0 hidden h-full w-56 [clip-path:polygon(0_0,100%_100%,0_100%)] md:block" /> : null}
-    {open ? <div className="absolute right-0 top-full z-50 pt-1.5 md:left-0 md:right-auto">
-      <div className="w-max min-w-44 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg">
+    {open ? <div className="absolute right-0 top-full z-50 md:left-0 md:right-auto">
+      <div className="w-max min-w-44 border border-zinc-200 bg-white p-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.18)]">
         <MoreGroups group={(label, links) => (
           <ul key={label} aria-label={label} className="flex flex-col gap-0.5">{links}</ul>
         )} item={(section, current) => (
@@ -172,13 +174,14 @@ function Header({ onSearch }: { onSearch: () => void }) {
           the actions on the right, and the bout on now taking whatever is
           between them. Nothing is positioned over anything else, so no width
           can make two of them collide. */}
-      <div className="flex w-full items-center gap-1 px-2 py-2 min-[380px]:gap-1.5 min-[380px]:px-2.5 min-[420px]:gap-2 sm:gap-3 sm:px-5 sm:py-3">
-        <Link to="/" aria-label="UFC.sh home" className={`shrink-0 text-sm font-extrabold tracking-tight min-[380px]:text-[15px] min-[420px]:text-base sm:text-lg ${isDevSite ? "text-sky-500" : "text-zinc-900"}`}>
-          UFC<span className={isDevSite ? "font-bold" : "font-bold text-zinc-400"}>.sh</span>
+      <div className="flex h-12 w-full items-stretch gap-1 px-2 min-[380px]:gap-1.5 min-[380px]:px-2.5 min-[420px]:gap-2 sm:h-14 sm:gap-4 sm:px-5">
+        <Link to="/" aria-label="UFC.sh home" className={`flex shrink-0 items-center gap-1.5 text-sm font-semibold tracking-[-0.03em] min-[380px]:text-[15px] sm:text-base ${isDevSite ? "text-sky-500" : "text-zinc-950"}`}>
+          <span aria-hidden="true" className={`hidden h-2.5 w-2.5 shrink-0 min-[380px]:block ${isDevSite ? "bg-sky-500" : "bg-f2"}`} />
+          <span>UFC<span className={isDevSite ? "" : "text-zinc-400"}>.sh</span></span>
         </Link>
         {/* The shared pill group, tightened on a phone so the row still fits a
             320px screen with nothing clipped and nothing dropped. */}
-        <nav className="flex shrink-0 items-stretch bg-zinc-100">
+        <nav className="flex shrink-0 items-stretch">
           {links.map((link) => (
             <Link
               key={link.href}
@@ -200,20 +203,20 @@ function Header({ onSearch }: { onSearch: () => void }) {
         {/* The middle of the row from `md` up, and its own line below that —
             never dropped or cut short, since it is the one thing on the page
             that changes minute to minute. */}
-        <div ref={slotRef} className="hidden min-w-0 flex-1 justify-center overflow-hidden md:flex">
+        <div ref={slotRef} className="hidden min-w-0 flex-1 items-center justify-center overflow-hidden md:flex">
           <div ref={pillRef} className={`w-max shrink-0 ${pillFits ? "" : "invisible"}`}><LiveMatchup /></div>
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-0.5 min-[380px]:gap-1 sm:gap-2 md:ml-0">
+        <div className="ml-auto flex shrink-0 items-center gap-0.5 min-[380px]:gap-1 md:ml-0">
           <button
             type="button"
             onClick={onSearch}
             aria-label="Search fighters, events and fights"
-            className="flex h-8 w-8 items-center justify-center gap-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-600 sm:h-9 sm:w-auto sm:justify-start sm:py-1.5 sm:pl-3 sm:pr-3.5"
+            className="flex h-8 w-8 items-center justify-center gap-2 border border-zinc-200 bg-zinc-50 text-[13px] text-zinc-500 transition-colors hover:text-zinc-900 sm:w-56 sm:justify-start sm:pl-2.5 sm:pr-1.5"
           >
             <SearchGlyph />
             <span className="hidden sm:inline">Search anything</span>
-            <kbd className="hidden rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 lg:inline">⌘K</kbd>
+            <kbd className="ml-auto hidden border border-zinc-200 bg-white px-1 font-mono text-[10px] leading-4 text-zinc-500 lg:inline">⌘K</kbd>
           </button>
           <button
             type="button"
@@ -221,7 +224,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
             aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
             aria-pressed={dark}
             title={dark ? "Light mode" : "Dark mode"}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 sm:h-9 sm:w-9"
+            className="grid h-8 w-8 shrink-0 place-items-center text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
           >
             {dark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
           </button>

@@ -26,7 +26,7 @@ import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
 import { AddToCalendarButton, SubscribeCalendarButton } from "../components/CalendarDialog";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, List, X } from "lucide-react";
-import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
+import { rowSelected, segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { searchList } from "../search";
 import { betFightId } from "../parlay";
@@ -139,7 +139,7 @@ const EventListRow = memo(function EventListRow({ event, selected, tag, anchor, 
         // Selection borrows the header nav's token outright: a
         // clean surface inside a hairline ring with a soft
         // shadow, rather than inverting to a solid block.
-        selected ? segmentedSelected : "hover:bg-zinc-50",
+        selected ? rowSelected : "hover:bg-zinc-50",
       ].join(" ")}
     >
       <div className="flex items-start justify-between gap-2">
@@ -357,7 +357,7 @@ function EventSidebar({
         >
           {(drawn ? groups : []).map(([yearMonth, list]) => (
             <div key={yearMonth}>
-              {yearMonth && yearMonth !== "potential" ? <div className="sticky top-0 z-10 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
+              {yearMonth && yearMonth !== "potential" ? <div className="sticky top-0 z-10 flex items-baseline gap-2 border-b border-zinc-100 bg-white px-4 py-2 text-[11px] uppercase text-zinc-500">
                 <span>{yearMonth.slice(0, 4)}</span>
                 <span>{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
               </div> : null}
