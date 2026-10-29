@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
+/** The last answer for each URL, in memory only: a panel that remounts, or a
+ * matchup reopened, starts from it instead of blinking empty while it
+ * refreshes. Callers still expire quotes by their own timestamp. */
+const latest = new Map<string, unknown>();
+
 /** Prices bypass persisted page snapshots and HTTP caches. Historical data
  * can remain during a retry; callers expire quotes using their own timestamp. */
 export function useMarketData<T>(
@@ -12,7 +17,7 @@ export function useMarketData<T>(
     data: T | null;
     error: boolean;
     at: number;
-  }>({ url, data: null, error: false, at: 0 });
+  }>({ url, data: url ? ((latest.get(url) as T | undefined) ?? null) : null, error: false, at: 0 });
   const [revision, setRevision] = useState(0);
   const lastSuccess = useRef<{ url: string; at: number } | null>(null);
   useEffect(() => {
@@ -39,6 +44,7 @@ export function useMarketData<T>(
         const data = (await res.json()) as T;
         if (!cancelled) {
           lastSuccess.current = { url, at: Date.now() };
+          latest.set(url, data);
           setState({ url, data, error: false, at: lastSuccess.current.at });
         }
       } catch {
@@ -78,7 +84,7 @@ export function useMarketData<T>(
     };
   }, [url, interval, revision, enabled]);
   return {
-    data: state.url === url ? state.data : null,
+    data: state.url === url ? state.data : url ? ((latest.get(url) as T | undefined) ?? null) : null,
     error: state.url === url && state.error,
     retry: () => {
       lastSuccess.current = null;

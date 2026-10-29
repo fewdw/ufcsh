@@ -367,13 +367,15 @@ export default function PolymarketPanel({
   );
 }
 
-export function MarketTeaser({ fightId }: { fightId: string }) {
+/** One request for the whole card, so stepping between its bouts shows each
+ *  price at once instead of refetching and popping in. */
+export function MarketTeaser({ fightId, eventId }: { fightId: string; eventId: string }) {
   const { data } = useMarketData<{ fights: MarketSummary[] }>(
-    `/api/polymarket/board?ids=${fightId}`,
+    `/api/polymarket/board?event=${eventId}`,
     10_000,
   );
   const now = useNow(true, 5000);
-  const row = data?.fights[0];
+  const row = data?.fights.find((r) => r.fight.id === fightId);
   const q = row ? freshMarketQuote(row, now) : null;
   if (!row || !q || row.fight.state === "finished") return null;
   return (
