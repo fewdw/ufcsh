@@ -101,10 +101,10 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-28">October 28, 2026</time></p>
+            <p><time dateTime="2026-10-29">October 29, 2026</time></p>
             <ul>
-              <li>Simplified the events page: removed the sidebar search, calendar button and Add to calendar.</li>
-              <li>Spaced the ⌘K hint in the header search.</li>
+              <li>Tightened the matchup header: the odds and Polymarket price now sit right under the weight class and referee.</li>
+              <li>The Polymarket price no longer flickers when stepping between bouts on a card.</li>
             </ul>
           </Section>
         </div>
