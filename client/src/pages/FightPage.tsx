@@ -1017,7 +1017,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                       </div>
                     ) : null}
                     {!fight.potential && fight.status !== "past" && fight.f1.outcome == null && fight.f2.outcome == null
-                      ? <MarketTeaser key={fight.id} fightId={fight.id} /> : null}
+                      ? <MarketTeaser fightId={fight.id} eventId={fight.event.id} /> : null}
                   </div>
                   <div className="matchup-corner col-start-3 min-w-0">
                     <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraitOf(fight.f2)} onPortraitError={portraitUnavailable(fight.f2)} past={fight.status === "past"} />
