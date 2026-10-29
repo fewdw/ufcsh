@@ -990,10 +990,11 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraitOf(fight.f1)} onPortraitError={portraitUnavailable(fight.f1)} past={fight.status === "past"} />
                   </div>
                   {/* The centre column shares the portraits' padded height:
-                      label above, odds in the middle, Polymarket below. Both
-                      gaps around the odds and both card-edge insets match. */}
+                      label above, odds right under it, Polymarket below. The
+                      column's 8px gap between label and odds matches the one
+                      between weight class and referee; tall portraits leave
+                      their slack below the odds, not around them. */}
                   <div className="matchup-market col-start-2 row-start-1 grid w-auto max-w-[8.5rem] grid-rows-[auto_minmax(0,1fr)_auto] justify-items-center self-stretch text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem]">
-                    {/* The grid supplies equal gaps above and below the odds. */}
                     {labelled || referee ? (
                       <div className="flex flex-col items-center">
                         {labelled ? <div><WeightClassLabel fight={fight} /></div> : null}
@@ -1006,7 +1007,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                         ) : null}
                       </div>
                     ) : null}
-                    <div className="matchup-prices row-start-2 self-center">
+                    <div className={`matchup-prices row-start-2 ${labelled || referee ? "self-start" : "self-center"}`}>
                       <MatchupOdds key={fight.id} f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
                         f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
                         f1Name={fight.f1.name} f2Name={fight.f2.name}
