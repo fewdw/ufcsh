@@ -316,7 +316,7 @@ export function AwardsPage() {
         {/* The scroller wraps the grid: a grid that scrolls itself would squeeze
             its rows to fit the screen instead. */}
         <div ref={listScroll} className={BROWSE_LIST}>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-4">
+          <div className="grid grid-cols-1 flush-grid sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {data.categories.map((category) => {
               const shown = !stacked || open.includes(category.id);
               return (

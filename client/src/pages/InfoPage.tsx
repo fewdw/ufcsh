@@ -41,8 +41,8 @@ export default function InfoPage() {
   });
   return (
     <div ref={scroll} className="h-full overflow-y-auto overflow-x-hidden">
-      <div className="mx-auto grid w-full max-w-5xl gap-3 p-2 pb-12 sm:p-3 lg:grid-cols-[13rem_minmax(0,1fr)] lg:p-4">
-        <nav aria-label="On this page" className="lg:sticky lg:top-4 lg:self-start">
+      <div className="mx-auto -mt-px grid w-full max-w-5xl flush-grid pb-12 lg:grid-cols-[13rem_minmax(0,1fr)]">
+        <nav aria-label="On this page" className="lg:sticky lg:top-0 lg:self-start">
           <div className={`${PANEL} px-3 py-3`}>
             <p className={`${EYEBROW} px-2 pb-1.5`}>UFC.sh</p>
             <ul className="flex flex-wrap gap-1 lg:flex-col lg:gap-0">
@@ -55,7 +55,7 @@ export default function InfoPage() {
           </div>
         </nav>
 
-        <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex min-w-0 flex-col flush-y">
           <h1 className="sr-only">Information</h1>
 
           <Section id="about">

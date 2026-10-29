@@ -42,7 +42,7 @@ export default function Leaderboards({ handle }: { handle: string }) {
   </section>;
   const pct = (entry: LeaderboardEntry) => ({ text: `${Math.round(entry.value)}%` });
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="grid flush-grid md:grid-cols-2">
       <Board title="Top predictors" subtitle={`Points · ${data.minimums.points}+ settled picks`} entries={data.points} tab="predictions" current={handle}
         format={entry => ({ text: `${entry.value.toLocaleString()} pts` })} />
       <Board title="Winner accuracy" subtitle={`Right winner · ${data.minimums.winner}+ settled picks`} entries={data.winner} tab="predictions" current={handle} format={pct} />

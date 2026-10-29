@@ -78,7 +78,7 @@ function AdminShell({ tab, view, onPlace }: { tab: TabId; view: string | null; o
   const fills = tab === "data" && view === "bugs";
   const views: readonly (readonly [string, string])[] = SECTIONS.find(item => item.id === tab)!.views;
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-7xl flex-col gap-3 px-2 pt-3 sm:px-5 sm:pt-4 md:flex-row md:gap-5">
+    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-7xl flex-col gap-3 md:flex-row md:gap-5">
       <nav aria-label="Admin sections" className="shrink-0 md:w-40">
         <ul className={`${PANEL_SHELL} flex gap-1 overflow-x-auto p-1.5 md:flex-col md:gap-0.5 md:overflow-visible md:border-0 md:bg-transparent md:p-0 md:shadow-none`}>
           {SECTIONS.map(item => (

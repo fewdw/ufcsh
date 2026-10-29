@@ -802,7 +802,7 @@ function ProfileTabs({ tabs, current, onSelect, news, className }: {
   tabs: ProfileTab[]; current: ProfileTab; onSelect: (tab: ProfileTab, button: HTMLElement) => void; news: number | null; className: string;
 }) {
   return (
-    <div className={`${shell} p-1.5 ${className}`}>
+    <div className={`${shell} ${className}`}>
       <div role="tablist" aria-label="Fighter sections" className={`${segmentedGroup} w-full`}>
         {tabs.map((key) => (
           <button key={key} type="button" role="tab" aria-selected={key === current} onClick={(event) => onSelect(key, event.currentTarget)}
@@ -935,15 +935,15 @@ export default function FighterPage() {
 
   return (
     <>{statModal}
-    <div ref={pageScroll} className="h-full overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
-      <div className="flex flex-col gap-3 p-3 pb-8 lg:h-full lg:pb-3">
+    <div ref={pageScroll} className="h-full overflow-x-hidden overflow-y-auto lg:overflow-hidden">
+      <div className="-m-px flex flex-col flush-y pb-8 lg:h-[calc(100%+2px)] lg:pb-0">
         {error ? <RequestNotice onRetry={retry}>Couldn’t refresh this profile. Showing the last loaded data.</RequestNotice> : null}
         {/* Wide windows split the profile: who they are and where they rank on
             the left, held in view, and every fight they've had on the right. */}
         {/* On a wide window the page itself never scrolls: each column is its
             own scroller, so reading one leaves the other exactly where it was. */}
-        <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(24rem,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
-        <div ref={mainScroll} className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
+        <div className="grid flush-grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(24rem,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
+        <div ref={mainScroll} className="flex min-w-0 flex-col flush-y [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain">
         <section className={`${shell} @container px-4 py-4 @[30rem]:px-6 @[30rem]:py-5`}>
           <div className="flex flex-col gap-4 @[30rem]:gap-5">
             <div className="flex min-w-0 items-center gap-4 @[30rem]:gap-6">
@@ -996,7 +996,7 @@ export default function FighterPage() {
         {fought ? <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
           <RankingHistory key={fighter.id} timeline={fighter.ranking_history} history={fighter.history} fighterId={fighter.id} />
           <FighterCareerStats fighterId={fighter.id} name={fighter.name} totals={fighter.career_stats} medians={fighter.division_medians} />
-          {fighter.insights?.rounds ? <div className="grid grid-cols-2 gap-3">
+          {fighter.insights?.rounds ? <div className="grid grid-cols-2 flush-grid">
             <RoundsPanel fighters={[fighter]} />
             <DecisionsPanel fighters={[fighter]} />
           </div> : null}
@@ -1005,7 +1005,7 @@ export default function FighterPage() {
         </div> : null}
         </div>
 
-        <div ref={sideScroll} className={`${tab !== "stats" || !fought ? "flex" : "hidden lg:flex"} min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]`}>
+        <div ref={sideScroll} className={`${tab !== "stats" || !fought ? "flex" : "hidden lg:flex"} min-w-0 flex-col flush-y [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain`}>
         <ProfileTabs tabs={fought ? ["fights", "records", "news"] : ["fights", "news"]} current={tab === "stats" ? "fights" : tab} onSelect={selectTab} news={news?.total ?? null} className="hidden lg:block" />
 
         {tab === "news" ? <FighterNews key={fighter.id} fighterId={fighter.id} name={fighter.name} first={news ?? null} /> : tab === "records" && fought ? <>

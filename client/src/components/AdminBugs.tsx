@@ -451,7 +451,7 @@ export default function AdminBugs() {
       {/* Wide, the checks and the selected list each scroll on their own inside
           the space under the tabs and the page never moves. A phone scrolls the
           page through one or the other. */}
-      <div className="flex flex-col gap-3 md:grid md:min-h-0 md:flex-1 md:grid-cols-[18rem_minmax(0,1fr)]">
+      <div className="flex flex-col flush-y md:grid md:min-h-0 md:flex-1 md:flush-grid md:grid-cols-[18rem_minmax(0,1fr)]">
         {showList && <nav className="rounded-xl border border-zinc-200 bg-white p-2 md:min-h-0 md:overflow-y-auto md:overscroll-y-contain" aria-label="Checks">
           {query && (
             <button

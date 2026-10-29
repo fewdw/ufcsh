@@ -51,7 +51,7 @@ export default function AdminServer() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 flush-grid sm:grid-cols-4">
         <Card label="Client addresses" value={whole(recent.visitors)} hint={`distinct in 5 min · ${whole(data.http.lastHour.visitors)} this hour`} />
         <Card label="Requests / min" value={whole(lastFull?.requests ?? 0)} hint={`${whole(data.http.lastHour.requests)} this hour`} />
         <Card label="Response time (p95)" value={ms(recent.p95Ms)} hint={`median ${ms(recent.p50Ms)} · 5 min`} level={recent.p95Ms > 1000 ? "bad" : recent.p95Ms > 300 ? "warn" : "ok"} />
@@ -62,7 +62,7 @@ export default function AdminServer() {
         <Card label="Uptime" value={uptime(data.process.uptimeSeconds)} hint={`${whole(data.http.sinceStart.requests)} requests served`} />
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid flush-grid sm:grid-cols-2 lg:grid-cols-3">
         <MinuteChart title="Page views per minute" points={series(minute => minute.pageViews)} format={whole} tone="text-series-3" />
         <MinuteChart title="Requests per minute" points={series(minute => minute.requests)} format={whole} />
         <MinuteChart title="Client addresses per minute" points={series(minute => minute.visitors)} format={whole} tone="text-series-3" />

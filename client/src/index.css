@@ -91,11 +91,19 @@
    before it by a hairline, so two borders meet as one line. */
 @utility flush-y {
   gap: 0;
-  & > * + * { margin-top: -1px; margin-left: 0; }
+  & > * + *,
+  & > * + :is([class~="contents"], [class*=":contents"]) > :first-child { margin-top: -1px; margin-left: 0; }
 }
 @utility flush-x {
   gap: 0;
   & > * + * { margin-left: -1px; margin-top: 0; }
+}
+/* A grid of panels: each reaches a hairline into its right and lower
+   neighbours, and the grid keeps that hairline of room on its own edges. */
+@utility flush-grid {
+  gap: 0;
+  padding: 0 1px 1px 0;
+  & > * { margin: 0 -1px -1px 0; }
 }
 
 html,

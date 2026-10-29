@@ -55,7 +55,7 @@ export default function AdminTraffic() {
           <section className="flex flex-col gap-2">
             <SectionHead title="Visitors" note={<>Browsers that opened the site and sent a page view; crawlers and admins left out.
               {people.firstRecordedAt ? ` Counted this way since ${day(people.firstRecordedAt, true)}.` : " Nothing counted this way yet."}</>} />
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 flush-grid sm:grid-cols-4">
               <Card label="Unique visitors" value={people.unique == null ? "—" : whole(people.unique)}
                 hint={people.unique == null ? "only the last 35 days are kept per browser" : `last ${label}`} />
               <Card label="Visitors / day" value={people.daily.days ? whole(people.daily.average) : "—"}
@@ -64,11 +64,11 @@ export default function AdminTraffic() {
               <Card label="Returning today" value={percent(people.windows.today.returning, people.windows.today.visitors)}
                 hint={`${whole(people.windows.today.returning)} of ${whole(people.windows.today.visitors)} seen in the last 30 days`} />
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid flush-grid sm:grid-cols-2">
               <MinuteChart title={unit === "week" ? "Visitors per day (weekly average)" : `Visitors per ${unit}`} points={points(point => point.people)} format={whole} tone="text-series-3" time={time} span={`last ${label}`} />
               <MinuteChart title={`Page views per ${unit}`} points={points(point => point.pageViews)} format={whole} tone="text-series-1" time={time} span={`last ${label}`} total={whole(t.pageViews)} />
             </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid flush-grid sm:grid-cols-2 lg:grid-cols-4">
               <ShareList title="Where visits came from" data={people.breakdown.source} label={value => SOURCE[value] ?? value} />
               <ShareList title="First page of a visit" data={people.breakdown.landing} label={routeName} />
               <ShareList title="Devices" data={people.breakdown.device} label={value => DEVICE[value] ?? value} />
@@ -78,20 +78,20 @@ export default function AdminTraffic() {
 
           <section className="flex flex-col gap-2">
             <SectionHead title="Requests" note="Every request the server answered: pages, data, images and scripts, from readers and crawlers alike." />
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 flush-grid sm:grid-cols-4">
               <Card label="Requests" value={whole(t.requests)} hint={`last ${label}`} />
               <Card label="Response time (p95)" value={t.requests ? ms(t.p95Ms) : "—"} hint={`median ${t.requests ? ms(t.p50Ms) : "—"} · max ${t.requests ? ms(t.maxMs) : "—"}`} />
               <Card label="Server errors" value={percent(t.errors, t.requests)} hint={`${whole(t.errors)} responses · ${whole(t.throttled)} rate-limited`} level={t.requests && t.errors / t.requests > 0.01 ? "warn" : "ok"} />
               <Card label="Client addresses / day" value={shown.dailyVisitors.days ? whole(shown.dailyVisitors.average) : "—"}
                 hint={shown.dailyVisitors.peakDay != null ? `includes crawlers · peak ${whole(shown.dailyVisitors.peak)}` : "includes crawlers and previews"} />
             </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid flush-grid sm:grid-cols-2 lg:grid-cols-4">
               <MinuteChart title={`Requests per ${unit}`} points={points(point => point.requests)} format={whole} time={time} span={`last ${label}`} total={whole(t.requests)} />
               <MinuteChart title="Response p95" points={points(point => point.p95Ms)} format={ms} kind="line" tone="text-series-4" time={time} span={`last ${label}`} />
               <MinuteChart title={`Errors per ${unit}`} points={points(point => point.errors)} format={whole} tone="text-rose-500" time={time} span={`last ${label}`} total={whole(t.errors)} />
               <MinuteChart title={`Rate-limited per ${unit}`} points={points(point => point.throttled)} format={whole} tone="text-series-2" time={time} span={`last ${label}`} total={whole(t.throttled)} />
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid flush-grid sm:grid-cols-2">
               <MinuteChart title={`Crawler requests per ${unit}`} points={points(point => point.crawlerRequests)} format={whole} tone="text-series-2" time={time}
                 span={`${percent(shown.crawlers.total, t.requests)} of requests · last ${label}`} total={whole(shown.crawlers.total)} />
               <ShareList title="Crawlers by who runs them" data={shown.crawlers} label={value => CRAWLER[value] ?? value}

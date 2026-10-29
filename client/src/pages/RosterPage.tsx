@@ -137,7 +137,7 @@ export default function RosterPage() {
           {split ? <div className="ml-auto">{divisionPicker}</div> : wide ? <div className="ml-auto">{choice}</div> : null}
         </PageToolbar>
         {split ? (
-          <div className="grid grid-cols-2 items-start gap-3 lg:min-h-0 lg:grid-rows-[minmax(0,1fr)]">
+          <div className="grid grid-cols-2 items-start flush-grid lg:min-h-0 lg:grid-rows-[minmax(0,1fr)]">
             {(["signed", "cut"] as const).map((kind) => (
               <section key={kind} ref={kind === "signed" ? signedScroll : cutScroll} aria-label={kind === "signed" ? "Signed" : "Cut"} className={`${PANEL} overflow-hidden lg:max-h-full ${BROWSE_LIST}`}>
                 <MoveList kind={kind} moves={filtered(kind)} fresh={fresh ?? NONE} half />

@@ -531,7 +531,7 @@ function FightOdds({ fight, active }: { fight: Matchup; active: boolean }) {
   useEffect(() => { if (active) setVisited(true); }, [active]);
   if (!active && !visited) return null;
   return <div hidden={!active}>
-    <div className="flex flex-col gap-2 sm:gap-3">
+    <div className="flex flex-col flush-y">
       <OddsPanel fight={fight} />
       {!fight.potential ? <PolymarketPanel fightId={fight.id} active={active} past={fight.status === "past"} /> : null}
     </div>
@@ -583,7 +583,7 @@ function Meetings({ fight }: { fight: Matchup }) {
   </>;
   if (!both) return panels;
   const row = earlier <= 3 && later <= 3 && earlier + later <= 4;
-  return <div className={`grid gap-2 sm:gap-3 ${row ? "grid-cols-[minmax(8.5rem,var(--earlier))_minmax(8.5rem,var(--later))]" : "@[52rem]:grid-cols-2"}`}
+  return <div className={`grid flush-grid ${row ? "grid-cols-[minmax(8.5rem,var(--earlier))_minmax(8.5rem,var(--later))]" : "@[52rem]:grid-cols-2"}`}
     style={{ "--earlier": `${earlier}fr`, "--later": `${later}fr` } as React.CSSProperties}>{panels}</div>;
 }
 
@@ -864,7 +864,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
 
   if (loading && !fight) {
     return (
-      <div className="flex h-full min-h-0 gap-3">
+      <div className="flex h-full min-h-0 flush-x">
         {eventId ? <FightRail eventId={eventId} currentId={fightId} returnDepth={eventReturnDepth} /> : <FightRailSkeleton />}
         <MatchupSkeleton />
       </div>
@@ -872,7 +872,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   }
   if (!fight) {
     return (
-      <div className="flex h-full min-h-0 gap-3">
+      <div className="flex h-full min-h-0 flush-x">
         {eventId ? <FightRail eventId={eventId} currentId={fightId} returnDepth={eventReturnDepth} /> : null}
         <div className={`flex min-w-0 flex-1 items-center justify-center ${shell}`}>
           <div className="text-sm text-zinc-400">Matchup not found.</div>
@@ -947,12 +947,12 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
             </span>
           </div>
         ) : null}
-        <div ref={detailScroll} inert={changingMatchup} className="h-full overflow-y-auto pr-2 [scrollbar-gutter:stable]" aria-busy={changingMatchup}>
-          <div className="@container flex min-h-full w-full flex-col gap-2 pb-[calc(env(safe-area-inset-bottom)+3.25rem)] sm:gap-3 sm:pb-8">
+        <div ref={detailScroll} inert={changingMatchup} className="h-full overflow-y-auto" aria-busy={changingMatchup}>
+          <div className="@container flex min-h-full w-full flex-col flush-y pb-[calc(env(safe-area-inset-bottom)+3.25rem)] sm:pb-8">
             {/* The steps along the card head it; a phone keeps them at the bottom. */}
             <CardNavigation label="Card navigation"
               previous={cardSteps.previous} center={cardSteps.center} next={cardSteps.next} />
-            <div className="flex shrink-0 flex-col gap-2 sm:gap-3">
+            <div className="flex shrink-0 flex-col flush-y">
             <section className={`overflow-hidden ${shell}`}>
               <CardEventTitle
                 name={fight.event.name}
@@ -1037,12 +1037,12 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
             {tabs.length > 1 ? (
               // The same segmented control the sidebar filters use, on the
               // same white panel it sits on there.
-              <div ref={tabBar} className={`${shell} p-1.5`}>
+              <div ref={tabBar} className={shell}>
                 <MatchupTabs tabs={tabs} current={tab} onSelect={selectTab} />
               </div>
             ) : null}
 
-            <div id="matchup-tabpanel" role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `matchup-tab-${tab}` : undefined} className="flex flex-col gap-2 sm:gap-3">
+            <div id="matchup-tabpanel" role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `matchup-tab-${tab}` : undefined} className="flex flex-col flush-y">
               {tab === "fight" ? <>
                 {fight.in_progress ? <PolymarketPanel key={fight.id} fightId={fight.id} compact /> : null}
                 <Scorecards fight={fight} />
@@ -1111,7 +1111,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
       </div>
   );
   return (
-    <div className="flex h-full min-h-0 gap-3">
+    <div className="flex h-full min-h-0 flush-x">
       <FightRail eventId={eventId ?? fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} onReselect={toTop} />
       {detailPane}
     </div>

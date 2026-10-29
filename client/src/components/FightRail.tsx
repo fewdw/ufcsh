@@ -23,7 +23,7 @@ export function FightRailSkeleton() {
   return (
     <aside className={`hidden w-40 shrink-0 flex-col overflow-hidden sm:flex lg:w-48 ${shell}`} aria-label="Loading fight card">
       <div className="border-b border-zinc-200 px-2 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">Card</div>
-      <div className="flex min-h-0 flex-1 flex-col gap-1 p-1.5">
+      <div className="flex min-h-0 flex-1 flex-col">
         {Array.from({ length: 5 }, (_, index) => (
           <div key={index} className="grid grid-cols-2 items-center gap-3 rounded-xl bg-zinc-50 px-1.5 py-2.5" aria-hidden="true">
             <span className="flex justify-center"><Avatar src={null} name="" size="matchup" /></span>
@@ -41,7 +41,7 @@ export function FightRailSkeleton() {
 export function MatchupSkeleton() {
   return (
     <div className="min-w-0 flex-1 overflow-hidden" role="status" aria-label="Loading matchup">
-      <div className="flex w-full flex-col gap-3">
+      <div className="flex w-full flex-col flush-y">
         <section className={`overflow-hidden ${shell}`} aria-hidden="true">
           <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-3.5">
             <span className="h-4 w-48 rounded bg-zinc-100" />
@@ -128,7 +128,7 @@ export function FightRail({ eventId, currentId, returnDepth, onReselect }: {
       <div className="border-b border-zinc-200 px-2 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
         Card
       </div>
-      <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto p-1.5">
+      <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto">
         {event.fights.map((f) => {
           const isCurrent = f.id === currentId;
           const isLive = f.id === liveId;
@@ -239,9 +239,9 @@ export function FightStrip({ eventId, currentId, returnDepth, onReselect, classN
   if (!event && !error) {
     return (
       <div className={className} role="status" aria-label="Loading fights on this card">
-        <div className="flex gap-2 overflow-hidden" aria-hidden="true">
+        <div className="flex flush-x overflow-hidden" aria-hidden="true">
           {Array.from({ length: 6 }, (_, index) => (
-            <span key={index} className="flex shrink-0 items-center gap-2 rounded-2xl border border-zinc-200 bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <span key={index} className="flex shrink-0 items-center gap-2 rounded-2xl border border-zinc-200 bg-white p-2">
               <span className="h-9 w-9 rounded-full bg-zinc-100" />
               <span className="h-9 w-9 rounded-full bg-zinc-100" />
             </span>
@@ -256,7 +256,7 @@ export function FightStrip({ eventId, currentId, returnDepth, onReselect, classN
   return (
     <nav aria-label="Fights on this card" className={className}>
       <div ref={row} onScroll={(e) => stripScroll.set(eventId, e.currentTarget.scrollLeft)}
-        className="scrollbar-none relative flex gap-2 overflow-x-auto overscroll-x-contain">
+        className="scrollbar-none relative flex flush-x overflow-x-auto overscroll-x-contain">
         {fights.map((f) => {
           const isCurrent = f.id === currentId;
           const isLive = f.id === liveId;
@@ -274,7 +274,7 @@ export function FightStrip({ eventId, currentId, returnDepth, onReselect, classN
               // its outline a shade darker, as a selected row does.
               // Faces only: the names are in the link's label and title.
               title={`${f.f1.name} vs ${f.f2.name}`}
-              className={`relative flex shrink-0 items-center gap-2 rounded-2xl border bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${
+              className={`relative flex shrink-0 items-center gap-2 rounded-2xl border bg-white p-2 ${
                 isLive ? "border-emerald-300" : isCurrent ? "border-zinc-400" : "border-zinc-200"}`}
             >
               {isLive ? <span className="live-dot absolute left-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" /> : null}

@@ -116,7 +116,7 @@ export default function AdminOverview() {
       <section className="flex flex-col gap-2">
         <SectionHead title="Newest accounts" note={<Link to={section("people", "accounts")} className="font-medium text-zinc-700 underline">Every account</Link>} />
         {!accounts.data ? <Loading>{accounts.error ? `Couldn’t load accounts. ${accounts.error}` : "Loading accounts…"}</Loading> : (
-          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid flush-grid sm:grid-cols-2 lg:grid-cols-3">
             {newest.map(account => (
               <li key={account.publicId} className="flex min-w-0 items-center gap-2.5 rounded-xl border border-zinc-200 bg-white px-3 py-2">
                 <FanAvatar src={account.imageUrl} name={account.displayName} size="md" />
@@ -135,7 +135,7 @@ export default function AdminOverview() {
         <SectionHead title="Readers" note={<>Browsers that opened the site; crawlers left out. Days are UTC. <Link to={section("traffic")} className="font-medium text-zinc-700 underline">All traffic</Link></>} />
         {!people ? <Loading>{traffic.error ? `Couldn’t load traffic. ${traffic.error}` : "Loading readers…"}</Loading> : (
           <>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 flush-grid sm:grid-cols-4">
               <Card label="Visitors today" value={whole(people.windows.today.visitors)}
                 hint={change == null ? `${whole(people.windows.today.returning)} returning` : `${change >= 0 ? "+" : "−"}${whole(Math.abs(change))} vs all of yesterday (${whole(yesterday!.visitors)})`} />
               <Card label="Last 7 days" value={whole(people.windows.last7Days)} hint="unique visitors" />
@@ -143,7 +143,7 @@ export default function AdminOverview() {
               <Card label="Page views today" value={whole(days.at(-1)?.pageViews ?? 0)}
                 hint={`${whole(data.http.pageViews.lastFiveMinutes)} in the last 5 min · ${whole(data.http.pageViews.lastHour)} this hour`} />
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid flush-grid sm:grid-cols-2">
               <MinuteChart title="Visitors per day" points={days.map(point => ({ at: point.at, value: point.people }))} format={whole} tone="text-series-3" time={at => day(at)} span="last 30 days"
                 total={people.unique == null ? undefined : `${whole(people.unique)} unique`} />
               <ShareList title="Where visits came from, 30 days" data={people.breakdown.source} label={value => SOURCE[value] ?? value} />
@@ -155,7 +155,7 @@ export default function AdminOverview() {
 
       <section className="flex flex-col gap-2">
         <SectionHead title="Community, last 24 hours" />
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 flush-grid sm:grid-cols-4">
           <Card label="Accounts" value={data.community.accounts == null ? "—" : whole(data.community.accounts)} hint={`${whole(data.community.accountsLastDay ?? 0)} new`} />
           <Card label="Comments" value={whole(data.community.commentsLastDay)} hint={`${whole(data.community.commentersLastDay)} commenters`} />
           <Card label="Predictions" value={data.community.predictionsLastDay == null ? "—" : whole(data.community.predictionsLastDay)} />

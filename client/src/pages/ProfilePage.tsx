@@ -176,11 +176,11 @@ function Profile({ handle }: { handle: string }) {
 
   return (
     <div ref={scroll} className="h-full overflow-y-auto overflow-x-hidden">
-      <div className="mx-auto flex min-w-0 max-w-3xl flex-col gap-2 px-2 py-2 sm:gap-3 sm:px-5 sm:py-4">
+      <div className="mx-auto -mt-px flex min-w-0 max-w-3xl flex-col flush-y pb-8">
         <ProfileHeader scorer={scorer} mine={mine} onRenamed={refresh} />
 
         {/* The same white card the matchup's tabs sit on. */}
-        <div className={`${PANEL_SHELL} p-1.5`}>
+        <div className={PANEL_SHELL}>
         <div role="tablist" aria-label="Profile sections" className={`${segmentedGroup} w-full`}>
           {tabs.map((tab, index) => (
             <button
@@ -211,7 +211,7 @@ function Profile({ handle }: { handle: string }) {
         </div>
         </div>
 
-        <div id="profile-tabpanel" role="tabpanel" aria-labelledby={`profile-tab-${section}`} className="flex flex-col gap-3">
+        <div id="profile-tabpanel" role="tabpanel" aria-labelledby={`profile-tab-${section}`} className="flex flex-col flush-y">
           {section === "predictions" ? <ProfilePredictions key={handle} handle={handle} mine={mine} />
             : section === "bets" ? <ProfileBets key={handle} handle={handle} mine={mine} />
             : section === "leaderboards" ? <Leaderboards handle={identity?.publicId ?? ""} />

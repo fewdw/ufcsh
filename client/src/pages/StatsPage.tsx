@@ -983,9 +983,9 @@ export default function StatsPage() {
 
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
-      <main className="mx-auto max-w-[100rem] p-2 pb-8 sm:p-3">
+      <main className="mx-auto -mt-px max-w-[100rem] pb-8">
         <h1 className="sr-only">UFC statistics and leaderboards</h1>
-        <section className={`${shell} relative z-30 mb-2 px-2.5 py-2 sm:mb-3 sm:px-3`}>
+        <section className={`${shell} relative z-30 -mb-px px-2.5 py-2 sm:px-3`}>
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1 sm:max-w-80">
               <FighterSearch
@@ -1056,7 +1056,7 @@ export default function StatsPage() {
 
         {error ? <div className="mb-3"><RequestNotice onRetry={retry}>Couldn’t update statistics. The last successful results are shown.</RequestNotice></div> : null}
 
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 flush-grid lg:grid-cols-2 xl:grid-cols-3">
           {orderedBoards.map((board) => (
             <Leaderboard
               key={board.key}

@@ -60,7 +60,7 @@ export function ProfileColumns({ scope, ready, identity, stats, list, listLabel,
   // Every choice starts with a press, a key or a select changing (the Filters
   // sheet's included); scrolling lets go. Hidden on a wide window: nothing to hold.
   const hold = () => { if (bar.current?.getClientRects().length) anchor.keep(bar.current); };
-  const column = "min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]";
+  const column = "min-w-0 flex-col flush-y [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain";
   const listTabs = [{ key: "list", label: listLabel }, ...lists];
   const tabButton = (key: string, label: string, selected: boolean) => (
     <button key={key} type="button" role="tab" aria-selected={selected} onClick={() => onTab(key)}
@@ -69,12 +69,12 @@ export function ProfileColumns({ scope, ready, identity, stats, list, listLabel,
     </button>
   );
   return (
-    <div ref={page} onPointerDownCapture={hold} onKeyDownCapture={hold} onChangeCapture={hold} className="h-full overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
-      <div className="flex flex-col gap-3 p-3 pb-8 lg:h-full lg:pb-3">
-        <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(24rem,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
+    <div ref={page} onPointerDownCapture={hold} onKeyDownCapture={hold} onChangeCapture={hold} className="h-full overflow-x-hidden overflow-y-auto lg:overflow-hidden">
+      <div className="-m-px flex flex-col flush-y pb-8 lg:h-[calc(100%+2px)] lg:pb-0">
+        <div className="grid flush-grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(24rem,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
           <div ref={main} className={`flex ${column}`}>
             {identity}
-            <div className={`${PANEL} p-1.5 lg:hidden`}>
+            <div className={`${PANEL} lg:hidden`}>
               <div ref={bar} role="tablist" aria-label="Sections" className={`${segmentedGroup} w-full`}>
                 {[...listTabs, { key: "stats", label: "Stats" }].map((entry) => tabButton(entry.key, entry.label, entry.key === tab))}
               </div>
@@ -83,7 +83,7 @@ export function ProfileColumns({ scope, ready, identity, stats, list, listLabel,
           </div>
           <div ref={side} className={`${tab !== "stats" ? "flex" : "hidden lg:flex"} ${column}`}>
             {lists.length ? (
-              <div className={`${PANEL} hidden p-1.5 lg:block`}>
+              <div className={`${PANEL} hidden lg:block`}>
                 <div role="tablist" aria-label="Lists" className={`${segmentedGroup} w-full`}>
                   {listTabs.map((entry) => tabButton(entry.key, entry.label, entry.key === (tab === "stats" ? "list" : tab)))}
                 </div>

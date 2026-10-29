@@ -681,11 +681,11 @@ export default function RankingsPage() {
   const updated = historical ? null : <Freshness label="Updated" at={data?.updated_at} staleAfterHours={24} />;
 
   return (
-    <div ref={pageScroll} className="h-full overflow-y-auto" aria-busy={loading}>
-      <div className="p-2 pb-8 sm:p-3">
+    <div ref={pageScroll} className="h-full overflow-y-auto overflow-x-hidden" aria-busy={loading}>
+      <div className="-mx-px -mt-px pb-8">
         <h1 className="sr-only">UFC rankings</h1>
         {/* Division tabs sit before Filters; phone tabs scroll when space is tight. */}
-        <div className={`${shell} mb-2 flex flex-wrap items-center gap-2 px-2.5 py-2.5 sm:mb-3 sm:px-3 sm:py-3 lg:gap-3`}>
+        <div className={`${shell} -mb-px flex flex-wrap items-center gap-2 px-2.5 py-2.5 sm:px-3 sm:py-3 lg:gap-3`}>
           <div className="flex min-w-0 flex-1 items-center gap-3 lg:contents">
             <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto overscroll-x-contain py-1.5 [scrollbar-width:none] lg:contents" aria-label="Ranking tabs">
               <div className={`${segmentedGroup} shrink-0`} role="group" aria-label="Ranking view">
@@ -762,15 +762,15 @@ export default function RankingsPage() {
           : <div
           className={
             centerFilteredCards
-              ? "flex flex-wrap justify-center gap-2 sm:gap-3"
-              : "grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-4"
+              ? "flex flex-wrap justify-center flush-grid"
+              : "grid grid-cols-1 flush-grid sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
           }
         >
           {shown.map((d) => (
             centerFilteredCards ? (
               <div
                 key={d.division}
-                className="w-full sm:w-[calc(50%_-_0.375rem)] lg:w-[calc(33.333%_-_0.5rem)] 2xl:w-[calc(25%_-_0.5625rem)]"
+                className="w-full sm:w-1/2 lg:w-1/3 2xl:w-1/4"
               >
                 <DivisionCard division={d} features={activeFeatures} source={displayedSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} at={displayedDate ?? undefined} />
               </div>

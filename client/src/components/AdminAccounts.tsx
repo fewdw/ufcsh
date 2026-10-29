@@ -53,7 +53,7 @@ export default function AdminAccounts() {
       <ViewHead title="Accounts" note={data.clerk === "ok" ? "Emails and sign-ins from Clerk; everything else from this site."
         : `Clerk ${data.clerk}${data.clerkError ? `: ${data.clerkError}` : ""}. Emails and sign-ins are missing.`} />
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 flush-grid sm:grid-cols-4">
         <Card label="Accounts" value={whole(live.length)} hint={`${whole(data.accounts.length - live.length)} deleted`} />
         <Card label="Joined this week" value={whole(live.filter(account => (account.joinedAt ?? 0) > week).length)} />
         <Card label="Seen this week" value={whole(live.filter(account => (seen(account) ?? 0) > week).length)} hint="signed in or did something" />
