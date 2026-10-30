@@ -55,6 +55,8 @@ import { ensureImageVariant, normalizeHeadshot, variantPath, type ImageSize } fr
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight, fighterNames } from "./sync.ts";
 import { boutOdds, LiveOddsService, scanUpcoming, upcomingBouts, type FinishedBout, type LiveBout } from "./polymarket.ts";
 import { PolymarketMarkets } from "./polymarket-markets.ts";
+import { RATE_LIMITED, createMcpHandler, rpcError } from "./mcp.ts";
+import { createMcpServer } from "./mcp-tools.ts";
 import { BackgroundRefresh } from "./background-refresh.ts";
 import { VersionCache } from "./version-cache.ts";
 import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy.ts";
@@ -2524,6 +2526,26 @@ export function startApi(port: number): http.Server {
       return { json: JSON.stringify(data === undefined ? { error: "not found" } : data), status: data === undefined ? 404 : 200 };
     }, policy.stale);
   };
+  // Tools read exactly what the site publishes, through the same cache and
+  // workers; anything `publicApi` refuses (admin, bugs) stays out of reach.
+  const mcpCalls = new Map<string, number>();
+  const mcpServer = createMcpServer({
+    read: async (path) => {
+      const url = new URL(path, "http://localhost");
+      if (!publicApi(url.pathname)) throw new Error(`Not a public route: ${url.pathname}`);
+      const answer = await publicAnswer(url);
+      if (answer.status === 404) return undefined;
+      if (answer.status !== 200) throw new Error(`${url.pathname} answered ${answer.status}`);
+      return JSON.parse(answer.body.toString());
+    },
+    fanScores: async (fightId) => {
+      const value = await cache.get(`mcp-scores:${fightId}`, 5_000, async () => ({ json: JSON.stringify(scoreStore.summary(fightId)), status: 200 }));
+      return JSON.parse(value.body.toString());
+    },
+    markets: filter => markets.board(filter),
+    liveOdds: () => liveOdds.answer(),
+  }, tool => { mcpCalls.set(tool, (mcpCalls.get(tool) ?? 0) + 1); });
+  const mcp = createMcpHandler(mcpServer, sendJson);
   // The lists every visit starts from are in memory before the first reader
   // asks, so no one meets a cold build after a deploy.
   const warmLists = setInterval(() => {
@@ -2716,6 +2738,16 @@ export function startApi(port: number): http.Server {
       if (!stopping && await comments(req, res, url)) return;
       if (!stopping && await admin(req, res, url)) return;
       const part = (i: number) => p.split("/")[i] ?? "";
+      if (p === "/mcp") {
+        if (stopping) return await sendJson(req, res, rpcError(null, RATE_LIMITED, "Server is restarting. Retry in a few seconds."), 503);
+        // Each call may read several answers, and the agents of one provider
+        // share an address: a bucket of its own, wider per burst than per second.
+        if (!limiter.allow(`${clientAddress(req)}:mcp`, 60, 5)) {
+          res.setHeader("Retry-After", "5");
+          return await sendJson(req, res, rpcError(null, RATE_LIMITED, "Too many requests. Retry in a few seconds."), 429);
+        }
+        return await mcp(req, res);
+      }
       if (req.method !== "GET" && req.method !== "HEAD") {
         res.setHeader("Allow", "GET, HEAD");
         return await sendJson(req, res, { error: "method not allowed" }, 405);
@@ -2818,6 +2850,7 @@ export function startApi(port: number): http.Server {
       if (p === "/api/metrics") return await sendJson(req, res, {
         requests, failures, cache: { hits: cache.hits, misses: cache.misses, entries: cache.size, bytes: cache.byteSize },
         queries_pending: queryPool?.pending ?? 0, memory: process.memoryUsage(), uptime_seconds: process.uptime(),
+        mcp_tool_calls: Object.fromEntries(mcpCalls),
         event_loop_ms: { p95: eventLoop.percentile(95) / 1e6, max: eventLoop.max / 1e6 },
         routes: Object.fromEntries([...latencies].map(([key, value]) => [key, { count: value.count, mean_ms: value.total_ms / value.count, max_ms: value.max_ms }])),
       });

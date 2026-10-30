@@ -35,6 +35,7 @@ client (`client/`) renders every page.
 | Anti-doping tests (a profile's test sessions a year, a panel under its average strikes by round) | `antidoping.ts`: validated public snapshot `antidoping-data.json` imported before HTTP (`production.ts`, `index.ts`); current/previous years refreshed daily, older years monthly; counts and confirmed identity links published atomically. Explicit reviewed aliases, no fuzzy spelling inference; gaps and all unlinked source rows in Admin → Bugs, with a full re-read action. `export-antidoping.ts` refreshes the bundled public snapshot; see `docs/antidoping.md`. Client `FighterTests` in `pages/FighterPage.tsx` |
 | Venues and locations | `venues.ts` (identity from ufc.com venue ids + Wikipedia names; locations group cards by the billed city and country) |
 | Roster changes (signings, releases) | `roster-moves.ts` (stored read + profile links, ufc.com newest-profile watch: a profile not yet Active is re-read until it is; departures when an athlete page turns from Active to Not Fighting or Retired); `roster-history.ts` retains dated source evidence; shared `roster-timeline.ts` drives profile bands and the searchable Admin → Bugs backlog for unknown dates/reasons; `import-roster-history.ts` reads weekly roster revisions, `import-roster-reports.ts` retains dated biography evidence through `scrape/roster-reports.ts`; current reports parsed in `scrape/wikipedia.ts` (`rosterChanges`) and `scrape/ufccom.ts` (`parseNewestAthletes`) |
+| MCP server for AI agents (`POST /mcp`: search, fighters, fights, cards, rankings, live, leaderboards, officials, places, controversy, news, Polymarket, roster, awards; read-only, public data) | `mcp.ts` (protocol, both eras), `mcp-tools.ts` (tools and shaping), data wired in `startApi` (`api.ts`). See `docs/mcp.md` |
 | Admin data-quality board | `bugs.ts` (checks and repair actions), `admin-http.ts`, `repair-guard.ts` |
 | Admin panel (sidebar, most important first: Overview, Errors, Slow requests, People → Accounts/Comments/Flags, Data → Bugs/Live rounds, Traffic → Visitors/Server, Settings) | client `pages/AdminPage.tsx`, views in `components/Admin*.tsx`, shared cards/charts in `components/adminKit.tsx` |
 | Admin traffic and visitors (live last hour; saved history 24 hours to all time; unique visitors by browser, sources, devices, countries; real readers' load times; requests by crawler family) | `observability.ts` (in memory), `traffic-history.ts` (hourly rows in `scoring.db`, folded to days after 8 days), `visitors.ts` (hashed browser ids for 35 days, then daily totals), `page-timing.ts` (first byte, first paint and LCP of each visit's first page, by device and network; `rum_*` rows), crawler requests by family as `agent_*` rows (`agentOf` in `visitors.ts`); client `pageViews.ts` sends both signals |
@@ -74,7 +75,7 @@ copy of the local archive (`DATA_DIR`).
 
 `production.md` (hosting, backups, health), `launch.md` (new host),
 `local-development.md`, `dev-environment.md`, `performance.md`, `scoring.md`, `discussions.md`,
-`predictions.md`, `agent-workflow.md`, `data-repairs/` (dated repair records).
+`predictions.md`, `agent-workflow.md`, `mcp.md`, `data-repairs/` (dated repair records).
 
 ## Development and deployment
 

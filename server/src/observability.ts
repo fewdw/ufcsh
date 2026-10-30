@@ -57,6 +57,7 @@ export function routeGroup(pathname: string): string {
   if (pathname === "/api/search") return "search";
   if (pathname === "/healthz" || pathname === "/readyz") return "health";
   if (pathname === "/api/status" || pathname === "/api/metrics") return "monitoring";
+  if (pathname === "/mcp") return "mcp";
   if (pathname.startsWith("/api/")) return "api_other";
   if (pathname.startsWith("/assets/")) return "assets";
   return pageRouteGroup(pathname) ?? "page_other";
