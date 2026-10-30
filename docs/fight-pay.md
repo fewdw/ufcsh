@@ -108,6 +108,15 @@ disclosures stay listed, even when their age makes them an expected gap. CSAC
 and CombatReg are research leads for commission results, not purse evidence
 by themselves.
 
+The unknown-pay check retains historical cards under **OK**; that severity
+means an expected research gap, not complete data. Recent cards and partial
+disclosures are **Not bad**. Each item counts missing purses by fighter, so
+partial repairs are visible even while the card has another gap. The top-level
+board counts cards, not individual missing amounts. A card leaves this check
+only when its missing purse, bonus and applicable fight-week fields are filled.
+Reported bonuses without an amount are included even without a UFCStats award
+flag, as are vacant-title bouts whose fight-week estimate is withheld.
+
 ## Finding more reliable records
 
 Completed cards are read once and revisited daily for 180 days, rather than
