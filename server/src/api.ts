@@ -55,6 +55,8 @@ import { ensureImageVariant, normalizeHeadshot, variantPath, type ImageSize } fr
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight, fighterNames } from "./sync.ts";
 import { boutOdds, LiveOddsService, scanUpcoming, upcomingBouts, type FinishedBout, type LiveBout } from "./polymarket.ts";
 import { PolymarketMarkets } from "./polymarket-markets.ts";
+import { RATE_LIMITED, allowAgents, createMcpHandler, rpcError } from "./mcp.ts";
+import { createMcpServer } from "./mcp-tools.ts";
 import { BackgroundRefresh } from "./background-refresh.ts";
 import { VersionCache } from "./version-cache.ts";
 import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy.ts";
@@ -1068,8 +1070,13 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     return map;
   };
   const selfIds = new Set([f.f1_id, f.f2_id].filter(Boolean));
-  const m1 = oppResults(f1.history as any[], selfIds);
-  const m2 = oppResults(f2.history as any[], selfIds);
+  // The shared chronology distinguishes earlier tournament rounds from later
+  // bouts on the same night. Carry the cutoff with the public history rows.
+  const priorFightIds = new Set([f.f1_id, f.f2_id].flatMap(fid =>
+    boutsBefore(index, fid, f.event_date, Number(f.ord) || 0).map(bout => bout.id)));
+  const atFight = (row: any) => ({ ...row, before_fight: !!potential || priorFightIds.has(row.fight_id) });
+  const m1 = oppResults((f1.history as any[]).map(atFight), selfIds);
+  const m2 = oppResults((f2.history as any[]).map(atFight), selfIds);
   const common = [...m1.keys()]
     .filter((k) => m2.has(k))
     .map((k) => ({
@@ -1080,7 +1087,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
 
   const headToHead = (f1.history as any[]).filter(
     (h: any) => h.fight_id && h.opponent.id && h.opponent.id === f.f2_id && h.fight_id !== f.id,
-  );
+  ).map(atFight);
 
   const official = fightDetail(f);
   // Journalists' cards, only on the matchup: event lists never send them.
@@ -1553,7 +1560,7 @@ function searchIndex(): SearchIndex {
              WHERE (f.f1_id = fr.id OR f.f2_id = fr.id)
                AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)) AS ufc_fights
     FROM fighters fr
-    WHERE ${ufcFightExistsSql("fr.id", "fought")}
+    WHERE ${ufcFightExistsSql("fr.id", "fought")} OR fr.signee = 1
   `).all() as any[]).map(({ norm_name, ...f }) => ({
     ...f, target: fuzzyTarget(f.name, f.nickname, ...searchAliases(f.name)),
     names: [norm_name, (f.nickname ?? "").toLowerCase(), ...searchAliases(f.name)].join("\n"),
@@ -2537,6 +2544,26 @@ export function startApi(port: number): http.Server {
       return { json: JSON.stringify(data === undefined ? { error: "not found" } : data), status: data === undefined ? 404 : 200 };
     }, policy.stale);
   };
+  // Tools read exactly what the site publishes, through the same cache and
+  // workers; anything `publicApi` refuses (admin, bugs) stays out of reach.
+  const mcpCalls = new Map<string, number>();
+  const mcpServer = createMcpServer({
+    read: async (path) => {
+      const url = new URL(path, "http://localhost");
+      if (!publicApi(url.pathname)) throw new Error(`Not a public route: ${url.pathname}`);
+      const answer = await publicAnswer(url);
+      if (answer.status === 404) return undefined;
+      if (answer.status !== 200) throw new Error(`${url.pathname} answered ${answer.status}`);
+      return JSON.parse(answer.body.toString());
+    },
+    fanScores: async (fightId) => {
+      const value = await cache.get(`mcp-scores:${fightId}`, 5_000, async () => ({ json: JSON.stringify(scoreStore.summary(fightId)), status: 200 }));
+      return JSON.parse(value.body.toString());
+    },
+    markets: filter => markets.board(filter),
+    liveOdds: () => liveOdds.answer(),
+  }, tool => { mcpCalls.set(tool, (mcpCalls.get(tool) ?? 0) + 1); });
+  const mcp = createMcpHandler(mcpServer, sendJson);
   // The lists every visit starts from are in memory before the first reader
   // asks, so no one meets a cold build after a deploy.
   const warmLists = setInterval(() => {
@@ -2729,6 +2756,17 @@ export function startApi(port: number): http.Server {
       if (!stopping && await comments(req, res, url)) return;
       if (!stopping && await admin(req, res, url)) return;
       const part = (i: number) => p.split("/")[i] ?? "";
+      if (p === "/mcp") {
+        allowAgents(res);
+        if (stopping) return await sendJson(req, res, rpcError(null, RATE_LIMITED, "Server is restarting. Retry in a few seconds."), 503);
+        // Each call may read several answers, and the agents of one provider
+        // share an address: a bucket of its own, wider per burst than per second.
+        if (!limiter.allow(`${clientAddress(req)}:mcp`, 60, 5)) {
+          res.setHeader("Retry-After", "5");
+          return await sendJson(req, res, rpcError(null, RATE_LIMITED, "Too many requests. Retry in a few seconds."), 429);
+        }
+        return await mcp(req, res);
+      }
       if (req.method !== "GET" && req.method !== "HEAD") {
         res.setHeader("Allow", "GET, HEAD");
         return await sendJson(req, res, { error: "method not allowed" }, 405);
@@ -2831,6 +2869,7 @@ export function startApi(port: number): http.Server {
       if (p === "/api/metrics") return await sendJson(req, res, {
         requests, failures, cache: { hits: cache.hits, misses: cache.misses, entries: cache.size, bytes: cache.byteSize },
         queries_pending: queryPool?.pending ?? 0, memory: process.memoryUsage(), uptime_seconds: process.uptime(),
+        mcp_tool_calls: Object.fromEntries(mcpCalls),
         event_loop_ms: { p95: eventLoop.percentile(95) / 1e6, max: eventLoop.max / 1e6 },
         routes: Object.fromEntries([...latencies].map(([key, value]) => [key, { count: value.count, mean_ms: value.total_ms / value.count, max_ms: value.max_ms }])),
       });
