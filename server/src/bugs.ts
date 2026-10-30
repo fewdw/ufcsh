@@ -33,8 +33,9 @@ import { judgeNews } from "./news-ai.ts";
 import { judging } from "./judging.ts";
 import { NEWS_FEEDS } from "./scrape/news.ts";
 import { ROSTER_ARTICLE, samePlace } from "./scrape/wikipedia.ts";
-import { storedPay, syncFightPay, VENUM_START, type PayIssues } from "./fight-pay.ts";
+import { complianceEstimate, storedPay, syncFightPay, VENUM_START, type PayIssues } from "./fight-pay.ts";
 import { PURSE_REPORTS } from "./purse-reports-data.ts";
+import { BONUS_LABELS, PAY_REPORT_DAYS } from "./scrape/payouts.ts";
 import {
   fighterNames,
   forgetUfcPage,
@@ -1458,6 +1459,7 @@ type PayFightRow = {
   id: string; event_id: string; f1_id: string | null; f2_id: string | null; f1_name: string; f2_name: string;
   f1_outcome: string | null; f2_outcome: string | null; perf_bonus: number | null; fotn_bonus: number | null;
   title_fight: number; title_type: string; pay_json: string | null; f1_career: string | null; f2_career: string | null;
+  weight_class: string; ord: number;
 };
 type PayEventRow = { id: string; name: string; date: string; location: string; wiki_title: string | null; pay_checked_at: number | null; pay_issues_json: string | null };
 
@@ -1476,14 +1478,14 @@ const listed = (names: string[], limit = 6) => names.length > limit ? `${names.s
 /** Every finished card with a fighter whose pay for the bout is unknown: no
  *  purse disclosed, a post-fight bonus without its amount, or (from April
  *  2021) fight-week pay that can't be estimated. Most commissions never
- *  disclose purses, so older cards are expected; the last sixty days, and
+ *  disclose purses, so older cards are expected; the last 180 days, and
  *  any card whose disclosure skipped a bout, stay open. */
-function fightPayUnknown(): BugCheck {
+export function fightPayUnknown(): BugCheck {
   const events = db.prepare(`SELECT id, name, date, location, wiki_title, pay_checked_at, pay_issues_json FROM events
     WHERE complete = 1 ORDER BY date DESC`).all() as PayEventRow[];
   const fights = db.prepare(`
     SELECT f.id, f.event_id, f.f1_id, f.f2_id, f.f1_name, f.f2_name, f.f1_outcome, f.f2_outcome, f.perf_bonus, f.fotn_bonus,
-      f.title_fight, f.title_type, f.pay_json, c1.status AS f1_career, c2.status AS f2_career
+      f.title_fight, f.title_type, f.weight_class, f.ord, f.pay_json, c1.status AS f1_career, c2.status AS f2_career
     FROM fights f JOIN events e ON e.id = f.event_id
     LEFT JOIN career_profiles c1 ON c1.fighter_id = f.f1_id LEFT JOIN career_profiles c2 ON c2.fighter_id = f.f2_id
     WHERE e.complete = 1 AND f.method IS NOT NULL
@@ -1506,14 +1508,20 @@ function fightPayUnknown(): BugCheck {
       for (const [corner, name, id, outcome, career] of corners) {
         if (!pay?.purse?.[corner]) purseless.push(name);
         const bonuses = pay?.bonuses?.[corner] ?? [];
+        for (const bonus of bonuses) {
+          if (bonus.amount == null) bonusless.push(`${name} (${BONUS_LABELS[bonus.kind]}${bonus.note ? `: ${bonus.note}` : ""})`);
+        }
         const wants = [...(fight.fotn_bonus ? ["fotn"] : []), ...(fight.perf_bonus && outcome === "win" ? ["perf"] : [])];
         for (const kind of wants) {
           const found = bonuses.find((bonus) => kind === "fotn" ? bonus.kind === "fotn" : ["potn", "kotn", "sotn"].includes(bonus.kind));
-          if (found?.amount == null) bonusless.push(`${name} (${kind === "fotn" ? "Fight" : "Performance"} of the Night${found?.note ? `: ${found.note}` : ""})`);
+          if (!found) bonusless.push(`${name} (${kind === "fotn" ? "Fight" : "Performance"} of the Night)`);
         }
         if (event.date >= VENUM_START) {
           const gap = !id ? "no profile" : fight.title_fight && fight.title_type === "interim" ? "interim title bout"
-            : career !== "verified" ? "record not verified" : null;
+            : career !== "verified" ? "record not verified"
+            // The matchup also withholds estimates for vacant title bouts.
+            // Use its own eligibility rule for these few bouts so Bugs agrees.
+            : fight.title_fight && fight.title_type === "title" ? complianceEstimate(id, { ...fight, event_date: event.date }).gap : null;
           if (gap) unestimated.push(`${name} (${gap})`);
         }
       }
@@ -1528,6 +1536,7 @@ function fightPayUnknown(): BugCheck {
       date: event.date,
       facts: [
         ["Disclosed purses", `${disclosed} of ${card.length} bouts`],
+        ["Missing purses", `${purseless.length} of ${card.length * 2} fighters`],
         ...(purseless.length ? [["No disclosed purse", listed(purseless)] as [string, string]] : []),
         ...(bonusless.length ? [["Bonus amount unknown", listed(bonusless, 3)] as [string, string]] : []),
         ...(unestimated.length ? [["Fight-week pay not estimated", listed(unestimated)] as [string, string]] : []),
@@ -1541,8 +1550,8 @@ function fightPayUnknown(): BugCheck {
     id: "fight-pay-unknown",
     group: "Missing data",
     label: "Fighter pay unknown",
-    description: "Finished cards with a fighter whose pay is unknown on the matchup. Purses are shown only where an athletic commission disclosed them (Wikipedia's \"Reported payout\" section, reviewed historical commission reports and MMA Payout's salary posts); most commissions never do, so older cards are expected here. Bonus amounts come from the article's \"Bonus awards\" section; a forfeited or reassigned bonus is left without an amount until checked. Fight-week pay is estimated from April 2021 when the fighter's record (WEC and Strikeforce bouts count) is verified. Open: the last 60 days, and any card whose disclosure skipped a bout. Re-reading fetches the article and MMA Payout now and reapplies the reviewed historical reports.",
-    grade: (item) => skipped.has(item.key) ? "minor" : recent([[60, "minor"]])(item),
+    description: "Finished cards with a fighter whose pay is unknown on the matchup. Purses are shown only where an athletic commission disclosed them (Wikipedia's \"Reported payout\" section, reviewed historical commission reports and MMA Payout's salary posts); most commissions never do, so older cards are expected here. Bonus amounts come from the article's \"Bonus awards\" section; a forfeited or reassigned bonus is left without an amount until checked. Fight-week pay is estimated from April 2021 when the fighter's record (WEC and Strikeforce bouts count) is verified. Open: the last 180 days, and any card whose disclosure skipped a bout. Re-reading fetches the article and MMA Payout now and reapplies the reviewed historical reports.",
+    grade: (item) => skipped.has(item.key) ? "minor" : recent([[PAY_REPORT_DAYS, "minor"]])(item),
   }, items);
 }
 

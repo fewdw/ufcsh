@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { DATA_DIR, getMeta, setMeta } from "./db.ts";
-import { OUTAGE_MS, outageReport, recentSyncError, recordSyncError, syncStatus } from "./sync-status.ts";
+import { clearSyncErrors, OUTAGE_MS, outageReport, recentSyncError, recordSyncError, syncStatus } from "./sync-status.ts";
 
 test("sync errors are kept newest first, grouped by job, and sources say when they are late", () => {
   const saved = { errors: getMeta("sync_errors"), last: getMeta("last_sync_error"), tick: getMeta("last_tick_at") };
@@ -53,6 +53,32 @@ test("a locked error archive logs the original failure without rejecting, then r
   } finally {
     if (locked) writer.exec("ROLLBACK");
     writer.close();
+    setMeta("sync_errors", saved.errors ?? "");
+    setMeta("last_sync_error", saved.last ?? "");
+  }
+});
+
+test("clearing forgets every record of one failure, or all of them, and a new one comes back", () => {
+  const saved = { errors: getMeta("sync_errors"), last: getMeta("last_sync_error") };
+  try {
+    setMeta("sync_errors", "[]");
+    const now = Date.UTC(2026, 9, 11, 2);
+    recordSyncError("card_segments A", new Error("no sections"), now - 3000);
+    recordSyncError("card_segments A", new Error("other"), now - 2000);
+    recordSyncError("card_segments A", new Error("no sections"), now - 1000);
+    clearSyncErrors({ job: "card_segments A", error: "Error: no sections" });
+    assert.deepEqual(syncStatus(now).errors.map(error => error.error), ["Error: other"]);
+    assert.match(getMeta("last_sync_error")!, /card_segments A: Error: other/);
+
+    recordSyncError("fightodds", new Error("no sections"), now);
+    clearSyncErrors();
+    assert.equal(syncStatus(now).errors.length, 0);
+    assert.equal(getMeta("last_sync_error"), "");
+    assert.equal(recentSyncError(now), false);
+
+    recordSyncError("card_segments A", new Error("no sections"), now + 1000);
+    assert.equal(syncStatus(now + 1000).errors.length, 1);
+  } finally {
     setMeta("sync_errors", saved.errors ?? "");
     setMeta("last_sync_error", saved.last ?? "");
   }

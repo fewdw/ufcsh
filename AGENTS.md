@@ -30,6 +30,8 @@ small/large screens. Prefer the smallest maintainable solution.
   `release BRANCH`) are in `docs/agent-workflow.md`. Never use `dev.sh` or the
   internal selector directly.
 - Previews are tailnet-only: Tailscale Serve, never Funnel; servers stay on loopback.
+- Never include Tailscale URLs in PR titles, descriptions, or comments. Share
+  preview URLs only in the chat.
 
 ## Proportional verification
 

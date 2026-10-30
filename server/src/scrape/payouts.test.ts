@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { money, payoutPost, placeName, postForCard, readPurses, rowName, wikipediaBonuses, wikipediaPurses, type PayBout } from "./payouts.ts";
+import { money, payoutPost, placeName, postsForCard, readPurses, rowName, wikipediaBonuses, wikipediaPurses, type PayBout } from "./payouts.ts";
 
 const ufc229: PayBout[] = [
   { id: "a", f1: "Khabib Nurmagomedov", f2: "Conor McGregor", f1Outcome: "win", f2Outcome: "loss" },
@@ -198,8 +198,10 @@ test("a salary post's table is read row by row, without its photo captions or st
     { id: "a", f1: "Dominick Reyes", f2: "Dustin Jacoby", f1Outcome: "win", f2Outcome: "loss" },
     { id: "b", f1: "Charles Johnson", f2: "Ramazan Temirov" },
   ];
-  assert.equal(postForCard([post], "2024-06-15", card), post);
-  assert.equal(postForCard([post], "2024-03-01", card), null);
+  assert.deepEqual(postsForCard([post], "2024-06-15", card), [post]);
+  assert.deepEqual(postsForCard([post], "2024-03-01", card), [post]); // Delayed records request.
+  assert.deepEqual(postsForCard([post], "2023-12-01", card), []);
+  assert.deepEqual(postsForCard([post], "2024-06-23", card), []);
   const read = readPurses(post.text.split("\n"), card);
   assert.deepEqual(read.purses.get("a"), {
     f1: { total: 250_000, show: 125_000, win: 125_000, note: null },
