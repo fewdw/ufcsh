@@ -19,6 +19,7 @@ const rpc = (method: string, params?: object, id: unknown = 1) => ({ jsonrpc: "2
 const body = (reply: { body?: unknown }) => reply.body as any;
 
 test("legacy clients open with initialize and need no session", async () => {
+  assert.deepEqual(LEGACY_VERSIONS.includes("2025-03-26"), false, "2025-03-26 requires batches, which this server refuses");
   const known = await answerMcp(server, rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {} }), headersOf({}));
   assert.equal(body(known).result.protocolVersion, "2025-06-18");
   assert.deepEqual(body(known).result.capabilities, { tools: {} });
@@ -103,6 +104,8 @@ test("any well-formed web origin may call this public server", () => {
   assert.equal(validOrigin("null"), false);
   assert.equal(validOrigin("https://a.example/path"), false);
   assert.equal(validOrigin(""), false);
+  assert.equal(validOrigin("http://@"), false);
+  assert.equal(validOrigin("ftp://a.example"), false);
 });
 
 // -- Tools ---------------------------------------------------------------------
@@ -134,12 +137,17 @@ const profile = {
   id: JONES, name: "Jon Jones", record: "28-1", ufc_record: "22-1", career_stats: { statBouts: 2, seconds: 60, sigLanded: 6, sigAbsorbed: 3 },
   division_medians: { division: "Heavyweight", from: "2023-01-01", to: "2026-01-01", fighters: 40, values: { slpm: 3.5, sapm: 3.4 } },
   history: [
-    { fight_id: FIGHT, date: "2024-11-16", outcome: "win", method: "KO/TKO", opponent: { id: DC, name: "Daniel Cormier" } },
-    { fight_id: REMATCH, date: "2017-07-29", outcome: "nc", method: "Overturned", opponent: { id: DC, name: "Daniel Cormier" } },
+    { promotion: "ufc", fight_id: FIGHT, date: "2024-11-16", outcome: "win", method: "KO/TKO", opponent: { id: DC, name: "Daniel Cormier" },
+      record_before: { text: "21-1" }, career_record_before: { text: "27-1" }, opponent_record_before: { text: "14-4" }, opponent_career_record_before: { text: "20-4" } },
+    { promotion: "ufc", fight_id: REMATCH, date: "2017-07-29", outcome: "nc", method: "Overturned", opponent: { id: DC, name: "Daniel Cormier" } },
     { fight_id: "1111111111111111", date: "2099-01-01", upcoming: true, outcome: null, opponent: { id: "2222222222222222", name: "Next Foe" } },
   ],
-  pro_history: [], records: [], awards: [], roster_events: [], cancelled: [],
+  pro_history: [{ promotion: "outside", date: "2008-01-01", outcome: "win", opponent: { name: "Old Foe" }, record_before: { text: "0-0" }, career_record_before: { text: "6-0" } }],
+  ranking_history: { through: "2026-01-01", divisions: [{ division: "Featherweight", points: [{ date: "2015-01-01", rank: "13" }, { date: "2015-02-01", rank: "5" }, { date: "2015-06-01", rank: null }] }], p4p: [{ date: "2015-01-01", rank: "5" }, { date: "2015-06-01", rank: null }] },
+  records: [], awards: [], cancelled: [],
+  roster_events: [{ date: "2019-01-01", kind: "signed" }, { date: "2025-07-19", kind: "retired", reason: "Retired" }],
 };
+const LATER = "8888888888888888";
 const fixtures: Record<string, unknown> = {
   "/api/events": [
     { id: "potential-matchups", name: "Potential matchups", date: "", status: "future", potential: true },
@@ -161,6 +169,11 @@ const fixtures: Record<string, unknown> = {
   "/api/roster": { signed: [], cut: [] },
   "/api/awards": { categories: [] },
   "/api/controversial": { total: 0, rows: [] },
+  [`/api/events/${EVENT}`]: { name: "UFC 309", date: "2024-11-16", status: "past", fights: [{ id: FIGHT, f1: side(JONES, "Jon Jones", "win"), f2: side(DC, "Daniel Cormier", "loss"), odds: { f1: { close: "-160" }, f2: { close: "+140" } } }] },
+  [`/api/events/${EVENT}/crew`]: { broadcast: { feed: "US", roles: { play_by_play: ["Jon Anik"] }, source_url: "https://example.com/crew" } },
+  "/api/referees/herb-dean": { name: "Herb Dean", career: { fights: 10 } },
+  "/api/locations": { locations: [{ slug: "rio-brazil", name: "Rio de Janeiro, Brazil", city: "Rio de Janeiro", country: "Brazil", events: 12 }, { slug: "sao-paulo-brazil", name: "Sao Paulo, Brazil", city: "Sao Paulo", country: "Brazil", events: 9 }] },
+  "/api/locations/rio-brazil": { name: "Rio de Janeiro, Brazil", country: "Brazil", home: { country: "Brazil", decisions: 152, won: 90 } },
   [`/api/fighters/${JONES}`]: profile,
   [`/api/fights/${FIGHT}`]: fightPayload(),
   [`/api/fights/${REMATCH}`]: fightPayload({ id: REMATCH }),
@@ -174,6 +187,11 @@ const SEARCH: Record<string, unknown> = {
   "bruno silva": { fighters: [{ id: "5555555555555555", name: "Bruno Silva", record: "23-12" }, { id: "6666666666666666", name: "Bruno Silva", record: "13-5" }], events: [], fights: [], officials: [], venues: [], locations: [] },
   "silva": { fighters: [{ id: "5555555555555555", name: "Bruno Silva" }, { id: "7777777777777777", name: "Anderson Silva" }], events: [], fights: [], officials: [], venues: [], locations: [] },
   "nobody": { fighters: [], events: [], fights: [], officials: [], venues: [], locations: [] },
+  "ufc vegas": { fighters: [], events: [{ id: "9999999999999999", name: "UFC 33", date: "2001-09-28", approximate: true }], fights: [], officials: [], venues: [], locations: [] },
+  "rio de janeiro": { fighters: [], events: [], fights: [], officials: [], venues: [{ slug: "arena", name: "Arena", city: "Rio de Janeiro" }], locations: [{ slug: "rio-brazil", name: "Rio de Janeiro, Brazil", city: "Rio de Janeiro", country: "Brazil" }] },
+  "padilla": { fighters: [{ id: "aaaaaaaaaaaaaaaa", name: "Chris Padilla" }, { id: "bbbbbbbbbbbbbbbb", name: "Other Padilla" }], events: [], fights: [], officials: [], venues: [], locations: [] },
+  "mederos": { fighters: [{ id: "cccccccccccccccc", name: "MarQuel Mederos" }], events: [], fights: [], officials: [], venues: [], locations: [] },
+  "padilla vs mederos": { fighters: [], events: [], fights: [{ id: FIGHT, f1_name: "Chris Padilla", f2_name: "MarQuel Mederos", event_name: "UFC 327", date: "2026-04-11", meeting: 1, meetings: 1 }], officials: [], venues: [], locations: [] },
 };
 function fakeData(overrides: Partial<McpData> = {}, seen: string[] = []): McpData {
   return {
@@ -279,6 +297,142 @@ test("a draw has no winner, and an unfought bout no result", async () => {
   assert.match(coming.json.odds.note, /can still move/);
 });
 
+test("two meetings on one night keep their order: the profile's is newest first", async () => {
+  const history = [
+    { fight_id: LATER, date: "1997-12-21", outcome: "win", opponent: { id: DC, name: "Daniel Cormier" } },
+    { fight_id: REMATCH, date: "1997-12-21", outcome: "nc", opponent: { id: DC, name: "Daniel Cormier" } },
+  ];
+  const data = fakeData({ read: async (path) => {
+    const { pathname, searchParams } = new URL(path, "http://localhost");
+    if (pathname === "/api/search") return SEARCH[searchParams.get("q")!.toLowerCase()];
+    if (pathname.startsWith("/api/fighters/")) return { ...profile, history };
+    if (pathname.endsWith("tape-history")) return { rows: [] };
+    return fightPayload({ id: pathname.split("/")[3] });
+  } });
+  assert.equal((await call("get_fight", { fighter_a: "Jon Jones", fighter_b: "Daniel Cormier" }, data)).json.id, LATER);
+  assert.equal((await call("get_fight", { fighter_a: "Jon Jones", fighter_b: "Daniel Cormier", meeting: 1 }, data)).json.id, REMATCH);
+});
+
+test("surnames that fit several fighters still find their one pairing", async () => {
+  assert.equal((await call("get_fight", { fighter_a: "Padilla", fighter_b: "Mederos" })).json.id, FIGHT);
+  assert.equal((await call("get_fight", { fight: "Padilla vs Mederos" })).json.id, FIGHT);
+});
+
+test("a pre-fight answer leaves out what happened after the fight", async () => {
+  const later = { date: "2030-01-01", outcome: "win", method: "KO/TKO" };
+  const earlier = { date: "2020-01-01", outcome: "loss", method: "U-DEC" };
+  const data = fakeData({ read: async (path) => path.includes("tape-history") ? { rows: [] } : fightPayload({
+    head_to_head: [{ ...earlier, opponent: { name: "B" } }, { ...later, opponent: { name: "B" } }],
+    common_opponents: [
+      { opponent: { name: "Both Then" }, f1_fights: [earlier, later], f2_fights: [earlier] },
+      { opponent: { name: "Only Later" }, f1_fights: [later], f2_fights: [earlier] },
+    ],
+  }) });
+  const { json } = await call("get_fight", { fight: FIGHT }, data);
+  assert.deepEqual(json.common_opponents.map((row: any) => row.opponent), ["Both Then"]);
+  assert.equal(json.common_opponents[0]["Jon Jones"].length, 1);
+  assert.deepEqual(json.meetings_before.map((row: any) => row.date), ["2020-01-01"]);
+  assert.deepEqual(json.meetings_after.map((row: any) => row.date), ["2030-01-01"]);
+});
+
+test("a fighter who left a list was never its champion", async () => {
+  const { json } = await call("get_fighter", { fighter: JONES, include: ["ranking_history"] });
+  assert.equal(json.ranking_history.divisions[0].best_rank, 5);
+  assert.equal(json.ranking_history.divisions[0].latest_rank, "unranked");
+  assert.equal(json.ranking_history.pound_for_pound.best_rank, 5);
+});
+
+test("record_entering is always the pro record, and the UFC one is named as such", async () => {
+  const { json } = await call("get_fighter", { fighter: JONES, include: ["fights", "pro_fights"] });
+  assert.equal(json.fights[0].record_entering, "27-1");
+  assert.equal(json.fights[0].ufc_record_entering, "21-1");
+  assert.equal(json.fights[0].opponent_record_entering, "20-4");
+  assert.equal(json.pro_fights[0].record_entering, "6-0");
+  assert.equal(json.pro_fights[0].ufc_record_entering, undefined);
+});
+
+test("a card or place is never picked from a close spelling alone", async () => {
+  const event = await call("get_event", { event: "UFC Vegas" });
+  assert.ok(event.isError);
+  assert.equal(event.json.candidates[0].name, "UFC 33");
+  const fighter = await call("get_fighter", { fighter: "Jon Jonez" });
+  assert.equal(fighter.json.matched_from, "Jon Jonez");
+  assert.equal((await call("get_fighter", { fighter: "Jon Jones" })).json.matched_from, undefined);
+});
+
+test("an event names its commentators", async () => {
+  const { json } = await call("get_event", { event: EVENT });
+  assert.deepEqual(json.broadcast_crew.roles.play_by_play, ["Jon Anik"]);
+  assert.equal(json.fights[0].winner, "Jon Jones");
+});
+
+test("a retirement shows on the default profile, newest roster event first", async () => {
+  assert.deepEqual((await call("get_fighter", { fighter: JONES })).json.latest_roster_event, { kind: "retired", date: "2025-07-19", reason: "Retired" });
+});
+
+test("home records say they are country-wide, and a country can be asked for", async () => {
+  const city = await call("get_place", { place: "Rio de Janeiro" });
+  assert.equal(city.json.kind, "location");
+  assert.match(city.json.home_fighters.scope, /every UFC event in Brazil, not only here/);
+  const country = await call("get_place", { place: "Brazil" });
+  assert.equal(country.json.kind, "country");
+  assert.equal(country.json.events, 21);
+  assert.equal(country.json.home_fighters.won, 90);
+  assert.deepEqual(country.json.cities.map((row: any) => row.slug), ["rio-brazil", "sao-paulo-brazil"]);
+});
+
+test("a rankings answer names the list it really came from", async () => {
+  const data = fakeData({ read: async () => ({ source: "media", as_of: "2019-05-21", divisions: [{ division: "Lightweight", source: "media", entries: [] }] }) });
+  assert.equal((await call("get_rankings", { division: "lightweight", date: "2019-06-01", list: "meta" }, data)).json.list, "media");
+});
+
+test("a leaderboard refuses options it cannot apply rather than echoing them", async () => {
+  const refused = async (args: Record<string, unknown>) => {
+    const reply = await call("leaderboard", args);
+    assert.ok(reply.isError, JSON.stringify(args));
+    return reply.text;
+  };
+  assert.match(await refused({ board: "wins", division: "Lightweight", fighters: ["Jon Jones"] }), /whole career/);
+  assert.match(await refused({ board: "divisions_won_in", division: "Lightweight" }), /counts divisions/);
+  assert.match(await refused({ board: "biggest_upsets", min_fights: 5 }), /does not apply/);
+  assert.match(await refused({ board: "referee_bouts", active_only: true }), /does not apply/);
+  assert.match(await refused({ board: "wins", since_year: 2099 }), /or earlier/);
+  assert.match(await refused({ board: "wins", order: "lowest" }), /Unknown argument order/);
+  const seen: string[] = [];
+  await call("leaderboard", { board: "wins", min_fights: 20 }, fakeData({}, seen));
+  assert.match(seen[0], /minimumFights=20/);
+  assert.match(seen[0], /minimumSample=15/);
+});
+
+test("compared fighters come back in board order, and no rank means no value", async () => {
+  const data = fakeData({ read: async (path) => path.startsWith("/api/search") ? SEARCH["jon jones"] : ({ leaderboards: [{ group: "record", description: "Wins", format: "time", rows: [
+    { fighter_id: DC, name: "Unranked", value: 0, rank: null }, { fighter_id: JONES, name: "Ranked", value: 22, rank: 5 },
+  ] }] }) });
+  const { json } = await call("leaderboard", { board: "wins", fighters: ["Jon Jones"] }, data);
+  assert.deepEqual(json.rows.map((row: any) => row.name), ["Ranked", "Unranked"]);
+  assert.equal(json.rows[1].value, undefined);
+  assert.equal(json.about, "Wins");
+});
+
+test("a failed call keeps its slot until every read it started has stopped", async () => {
+  let release = () => {};
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const data = fakeData({ read: async (path) => {
+    if (path.includes("slow")) await held;
+    return SEARCH.nobody;
+  } });
+  const server = createMcpServer(data);
+  const calls = Array.from({ length: 16 }, () => server.call("leaderboard", { board: "wins", fighters: ["none", "slow"] }));
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.match((await server.call("get_events", {})).text, /busy/);
+  release();
+  await Promise.all(calls);
+});
+
+test("search says plainly when nothing matches", async () => {
+  assert.match((await call("search", { query: "nobody" })).json.note, /covers the UFC/);
+});
+
 test("a pairing resolves to its latest meeting unless one is named", async () => {
   const latest = await call("get_fight", { fighter_a: "Jon Jones", fighter_b: "Daniel Cormier" });
   assert.equal(latest.json.id, FIGHT);
@@ -286,7 +440,7 @@ test("a pairing resolves to its latest meeting unless one is named", async () =>
   assert.equal((await call("get_fight", { fighter_a: "Jon Jones", fighter_b: "Daniel Cormier", meeting: 1 })).json.id, REMATCH);
   assert.ok((await call("get_fight", { fighter_a: "Jon Jones", fighter_b: "Daniel Cormier", meeting: 3 })).isError);
   assert.ok((await call("get_fight", {})).isError);
-  assert.ok((await call("get_fight", { fight: "not an id" })).isError);
+  assert.match((await call("get_fight", { fight: "not an id" })).text, /No bout matches/);
 });
 
 test("ranks are the site's default list, not the API's", async () => {
@@ -304,6 +458,7 @@ test("leaderboards link officials to their own pages and give a unit", async () 
   assert.equal(json.rows[0].slug, "a-judge");
   assert.equal(json.rows[0].id, undefined);
   assert.equal(json.unit, "seconds");
+  assert.equal(json.about, "Judges most in step");
   assert.match(seen[0], /fightsGroup=judges/);
   assert.match(seen[0], /limit=10/);
   const men = fakeData({}, seen);
@@ -320,11 +475,11 @@ test("every tool reads public routes only", async () => {
   const sample: Record<string, Record<string, unknown>> = {
     search: { query: "jon jones" }, get_fighter: { fighter: JONES, include: ["stat_ranks", "opposition", "news"] }, get_fight: { fight: FIGHT, include: ["tape_history"] },
     get_events: {}, get_event: { event: EVENT }, get_rankings: { date: "2019-06-01" }, get_live: {}, leaderboard: { board: "wins" },
-    get_official: { name: "herb-dean", kind: "referee" }, browse_directory: { kind: "judges" }, get_place: { place: "nobody" }, get_controversial: {},
+    get_official: { name: "herb-dean", kind: "referee" }, browse_directory: { kind: "judges" }, get_place: { place: "Brazil" }, get_controversial: {},
     get_news: {}, get_markets: {}, get_roster_changes: {}, get_awards: {},
   };
   assert.deepEqual(Object.keys(sample).sort(), server.tools.map(tool => tool.name).sort());
-  for (const [name, args] of Object.entries(sample)) await server.call(name, args);
+  for (const [name, args] of Object.entries(sample)) assert.equal((await server.call(name, args)).isError, false, name);
   assert.ok(seen.length > 10);
   for (const path of seen) assert.ok(publicApi(new URL(path, "http://localhost").pathname), path);
 });

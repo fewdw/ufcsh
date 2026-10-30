@@ -55,7 +55,7 @@ import { ensureImageVariant, normalizeHeadshot, variantPath, type ImageSize } fr
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight, fighterNames } from "./sync.ts";
 import { boutOdds, LiveOddsService, scanUpcoming, upcomingBouts, type FinishedBout, type LiveBout } from "./polymarket.ts";
 import { PolymarketMarkets } from "./polymarket-markets.ts";
-import { RATE_LIMITED, createMcpHandler, rpcError } from "./mcp.ts";
+import { RATE_LIMITED, allowAgents, createMcpHandler, rpcError } from "./mcp.ts";
 import { createMcpServer } from "./mcp-tools.ts";
 import { BackgroundRefresh } from "./background-refresh.ts";
 import { VersionCache } from "./version-cache.ts";
@@ -1553,7 +1553,7 @@ function searchIndex(): SearchIndex {
              WHERE (f.f1_id = fr.id OR f.f2_id = fr.id)
                AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)) AS ufc_fights
     FROM fighters fr
-    WHERE ${ufcFightExistsSql("fr.id", "fought")}
+    WHERE ${ufcFightExistsSql("fr.id", "fought")} OR fr.signee = 1
   `).all() as any[]).map(({ norm_name, ...f }) => ({
     ...f, target: fuzzyTarget(f.name, f.nickname, ...searchAliases(f.name)),
     names: [norm_name, (f.nickname ?? "").toLowerCase(), ...searchAliases(f.name)].join("\n"),
@@ -2739,6 +2739,7 @@ export function startApi(port: number): http.Server {
       if (!stopping && await admin(req, res, url)) return;
       const part = (i: number) => p.split("/")[i] ?? "";
       if (p === "/mcp") {
+        allowAgents(res);
         if (stopping) return await sendJson(req, res, rpcError(null, RATE_LIMITED, "Server is restarting. Retry in a few seconds."), 503);
         // Each call may read several answers, and the agents of one provider
         // share an address: a bucket of its own, wider per burst than per second.

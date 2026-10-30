@@ -7,7 +7,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
  *  with `initialize`, which needs no session here. Tools live in mcp-tools.ts. */
 
 export const MODERN_VERSIONS = ["2026-07-28"];
-export const LEGACY_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
+// 2025-03-26 requires JSON-RPC batches, which would carry many calls past the
+// rate limit in one request; older clients are offered these instead.
+export const LEGACY_VERSIONS = ["2025-11-25", "2025-06-18"];
 const META = "io.modelcontextprotocol";
 const MAX_BODY_BYTES = 64 * 1024;
 /** The tool list changes only with a release. */
@@ -125,12 +127,21 @@ async function readBody(req: IncomingMessage): Promise<Buffer | null> {
  *  Origin, such as a sandboxed frame's "null", is refused. */
 export function validOrigin(origin: string | undefined): boolean {
   if (origin === undefined) return true;
-  return /^https?:\/\/[^/?#\s]+$/i.test(origin);
+  try {
+    const { protocol, origin: serialized } = new URL(origin);
+    return (protocol === "https:" || protocol === "http:") && serialized === origin;
+  } catch { return false; }
+}
+
+/** Set before any other answer, so a browser-based agent can read a 429 too. */
+export function allowAgents(res: ServerResponse): void {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Expose-Headers", "Retry-After");
 }
 
 export function createMcpHandler(server: McpServer, send: (req: IncomingMessage, res: ServerResponse, data: unknown, status: number) => Promise<void>) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    if (!validOrigin(req.headers.origin)) return send(req, res, rpcError(null, -32600, "Invalid Origin"), 403);
     if (req.method === "OPTIONS") {
       res.writeHead(204, {
         "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -144,8 +155,6 @@ export function createMcpHandler(server: McpServer, send: (req: IncomingMessage,
       res.setHeader("Allow", "POST, OPTIONS");
       return send(req, res, rpcError(null, -32600, "This is an MCP endpoint: POST JSON-RPC messages to it."), 405);
     }
-    const origin = req.headers.origin;
-    if (!validOrigin(origin)) return send(req, res, rpcError(null, -32600, "Invalid Origin"), 403);
     const body = await readBody(req);
     if (!body) return send(req, res, rpcError(null, -32600, "Request too large"), 413);
     let message: unknown;

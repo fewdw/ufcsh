@@ -76,6 +76,17 @@ test("HTTP security holds across alternate page paths and arbitrary resource URL
     assert.equal((await post({ jsonrpc: "2.0", id: 5, method: "ping" }, { Origin: "null" })).status, 403);
     assert.equal((await post("{not json")).status, 400);
     assert.equal((await post("x".repeat(70_000))).status, 413);
+    assert.equal((await request("/mcp", { method: "OPTIONS", headers: { Origin: "null" } })).status, 403);
+
+    let throttled: Response | undefined;
+    for (let i = 0; i < 80 && !throttled; i++) {
+      const response = await post({ jsonrpc: "2.0", id: 6, method: "ping" });
+      if (response.status === 429) throttled = response;
+    }
+    assert.ok(throttled, "a burst past the limit is refused");
+    assert.equal(throttled.headers.get("access-control-allow-origin"), "*");
+    assert.equal(throttled.headers.get("retry-after"), "5");
+    assert.match(throttled.headers.get("access-control-expose-headers") ?? "", /Retry-After/);
   });
 
   await t.test("framing protection covers the SPA, alternate admin spellings and errors", async () => {
