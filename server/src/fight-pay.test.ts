@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
-import { cardPay, complianceEstimate, complianceTier, VENUM_START } from "./fight-pay.ts";
+import { cardPay, complianceEstimate, complianceTier, pendingFightPayEvents, syncFightPay, VENUM_START } from "./fight-pay.ts";
 import { PURSE_REPORTS, type PurseReport } from "./purse-reports-data.ts";
 
 test("compliance tiers count the bout itself and step at UFC's published boundaries", () => {
@@ -100,6 +100,75 @@ test("a card's pay takes Wikipedia's purses first, fills the rest from MMA Payou
   assert.deepEqual(pay.get("c")!.purse!.f1, { total: 70_000, show: 35_000, win: 35_000, note: null, source: 1, also: null });
   assert.equal(pay.get("c")!.purse!.sources[1].label, "MMA Payout");
   assert.equal(pay.get("e")!.purse, undefined);
+});
+
+test("complementary salary posts all contribute, including a delayed disclosure", () => {
+  const later = { ...post, date: "2026-08-01", link: "https://example.test/delayed", text:
+    "Tofiq Musayev $80K ($40K/$40K) def Ignacio Bahamondes $120K\nRicky Simon $100K ($50K/$50K) def Adrian Yanez $90K\nAlexa Grasso $260K total ($130K/$130K) def Maycee Barber $85K" };
+  const { pay, issues } = cardPay(card, null, [post, later], "2026-05-16", []);
+  assert.equal(pay.get("e")!.purse!.f1!.total, 100_000);
+  assert.equal(pay.get("e")!.purse!.sources[1].url, later.link);
+  assert.equal(pay.get("c")!.purse!.f1!.total, 70_000);
+  assert.ok(issues.conflicts.some((issue) => issue.includes("Tofiq Musayev") && issue.includes("$80,000")));
+});
+
+test("recovered full-card disclosures agree with the published payrolls and add 52 purses", () => {
+  let added = 0;
+  for (const [date, expected] of [["2006-09-23", 332_000], ["2006-10-14", 209_000], ["2006-11-18", 457_000]] as const) {
+    const report = PURSE_REPORTS.find((report) => report.date === date)!;
+    const card = report.rows.map((row) => ({ id: row.id, f1: row.fighters[0], f2: row.fighters[1], method: null }));
+    const baseline = cardPay(card, null, null, date, []).pay;
+    const { pay, issues } = cardPay(card, null, null, date);
+    let payroll = 0;
+    for (const [id, entry] of pay) for (const corner of ["f1", "f2"] as const) {
+      assert.equal(baseline.get(id)!.purse, undefined);
+      const purse = entry.purse![corner]!;
+      payroll += purse.total;
+      added++;
+      assert.equal(purse.show, null); // Source states total pay, without a split.
+      assert.equal(purse.win, null);
+    }
+    assert.equal(payroll, expected, report.event);
+    assert.ok(Object.values(issues).every((rows) => !rows.length));
+  }
+  assert.equal(added, 52);
+});
+
+test("a revised report bundle queues historical cards once without discarding stored pay", async () => {
+  db.exec("BEGIN");
+  try {
+    db.prepare("DELETE FROM meta WHERE key = 'fight_pay_reports_version'").run();
+    const date = "2006-11-18";
+    db.prepare("UPDATE events SET pay_checked_at = 123 WHERE date = ?").run(date);
+    const before = db.prepare("SELECT id, pay_json FROM fights WHERE event_id IN (SELECT id FROM events WHERE date = ?) ORDER BY id").all(date);
+    await syncFightPay(0);
+    assert.equal((db.prepare("SELECT pay_checked_at FROM events WHERE date = ?").get(date) as any).pay_checked_at, null);
+    assert.deepEqual(db.prepare("SELECT id, pay_json FROM fights WHERE event_id IN (SELECT id FROM events WHERE date = ?) ORDER BY id").all(date), before);
+    db.prepare("UPDATE events SET pay_checked_at = 456 WHERE date = ?").run(date);
+    await syncFightPay(0);
+    assert.equal((db.prepare("SELECT pay_checked_at FROM events WHERE date = ?").get(date) as any).pay_checked_at, 456);
+  } finally { db.exec("ROLLBACK"); }
+});
+
+test("automatic reads revisit delayed disclosures daily, retain unread history, and stop after 180 days", () => {
+  db.exec("BEGIN");
+  try {
+    db.exec("UPDATE events SET complete = 0");
+    const now = Date.parse("2026-10-30T12:00:00Z");
+    const date = (days: number) => new Date(now - days * 86_400_000).toISOString().slice(0, 10);
+    db.prepare("INSERT INTO events (id, name, date, complete, pay_checked_at) VALUES (?, ?, ?, 1, ?)")
+      .run("pay-delay-test", "Delayed disclosure", date(100), now - 2 * 86_400_000);
+    assert.equal(pendingFightPayEvents(1, now)[0]?.id, "pay-delay-test");
+    const update = db.prepare("UPDATE events SET date = ?, pay_checked_at = ? WHERE id = 'pay-delay-test'");
+    update.run(date(100), now - 60_000);
+    assert.equal(pendingFightPayEvents(1, now).length, 0);
+    update.run(date(180), now - 2 * 86_400_000);
+    assert.equal(pendingFightPayEvents(1, now).length, 1);
+    update.run(date(181), now - 2 * 86_400_000);
+    assert.equal(pendingFightPayEvents(1, now).length, 0);
+    update.run(date(5_000), null);
+    assert.equal(pendingFightPayEvents(1, now).length, 1);
+  } finally { db.exec("ROLLBACK"); }
 });
 
 test("2026's finish bonus goes to each knockout or submission winner without another bonus, except those the article names", () => {

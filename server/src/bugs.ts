@@ -35,6 +35,7 @@ import { NEWS_FEEDS } from "./scrape/news.ts";
 import { ROSTER_ARTICLE, samePlace } from "./scrape/wikipedia.ts";
 import { storedPay, syncFightPay, VENUM_START, type PayIssues } from "./fight-pay.ts";
 import { PURSE_REPORTS } from "./purse-reports-data.ts";
+import { PAY_REPORT_DAYS } from "./scrape/payouts.ts";
 import {
   fighterNames,
   forgetUfcPage,
@@ -1476,7 +1477,7 @@ const listed = (names: string[], limit = 6) => names.length > limit ? `${names.s
 /** Every finished card with a fighter whose pay for the bout is unknown: no
  *  purse disclosed, a post-fight bonus without its amount, or (from April
  *  2021) fight-week pay that can't be estimated. Most commissions never
- *  disclose purses, so older cards are expected; the last sixty days, and
+ *  disclose purses, so older cards are expected; the last 180 days, and
  *  any card whose disclosure skipped a bout, stay open. */
 function fightPayUnknown(): BugCheck {
   const events = db.prepare(`SELECT id, name, date, location, wiki_title, pay_checked_at, pay_issues_json FROM events
@@ -1541,8 +1542,8 @@ function fightPayUnknown(): BugCheck {
     id: "fight-pay-unknown",
     group: "Missing data",
     label: "Fighter pay unknown",
-    description: "Finished cards with a fighter whose pay is unknown on the matchup. Purses are shown only where an athletic commission disclosed them (Wikipedia's \"Reported payout\" section, reviewed historical commission reports and MMA Payout's salary posts); most commissions never do, so older cards are expected here. Bonus amounts come from the article's \"Bonus awards\" section; a forfeited or reassigned bonus is left without an amount until checked. Fight-week pay is estimated from April 2021 when the fighter's record (WEC and Strikeforce bouts count) is verified. Open: the last 60 days, and any card whose disclosure skipped a bout. Re-reading fetches the article and MMA Payout now and reapplies the reviewed historical reports.",
-    grade: (item) => skipped.has(item.key) ? "minor" : recent([[60, "minor"]])(item),
+    description: "Finished cards with a fighter whose pay is unknown on the matchup. Purses are shown only where an athletic commission disclosed them (Wikipedia's \"Reported payout\" section, reviewed historical commission reports and MMA Payout's salary posts); most commissions never do, so older cards are expected here. Bonus amounts come from the article's \"Bonus awards\" section; a forfeited or reassigned bonus is left without an amount until checked. Fight-week pay is estimated from April 2021 when the fighter's record (WEC and Strikeforce bouts count) is verified. Open: the last 180 days, and any card whose disclosure skipped a bout. Re-reading fetches the article and MMA Payout now and reapplies the reviewed historical reports.",
+    grade: (item) => skipped.has(item.key) ? "minor" : recent([[PAY_REPORT_DAYS, "minor"]])(item),
   }, items);
 }
 
