@@ -16,6 +16,8 @@ export type FailedRequest = {
   fromSite?: boolean;
 };
 
+export type ErrorList = "server" | "notFound";
+
 type Row = { status: number; method: string; path: string; count: number; firstAt: number; lastAt: number; message: string; fromSite: number };
 
 /**
@@ -86,6 +88,15 @@ export class ErrorLog {
     this.db.prepare("DELETE FROM http_errors WHERE last_at < ?").run(this.now() - KEEP_DAYS * DAY);
     this.db.prepare(`DELETE FROM http_errors WHERE (status, method, path) IN (
       SELECT status, method, path FROM http_errors ORDER BY last_at DESC LIMIT -1 OFFSET ?)`).run(MAX_ROWS);
+  }
+
+  /** Forget what has been dealt with: one address, or a whole list. An address
+   *  that fails again comes back, counted from then. */
+  clear(list: ErrorList, row?: Pick<FailedRequest, "status" | "method" | "path">): void {
+    this.flush();
+    const within = list === "server" ? "status >= 500" : "status = 404";
+    if (row) this.db.prepare(`DELETE FROM http_errors WHERE ${within} AND status = ? AND method = ? AND path = ?`).run(row.status, row.method, row.path);
+    else this.db.exec(`DELETE FROM http_errors WHERE ${within}`);
   }
 
   /** The week kept: server errors newest first; not-found addresses linked

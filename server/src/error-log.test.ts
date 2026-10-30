@@ -34,6 +34,34 @@ test("failing addresses are kept by exact URL across a restart, then forgotten a
   assert.equal(second.list().serverErrors.length, 0);
 });
 
+test("clearing forgets one address or a whole list; an address that fails again comes back", () => {
+  const db = new DatabaseSync(":memory:");
+  let clock = Date.UTC(2026, 9, 11, 12);
+  const log = new ErrorLog(db, () => clock);
+  const unflushed = { status: 500, method: "GET", path: "/a" };
+  log.record({ ...unflushed, message: "boom" });
+  log.record({ status: 503, method: "GET", path: "/b" });
+  log.record({ status: 404, method: "GET", path: "/c" });
+  log.record({ status: 404, method: "GET", path: "/d" });
+
+  // A row can only be cleared from its own list, and only that row goes.
+  log.clear("notFound", unflushed);
+  assert.equal(log.list().serverErrors.length, 2);
+  log.clear("server", unflushed);
+  assert.deepEqual(log.list().serverErrors.map(row => row.path), ["/b"]);
+  assert.equal(log.list().totals.serverErrors, 1);
+  assert.equal(log.list().notFound.length, 2);
+
+  log.clear("notFound");
+  assert.equal(log.list().notFound.length, 0);
+  assert.equal(log.list().serverErrors.length, 1, "clearing one list leaves the other");
+
+  clock += 60_000;
+  log.record(unflushed);
+  const again = log.list().serverErrors.find(row => row.path === "/a")!;
+  assert.deepEqual([again.count, again.firstAt, again.message], [1, clock, ""]);
+});
+
 test("an upstream that is overloaded, rate-limiting or unreachable is transient; a bad answer is not", () => {
   for (const message of [
     'Error: HTTP 502 for https://api.fightodds.io/gql: {"type":"cloudflare"}',
