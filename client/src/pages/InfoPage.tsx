@@ -101,10 +101,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-29">October 29, 2026</time></p>
+            <p><time dateTime="2026-10-30">October 30, 2026</time></p>
             <ul>
-              <li>Tightened the matchup header: the odds and Polymarket price now sit right under the weight class and referee.</li>
-              <li>The Polymarket price no longer flickers when stepping between bouts on a card.</li>
+              <li>Cards that UFC hasn't split into main card and prelims yet keep their rounds, venue and referees up to date.</li>
+              <li>A past opponent without a profile here now links to their Sherdog page instead of a missing page.</li>
+              <li>Old share links show the site image again.</li>
             </ul>
           </Section>
         </div>
