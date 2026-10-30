@@ -43,6 +43,16 @@ export function recordSyncError(job: string, error: unknown, now = Date.now()): 
   }
 }
 
+/** Forget failures that have been dealt with: every record of one job's same
+ *  failure, or the whole list. A job still failing is recorded again at its
+ *  next report, so a failure that was not fixed comes back. */
+export function clearSyncErrors(failure?: Pick<SyncError, "job" | "error">): void {
+  const kept = failure ? savedErrors().filter(saved => saved.job !== failure.job || saved.error !== failure.error) : [];
+  setMeta("sync_errors", JSON.stringify(kept));
+  const latest = kept[0];
+  setMeta("last_sync_error", latest ? `${new Date(latest.at).toISOString()} ${latest.job}: ${latest.error}` : "");
+}
+
 /** Whether a sync job failed in the last ten minutes, for monitoring. Not
  *  `last_sync_error`, which only the six-hourly rankings sync clears, so one
  *  passing failure would read as failing for hours. */

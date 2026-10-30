@@ -340,16 +340,24 @@ export async function syncEventSegments(eventId: string): Promise<void> {
     || (card.info.bouts.length && fights.length && !sharesBout(fights, card.info.bouts))));
   // The feed places a late addition days before the cached page lists it.
   const bouts = !foreign && card.feedSegments.length ? card.feedSegments : card.segments;
-  if (fights.length && !bouts.length) throw new Error(`ufc.com ${event.ufc_slug} carried no card sections; keeping the last good placements`);
+  // ufc.com lists a card's bouts weeks before it splits them: the feed answers
+  // for the card with no section on any bout, and the page has no section
+  // blocks. That is a good read with nothing to place, not a failure, and the
+  // feed's rounds, venue and officials still count. Unplaced bouts stay in
+  // Admin → Bugs. A page with no feed at all is a read that failed.
+  const unsplit = fights.length > 0 && !bouts.length;
+  if (unsplit && !card.info) throw new Error(`ufc.com ${event.ufc_slug} carried no card sections; keeping the last good placements`);
   const segments = assignSegments(fights, bouts);
-  const update = db.prepare("UPDATE fights SET segment = ? WHERE id = ?");
-  // A bout no longer identified by the source has no confirmed section.
-  // Clear old positional guesses and assignments from a changed booking.
-  for (const fight of fights) update.run(segments.get(fight.id) ?? null, fight.id);
-  // A bout ufc.com no longer names loses its place, as a moved bout must.
-  const positions = assignPositions(fights, bouts);
-  const setPosition = db.prepare("UPDATE fights SET card_pos = ? WHERE id = ?");
-  for (const fight of fights) setPosition.run(positions.get(fight.id) ?? null, fight.id);
+  if (!unsplit) {
+    const update = db.prepare("UPDATE fights SET segment = ? WHERE id = ?");
+    // A bout no longer identified by the source has no confirmed section.
+    // Clear old positional guesses and assignments from a changed booking.
+    for (const fight of fights) update.run(segments.get(fight.id) ?? null, fight.id);
+    // A bout ufc.com no longer names loses its place, as a moved bout must.
+    const positions = assignPositions(fights, bouts);
+    const setPosition = db.prepare("UPDATE fights SET card_pos = ? WHERE id = ?");
+    for (const fight of fights) setPosition.run(positions.get(fight.id) ?? null, fight.id);
+  }
   // A bout the feed no longer identifies loses its length: a booking that
   // changed or a bout that moved must not keep a stale number.
   let booked = 0;

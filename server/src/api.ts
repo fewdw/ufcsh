@@ -48,7 +48,7 @@ import { createCommentsHandler } from "./comments-http.ts";
 import { ACCOUNT_SYNC_MS, accountSyncCheck, adminAccounts, syncAccounts } from "./accounts.ts";
 import { GOOGLE_SYNC_MS, GoogleCalendars } from "./google-calendar.ts";
 import { createGoogleCalendarHandler } from "./google-calendar-http.ts";
-import { recentSyncError, syncStatus } from "./sync-status.ts";
+import { clearSyncErrors, recentSyncError, syncStatus } from "./sync-status.ts";
 import { adminLive, releasedRounds } from "./live-rounds.ts";
 import { pruneBackups } from "./backup-retention.ts";
 import { ensureImageVariant, normalizeHeadshot, variantPath, type ImageSize } from "./image-variants.ts";
@@ -899,7 +899,9 @@ function professionalHistory(fighterId: string, ufcHistory: any[]): any[] {
       round: row.round || null,
       time: row.time || null,
       opponent: {
-        id: row.opponent_id ?? "",
+        // A Sherdog match can be a directory entry with no profile here; its
+        // bout then links out to Sherdog rather than to a page that 404s.
+        id: row.opponent_id && hasUfcFight(row.opponent_id) ? row.opponent_id : "",
         name: row.opponent_name,
         source_url: row.opponent_url,
       },
@@ -2122,6 +2124,13 @@ function decodedAssetName(name: string): string | null {
 export async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string, pages?: ResponseCache): Promise<void> {
   // iOS also asks for sized icons no page names ("-120x120-precomposed"): one icon serves all.
   if (/^\/apple-touch-icon-\d+x\d+(-precomposed)?\.png$/.test(pathname)) pathname = "/apple-touch-icon.png";
+  // Each page had its own share image until October 2026. Link previews saved
+  // since still ask for them; the one site image stands in.
+  if (/^\/og\/.+\.jpg$/.test(pathname)) {
+    res.writeHead(301, { Location: "/og.jpg", "Cache-Control": "public, max-age=86400" });
+    res.end();
+    return;
+  }
   let filePath = path.join(CLIENT_DIST, path.normalize(pathname).replace(/^([/\\])+/, ""));
   if (filePath !== CLIENT_DIST && !filePath.startsWith(CLIENT_DIST + path.sep)) filePath = path.join(CLIENT_DIST, "index.html");
   // The document itself is never sent raw: "/" and "/index.html" fall through
@@ -2409,6 +2418,10 @@ export function startApi(port: number): http.Server {
     },
     accounts: () => adminAccounts({ scores: scoreStore }),
     errors: () => ({ http: trafficHistory.errors.list(), sync: syncStatus() }),
+    clearErrors: clear => {
+      if (clear.list === "sync") clearSyncErrors(clear.row);
+      else trafficHistory.errors.clear(clear.list, clear.row);
+    },
     slow: hours => trafficHistory.slow.list(hours),
     report: async () => {
       if (!bugBoard || Date.now() - bugBoard.at >= BUG_BOARD_REUSE_MS) {

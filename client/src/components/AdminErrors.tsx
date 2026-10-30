@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useAdminResource } from "../admin";
+import { useAdminRequest, useAdminResource } from "../admin";
 import { relativeAge } from "../format";
-import { DOT, FailingUrlRow, Loading, SectionHead, stamp, ViewHead, whole, type FailingUrl } from "./adminKit";
+import { ClearButton, DOT, FailingUrlRow, Loading, SectionHead, stamp, ViewHead, whole, type FailingUrl } from "./adminKit";
 
 /** Server `sync-status.ts`. */
 export type SyncStatus = {
@@ -30,7 +30,9 @@ function List({ children, empty }: { children: React.ReactNode[]; empty: string 
  *  addresses that do not exist. Data that is wrong rather than failing is in
  *  Data → Bugs. */
 export default function AdminErrors() {
-  const { data, error, loading } = useAdminResource<Errors>("/api/admin/errors", 30_000);
+  const { data, error, loading, reload } = useAdminResource<Errors>("/api/admin/errors", 30_000);
+  const request = useAdminRequest();
+  const [clearError, setClearError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [allNotFound, setAllNotFound] = useState(false);
   useEffect(() => {
@@ -39,21 +41,38 @@ export default function AdminErrors() {
   }, []);
   if (!data) return <Loading>{loading || !error ? "Loading errors…" : `Couldn’t load errors. ${error}`}</Loading>;
   const { http, sync } = data;
+  const clear = async (list: "server" | "notFound" | "sync", row?: FailingUrl | { job: string; error: string }) => {
+    setClearError(null);
+    try {
+      await request("/api/admin/errors/clear", { method: "POST", body: { list, row } });
+      await reload(true);
+    } catch (err) {
+      setClearError(err instanceof Error ? err.message : String(err));
+    }
+  };
+  const clearAll = (list: "server" | "notFound" | "sync", name: string) => {
+    if (window.confirm(`Clear all ${name}? Any that fail again will come back.`)) void clear(list);
+  };
   const late = sync.sources.filter(source => source.late);
   const notFound = allNotFound ? http.notFound : http.notFound.slice(0, 10);
   return (
     <div className="flex flex-col gap-5">
-      <ViewHead title="Errors" note="The last 7 days, kept across restarts. Each address is listed once with how often it failed." />
+      <ViewHead title="Errors" note="The last 7 days, kept across restarts. Each address is listed once with how often it failed. Clear what has been dealt with: anything that fails again comes back." />
+      {clearError ? <p role="alert" className="text-xs text-rose-700">Couldn’t clear. {clearError}</p> : null}
 
       <section className="flex flex-col gap-2">
-        <SectionHead title={`Server errors · ${whole(http.totals.serverErrors)}`} note="Addresses the server failed to answer (5xx), newest first. Open one to try it." />
+        <SectionHead title={`Server errors · ${whole(http.totals.serverErrors)}`} note="Addresses the server failed to answer (5xx), newest first. Open one to try it.">
+          {http.serverErrors.length ? <ClearButton onClick={() => clearAll("server", "server errors")} label="Clear all server errors">Clear all</ClearButton> : null}
+        </SectionHead>
         <List empty="No server errors in the last 7 days.">
-          {http.serverErrors.map(row => <FailingUrlRow key={`${row.status} ${row.method} ${row.path}`} row={row} now={now} />)}
+          {http.serverErrors.map(row => <FailingUrlRow key={`${row.status} ${row.method} ${row.path}`} row={row} now={now} onClear={() => void clear("server", row)} />)}
         </List>
       </section>
 
       <section className="flex flex-col gap-2">
-        <SectionHead title={`Failed sync jobs · ${whole(sync.errorsLastDay)} in 24 h`} note="Most retry on their own at the next pass; a source that keeps failing turns late below." />
+        <SectionHead title={`Failed sync jobs · ${whole(sync.errorsLastDay)} in 24 h`} note="Most retry on their own at the next pass; a source that keeps failing turns late below.">
+          {sync.errors.length ? <ClearButton onClick={() => clearAll("sync", "failed sync jobs")} label="Clear all failed sync jobs">Clear all</ClearButton> : null}
+        </SectionHead>
         {sync.failingLastDay.length ? (
           <div className="flex flex-wrap gap-1.5">
             {sync.failingLastDay.map(job => (
@@ -65,9 +84,12 @@ export default function AdminErrors() {
         ) : null}
         <List empty="No sync errors recorded.">
           {sync.errors.map(entry => (
-            <li key={`${entry.at}-${entry.job}`} className="px-4 py-2 text-xs">
-              <p className="flex flex-wrap gap-x-2"><b className="font-semibold text-zinc-900">{entry.job}</b><span className="text-zinc-400" title={stamp(entry.at)}>{relativeAge(entry.at, now)}</span></p>
-              <p className="mt-0.5 break-words font-mono text-[11px] text-zinc-600">{entry.error}</p>
+            <li key={`${entry.at}-${entry.job}`} className="flex items-start gap-2 px-4 py-2 text-xs">
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap gap-x-2"><b className="font-semibold text-zinc-900">{entry.job}</b><span className="text-zinc-400" title={stamp(entry.at)}>{relativeAge(entry.at, now)}</span></p>
+                <p className="mt-0.5 break-words font-mono text-[11px] text-zinc-600">{entry.error}</p>
+              </div>
+              <ClearButton onClick={() => void clear("sync", { job: entry.job, error: entry.error })} label={`Clear ${entry.job}, every time this failure was recorded`} />
             </li>
           ))}
         </List>
@@ -98,9 +120,11 @@ export default function AdminErrors() {
       </section>
 
       <section className="flex flex-col gap-2">
-        <SectionHead title={`Not found · ${whole(http.totals.notFoundFromSite)} from links on this site · ${whole(http.totals.notFound)} in all`} note="Addresses that do not exist (404). Links from this site first; the rest are mostly bots probing for other software." />
+        <SectionHead title={`Not found · ${whole(http.totals.notFoundFromSite)} from links on this site · ${whole(http.totals.notFound)} in all`} note="Addresses that do not exist (404). Links from this site first; the rest are mostly bots probing for other software.">
+          {http.notFound.length ? <ClearButton onClick={() => clearAll("notFound", "not-found addresses")} label="Clear all not-found addresses">Clear all</ClearButton> : null}
+        </SectionHead>
         <List empty="Nothing missing in the last 7 days.">
-          {notFound.map(row => <FailingUrlRow key={`${row.status} ${row.method} ${row.path}`} row={row} now={now} />)}
+          {notFound.map(row => <FailingUrlRow key={`${row.status} ${row.method} ${row.path}`} row={row} now={now} onClear={() => void clear("notFound", row)} />)}
         </List>
         {http.notFound.length > 10 ? (
           <button type="button" onClick={() => setAllNotFound(value => !value)} className="self-start text-xs font-medium text-zinc-600 underline">

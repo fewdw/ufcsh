@@ -33,6 +33,7 @@ async function fixture(t: any, options: { user?: string; email?: string | null }
   const reports = new ReportStore(scores);
   let identity = { user: options.user ?? "user_owner", email: options.email === undefined ? OWNER : options.email };
   const actions: string[] = [];
+  const cleared: unknown[] = [];
   let aiOn = true;
   const handler = createAdminHandler({
     admins, scores, reports,
@@ -43,6 +44,7 @@ async function fixture(t: any, options: { user?: string; email?: string | null }
     metrics: () => ({ ready: true, http: { routes: [] } }),
     traffic: range => ({ range }),
     newsAi: { status: () => ({ on: aiOn }), set: on => ({ on: aiOn = on }) },
+    clearErrors: clear => { cleared.push(clear); },
   // The signed-in account, resolved the way Clerk would.
     authenticate: async req => {
       if (!req.headers.authorization?.startsWith("Bearer ")) throw new ScoringError(401, "Sign in to continue.");
@@ -69,7 +71,7 @@ async function fixture(t: any, options: { user?: string; email?: string | null }
       ...init,
       headers: { ...(init.anonymous ? {} : { Authorization: "Bearer token" }), ...(init.headers ?? {}) },
     });
-  return { request, admins, scores, reports, actions, as: (email: string | null) => { identity = { user: "user_other", email }; } };
+  return { request, admins, scores, reports, actions, cleared, as: (email: string | null) => { identity = { user: "user_other", email }; } };
 }
 
 test("every admin route is closed to accounts that are not administrators", async (t) => {
@@ -169,6 +171,23 @@ test("the live switch is reported back and can hold the bout at Next", async (t)
   assert.equal(scores.liveMark(FIGHT), 1);
   assert.equal((await (await put({ live: false })).json() as any).fights[0].mark, -1);
   for (const live of ["true", 1, null]) assert.equal((await put({ live })).status, 400, `rejects ${live}`);
+});
+
+test("clearing an error names its list and row; a bad row never clears the whole list", async (t) => {
+  const { request, cleared } = await fixture(t);
+  const post = (body: unknown) => request("errors/clear", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  assert.equal((await post({ list: "server" })).status, 200);
+  assert.equal((await post({ list: "notFound", row: { status: 404, method: "GET", path: "/x", count: 3 } })).status, 200);
+  assert.equal((await post({ list: "sync", row: { job: "fightodds", error: "boom" } })).status, 200);
+  for (const bad of [{}, { list: "bugs" }, { list: "server", row: null }, { list: "server", row: { path: "/x" } }, { list: "sync", row: { job: "x" } }]) {
+    assert.equal((await post(bad)).status, 400, JSON.stringify(bad));
+  }
+  assert.deepEqual(cleared, [
+    { list: "server" },
+    { list: "notFound", row: { status: 404, method: "GET", path: "/x" } },
+    { list: "sync", row: { job: "fightodds", error: "boom" } },
+  ]);
+  assert.equal((await request("errors/clear")).status, 405);
 });
 
 test("the report and its repairs are reachable only through the panel's own routes", async (t) => {
