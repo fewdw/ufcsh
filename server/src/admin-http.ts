@@ -6,6 +6,7 @@ import { ScoringError, scoringEligibility, type ScoringFight, type ScoringStore 
 import type { AdminStore } from "./admins.ts";
 import type { ReportStore } from "./reports.ts";
 import type { CommentStore } from "./comments.ts";
+import type { ErrorList } from "./error-log.ts";
 import { SLOW_MAX_HOURS } from "./slow-log.ts";
 import { isTrafficRange, type TrafficRange } from "./traffic-history.ts";
 
@@ -31,6 +32,8 @@ export type AdminHandlerOptions = {
   accounts?: () => Promise<unknown>;
   /** Failing addresses, recent sync failures and how current each source is. */
   errors?: () => unknown;
+  /** Clears one row of a list on Admin → Errors, or the whole list. */
+  clearErrors?: (clear: ClearErrors) => void;
   /** Addresses that answered slowly, by address and by route (Admin → Slow). */
   slow?: (hours: number) => unknown;
   canAct: () => boolean;
@@ -44,6 +47,23 @@ export type AdminHandlerOptions = {
   emailOf?: (userId: string) => Promise<string | null>;
   now?: () => number;
 };
+
+export type ClearErrors =
+  | { list: ErrorList; row?: { status: number; method: string; path: string } }
+  | { list: "sync"; row?: { job: string; error: string } };
+
+/** A row that does not parse is refused: it must never read as "the whole list". */
+function clearRequest(body: unknown): ClearErrors {
+  const { list, row } = (body ?? {}) as { list?: unknown; row?: Record<string, unknown> | null };
+  if (list !== "server" && list !== "notFound" && list !== "sync") throw new ScoringError(400, "Unknown error list.");
+  if (row === undefined) return { list };
+  if (list === "sync") {
+    if (typeof row?.job === "string" && typeof row.error === "string") return { list, row: { job: row.job, error: row.error } };
+  } else if (Number.isInteger(row?.status) && typeof row?.method === "string" && typeof row.path === "string") {
+    return { list, row: { status: row.status as number, method: row.method, path: row.path } };
+  }
+  throw new ScoringError(400, "Unknown error row.");
+}
 
 async function readBody(req: IncomingMessage): Promise<unknown> {
   if (req.headers["content-type"]?.split(";")[0].trim() !== "application/json") throw new ScoringError(415, "Send JSON.");
@@ -66,7 +86,7 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
  * whenever a token happens to expire.
  */
 export function createAdminHandler(options: AdminHandlerOptions) {
-  const { admins, scores, reports, comments, report, runAction, canAct, liveFights, metrics, traffic, accounts, errors, slow, newsAi } = options;
+  const { admins, scores, reports, comments, report, runAction, canAct, liveFights, metrics, traffic, accounts, errors, clearErrors, slow, newsAi } = options;
   const currentBout = options.currentBout ?? (() => {
     const bout = liveFights().find(fight => fight.f1_outcome == null && fight.f2_outcome == null);
     return bout ? { id: bout.id, live: false } : null;
@@ -128,7 +148,7 @@ export function createAdminHandler(options: AdminHandlerOptions) {
       const allowed = route === "admins" ? ["GET", "HEAD", "POST", "DELETE"]
         : liveFight ? ["PUT"]
         : flag || moderated || commenter ? ["PUT"]
-        : route === "bugs/action" ? ["POST"]
+        : route === "bugs/action" || route === "errors/clear" ? ["POST"]
         : route === "news-ai" ? ["GET", "HEAD", "PUT"]
         : ["GET", "HEAD"];
       if (!allowed.includes(req.method ?? "")) {
@@ -200,6 +220,12 @@ export function createAdminHandler(options: AdminHandlerOptions) {
       else if (route === "errors") {
         if (!errors) throw new ScoringError(404, "Not found.");
         send(errors());
+      }
+      else if (route === "errors/clear") {
+        if (!clearErrors) throw new ScoringError(404, "Not found.");
+        if (!limiter.allow(`errors:${email}`, 120, 2)) throw new ScoringError(429, "Too many changes. Try again shortly.");
+        clearErrors(clearRequest(await readBody(req)));
+        send({ ok: true });
       }
       else if (route === "slow") {
         if (!slow) throw new ScoringError(404, "Not found.");

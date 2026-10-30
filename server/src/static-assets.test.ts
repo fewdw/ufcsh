@@ -28,6 +28,12 @@ test("missing build assets return an uncacheable 404 instead of the SPA document
   }
 });
 
+test("a page's old share image points at the one site image", async () => {
+  const { status, headers } = await serve("/og/fights/c4c379b8f99fea88.jpg");
+  assert.equal(status, 301);
+  assert.equal(headers.Location, "/og.jpg");
+});
+
 test("a chunk from an earlier build is still served from the archive", async () => {
   const file = path.join(DATA_DIR, "assets", "earlier-build-test.js");
   await mkdir(path.dirname(file), { recursive: true });

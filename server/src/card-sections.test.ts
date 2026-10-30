@@ -86,6 +86,27 @@ test("early page sections are stored without a live feed; stale and unmatched pl
   assert.deepEqual(db.prepare("SELECT segment, card_pos FROM fights WHERE event_id = ? ORDER BY ord").all(eventId), placed);
 });
 
+test("a card ufc.com lists but has not split yet is a good read: its feed still counts, nothing is placed", async t => {
+  db.exec("SAVEPOINT unsplit_card");
+  t.after(() => db.exec("ROLLBACK TO unsplit_card; RELEASE unsplit_card"));
+  const id = "cafc000000000005";
+  db.prepare(`INSERT INTO events (id, name, date, location, ufc_slug) VALUES (?, 'Unsplit read', '2099-05-01', 'Doha, Qatar', 'unsplit-read')`).run(id);
+  db.prepare(`INSERT INTO fights (id, event_id, ord, f1_name, f2_name, segment, card_pos) VALUES ('cafc000000000050', ?, 0, 'Fighter One', 'Fighter Two', 'main', 3)`).run(id);
+  const page = `<script type="application/json" data-drupal-selector="drupal-settings-json">{"eventLiveStats":{"event_fmid":"55"}}</script>
+    <div class="c-listing-fight" data-fmid="1"><div class="c-listing-fight__names-row"><span class="c-listing-fight__corner-name">Fighter One</span><span class="c-listing-fight__corner-name">Fighter Two</span></div></div>`;
+  const feed = { LiveEventDetail: { EventId: 55, Location: { City: "Doha", Venue: "ABHA Arena" }, FightCard: [{ FightId: 1, FightOrder: 1, CardSegment: null,
+    RuleSet: { PossibleRounds: 5, Description: "5 Rnd (5-5-5-5-5)" }, Fighters: [{ Name: { FirstName: "Fighter", LastName: "One" } }, { Name: { FirstName: "Fighter", LastName: "Two" } }],
+  }] } };
+  t.mock.method(globalThis, "fetch", async (url: string) => url.includes("www.ufc.com") ? new Response(page) : Response.json(feed));
+  await syncEventSegments(id);
+  const row = db.prepare("SELECT segment, card_pos, scheduled_rounds FROM fights WHERE event_id = ?").get(id)!;
+  assert.deepEqual(Object.values(row), ["main", 3, 5], "the last good placement stays and the feed's rounds are read");
+  const event = db.prepare("SELECT ufc_event_id, venue_name, segments_fetched_at FROM events WHERE id = ?").get(id)!;
+  assert.equal(event.ufc_event_id, 55);
+  assert.equal(event.venue_name, "ABHA Arena");
+  assert.ok(event.segments_fetched_at, "the read counts as done, so Admin → Bugs does not call it stale");
+});
+
 for (const fixture of [
   { label: "a stale page defers to the matching feed", pageMatches: false, feedMatches: true, segment: "early", slug: "identity-fixture" },
   { label: "a foreign feed cannot override the matching page", pageMatches: true, feedMatches: false, segment: "main", slug: "identity-fixture" },
