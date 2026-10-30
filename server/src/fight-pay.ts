@@ -1,10 +1,11 @@
-import { db, prepared } from "./db.ts";
+import { createHash } from "node:crypto";
+import { db, prepared, getMeta, setMeta } from "./db.ts";
 import { fightIndex } from "./fight-index.ts";
 import { SEARCH_ALIASES } from "./search-aliases.ts";
 import { PURSE_REPORTS, type PurseReport } from "./purse-reports-data.ts";
 import { eventSection, fetchArticleByTitle } from "./scrape/wikipedia.ts";
 import {
-  BONUS_LABELS, articleSection, mmaPayoutPosts, placeName, postCommission, postForCard, readPurses,
+  BONUS_LABELS, PAY_REPORT_DAYS, articleSection, mmaPayoutPosts, placeName, postCommission, postsForCard, readPurses,
   sectionCitation, usd, wikipediaBonuses, wikipediaPurses,
   type BonusKind, type Corner, type PayBout, type PayoutPost, type Purse, type SourceLink,
 } from "./scrape/payouts.ts";
@@ -94,8 +95,7 @@ export function cardPay(
     }
   }
 
-  const salaries = posts ? postForCard(posts, date, card) : null;
-  if (salaries) {
+  for (const salaries of postsForCard(posts ?? [], date, card)) {
     const read = readPurses(salaries.text.split("\n"), card, new Map(), "unclear");
     issues.unread.push(...read.unread.map((row) => `MMA Payout salaries: ${row}`));
     // A winner's lone amount there may be show money only: never shown, and
@@ -152,20 +152,34 @@ export function cardPay(
 }
 
 let running = false;
+const REPORTS_VERSION = createHash("sha256").update(JSON.stringify(PURSE_REPORTS)).digest("hex");
+type PayEvent = { id: string; name: string; date: string; wiki_title: string | null };
+
+export function pendingFightPayEvents(limit: number, now = Date.now()): PayEvent[] {
+  const cutoff = new Date(now - PAY_REPORT_DAYS * 86_400_000).toISOString().slice(0, 10);
+  return db.prepare(`SELECT id, name, date, wiki_title FROM events WHERE complete = 1
+    AND (pay_checked_at IS NULL OR (date >= ? AND pay_checked_at < ?))
+    ORDER BY date DESC LIMIT ?`).all(cutoff, now - 86_400_000, limit) as PayEvent[];
+}
 
 /** Reads each finished card's pay: every card once, newest first, and the
- *  last sixty days' cards again each day, since commissions disclose and
+ *  last 180 days' cards again each day, since commissions disclose and
  *  Wikipedia catches up days or weeks after the event. */
 export async function syncFightPay(limit = 20, eventIds?: string[]): Promise<{ read: number; failed: number }> {
   const total = { read: 0, failed: 0 };
   if (running) return total;
   running = true;
   try {
+    // A bundle update must reach old cards already marked as read. Leave their
+    // existing pay intact until the ordinary read succeeds; failures retry.
+    if (getMeta("fight_pay_reports_version") !== REPORTS_VERSION) {
+      const dates = [...new Set(PURSE_REPORTS.map((report) => report.date))];
+      db.prepare(`UPDATE events SET pay_checked_at = NULL WHERE complete = 1 AND date IN (${dates.map(() => "?").join(",")})`).run(...dates);
+      setMeta("fight_pay_reports_version", REPORTS_VERSION);
+    }
     const events = (eventIds?.length
       ? db.prepare(`SELECT id, name, date, wiki_title FROM events WHERE id IN (${eventIds.map(() => "?").join(",")})`).all(...eventIds)
-      : db.prepare(`SELECT id, name, date, wiki_title FROM events WHERE complete = 1
-          AND (pay_checked_at IS NULL OR (date >= date('now', '-60 days') AND pay_checked_at < ?))
-          ORDER BY date DESC LIMIT ?`).all(Date.now() - 86_400_000, limit)) as { id: string; name: string; date: string; wiki_title: string | null }[];
+      : pendingFightPayEvents(limit)) as PayEvent[];
     if (!events.length) return total;
     const dates = events.map((event) => event.date).sort();
     const shift = (date: string, days: number) => new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
@@ -173,7 +187,7 @@ export async function syncFightPay(limit = 20, eventIds?: string[]): Promise<{ r
     let postsError: string | null = null;
     if (dates.at(-1)! >= "2008-01-01") {
       try {
-        posts = await mmaPayoutPosts(shift(dates[0] < "2008-01-01" ? "2008-01-01" : dates[0], -3), shift(dates.at(-1)!, 60));
+        posts = await mmaPayoutPosts(shift(dates[0] < "2008-01-01" ? "2008-01-01" : dates[0], -3), shift(dates.at(-1)!, PAY_REPORT_DAYS));
       } catch (err) {
         postsError = String(err);
         log("mma payout posts failed:", postsError);

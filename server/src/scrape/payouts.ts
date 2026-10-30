@@ -425,6 +425,8 @@ function mentions(note: string, name: string): boolean {
 // MMA Payout
 
 const MMA_PAYOUT = "https://mmapayout.com/wp-json/wp/v2/posts";
+/** Leave room for disclosures obtained through delayed public-records requests. */
+export const PAY_REPORT_DAYS = 180;
 export type PayoutPost = { date: string; link: string; title: string; text: string };
 
 /** MMA Payout's salary posts published between two dates: purses a
@@ -472,13 +474,13 @@ export function payoutPost(date: string, link: string, titleHtml: string, html: 
   return { date: date.slice(0, 10), link, title, text };
 }
 
-/** The post about this card: published from three days before it to sixty
+/** Posts about this card: published from three days before it to 180 days
  *  after, and naming at least half of its fighters. */
-export function postForCard(posts: PayoutPost[], date: string, bouts: PayBout[]): PayoutPost | null {
+export function postsForCard(posts: PayoutPost[], date: string, bouts: PayBout[]): PayoutPost[] {
   const day = Date.parse(date);
   const fighters = bouts.flatMap((bout) => [bout.f1, bout.f2]);
-  return posts.find((post) => (Date.parse(post.date) - day) / 86_400_000 >= -3 && (Date.parse(post.date) - day) / 86_400_000 <= 60
-    && namesCard(post.text, fighters)) ?? null;
+  return posts.filter((post) => (Date.parse(post.date) - day) / 86_400_000 >= -3 && (Date.parse(post.date) - day) / 86_400_000 <= PAY_REPORT_DAYS
+    && namesCard(post.text, fighters));
 }
 
 export function postCommission(text: string): string | null {

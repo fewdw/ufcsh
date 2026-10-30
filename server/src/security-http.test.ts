@@ -46,6 +46,49 @@ test("HTTP security holds across alternate page paths and arbitrary resource URL
     }
   });
 
+  await t.test("MCP answers both protocol eras, reads no credentials and exposes only public data", async () => {
+    const post = (message: unknown, headers: Record<string, string> = {}) => request("/mcp", {
+      method: "POST", body: typeof message === "string" ? message : JSON.stringify(message), headers: { "Content-Type": "application/json", ...headers },
+    });
+    const opened = await post({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } } });
+    assert.equal(opened.status, 200);
+    assert.equal(opened.headers.get("mcp-session-id"), null);
+    assert.equal(opened.headers.get("access-control-allow-origin"), "*");
+    assert.match(opened.headers.get("cache-control") ?? "", /no-store/);
+    assert.equal((await opened.json()).result.serverInfo.name, "ufc.sh");
+    assert.equal((await post({ jsonrpc: "2.0", method: "notifications/initialized" })).status, 202);
+
+    const meta = { "io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {} };
+    const modern = { "MCP-Protocol-Version": "2026-07-28" };
+    const tools = await post({ jsonrpc: "2.0", id: 2, method: "tools/list", params: { _meta: meta } }, { ...modern, "Mcp-Method": "tools/list" });
+    const listed = (await tools.json()).result;
+    assert.equal(listed.resultType, "complete");
+    assert.ok(listed.tools.length >= 16);
+    const called = await post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "get_events", arguments: {}, _meta: meta } }, { ...modern, "Mcp-Method": "tools/call", "Mcp-Name": "get_events" });
+    assert.equal((await called.json()).result.isError, false);
+    assert.equal((await post({ jsonrpc: "2.0", id: 4, method: "tools/list", params: { _meta: meta } }, modern)).status, 400);
+
+    assert.equal((await request("/mcp")).status, 405);
+    assert.equal((await request("/mcp", { method: "DELETE" })).status, 405);
+    const preflight = await request("/mcp", { method: "OPTIONS", headers: { Origin: "https://agent.example", "Access-Control-Request-Method": "POST" } });
+    assert.equal(preflight.status, 204);
+    assert.match(preflight.headers.get("access-control-allow-headers") ?? "", /Mcp-Method/);
+    assert.equal((await post({ jsonrpc: "2.0", id: 5, method: "ping" }, { Origin: "null" })).status, 403);
+    assert.equal((await post("{not json")).status, 400);
+    assert.equal((await post("x".repeat(70_000))).status, 413);
+    assert.equal((await request("/mcp", { method: "OPTIONS", headers: { Origin: "null" } })).status, 403);
+
+    let throttled: Response | undefined;
+    for (let i = 0; i < 80 && !throttled; i++) {
+      const response = await post({ jsonrpc: "2.0", id: 6, method: "ping" });
+      if (response.status === 429) throttled = response;
+    }
+    assert.ok(throttled, "a burst past the limit is refused");
+    assert.equal(throttled.headers.get("access-control-allow-origin"), "*");
+    assert.equal(throttled.headers.get("retry-after"), "5");
+    assert.match(throttled.headers.get("access-control-expose-headers") ?? "", /Retry-After/);
+  });
+
   await t.test("framing protection covers the SPA, alternate admin spellings and errors", async () => {
     // A SPA can navigate to admin without another document response. Its router
     // also accepts case-insensitive and percent-encoded versions of /admin.

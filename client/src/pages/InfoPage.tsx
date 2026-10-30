@@ -103,9 +103,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-30">October 30, 2026</time></p>
             <ul>
-              <li>Cards that UFC hasn't split into main card and prelims yet keep their rounds, venue and referees up to date.</li>
-              <li>A past opponent without a profile here now links to their Sherdog page instead of a missing page.</li>
-              <li>Old share links show the site image again.</li>
+              <li>AI assistants can read UFC.sh's public data through a read-only MCP server.</li>
+              <li>More reported fighter purses, with follow-up checks for salary reports published after an event.</li>
+              <li>Newly signed fighters appear in search before their UFC debut.</li>
             </ul>
           </Section>
         </div>
