@@ -1070,8 +1070,13 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     return map;
   };
   const selfIds = new Set([f.f1_id, f.f2_id].filter(Boolean));
-  const m1 = oppResults(f1.history as any[], selfIds);
-  const m2 = oppResults(f2.history as any[], selfIds);
+  // The shared chronology distinguishes earlier tournament rounds from later
+  // bouts on the same night. Carry the cutoff with the public history rows.
+  const priorFightIds = new Set([f.f1_id, f.f2_id].flatMap(fid =>
+    boutsBefore(index, fid, f.event_date, Number(f.ord) || 0).map(bout => bout.id)));
+  const atFight = (row: any) => ({ ...row, before_fight: !!potential || priorFightIds.has(row.fight_id) });
+  const m1 = oppResults((f1.history as any[]).map(atFight), selfIds);
+  const m2 = oppResults((f2.history as any[]).map(atFight), selfIds);
   const common = [...m1.keys()]
     .filter((k) => m2.has(k))
     .map((k) => ({
@@ -1082,7 +1087,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
 
   const headToHead = (f1.history as any[]).filter(
     (h: any) => h.fight_id && h.opponent.id && h.opponent.id === f.f2_id && h.fight_id !== f.id,
-  );
+  ).map(atFight);
 
   const official = fightDetail(f);
   // Journalists' cards, only on the matchup: event lists never send them.

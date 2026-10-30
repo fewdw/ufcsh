@@ -481,7 +481,7 @@ async function getFight(args: Args, data: McpData) {
   ]);
   const market = has("market") && FULL_ID.test(id) ? data.markets({ ids: [id] })[0] : undefined;
   // As the site shows them: what stood before this bout, and later meetings apart.
-  const before = (row: any) => !row.upcoming && (fight.potential || row.date <= fight.event?.date);
+  const before = (row: any) => !row.upcoming && (fight.potential || (row.before_fight ?? row.date < fight.event?.date));
   const headToHead = (fight.head_to_head as any[] | undefined) ?? [];
   const shared = ((fight.common_opponents as any[] | undefined) ?? [])
     .map(row => ({ opponent: row.opponent?.name, a: (row.f1_fights as any[]).filter(before), b: (row.f2_fights as any[]).filter(before) }))
@@ -515,7 +515,7 @@ async function getFight(args: Args, data: McpData) {
     round_stats: has("round_stats") ? roundStats(fight.detail, names) : undefined,
     pay: has("pay") ? payOf(fight.pay, names) : undefined,
     meetings_before: has("history_between") ? headToHead.filter(before).map(boutLine) : undefined,
-    meetings_after: has("history_between") && !fight.potential ? headToHead.filter(row => row.date > fight.event?.date).map(boutLine) : undefined,
+    meetings_after: has("history_between") && !fight.potential ? headToHead.filter(row => row.before_fight === false || row.date > fight.event?.date).map(boutLine) : undefined,
     common_opponents: has("history_between") ? shared.slice(0, 8).map(row => ({ opponent: row.opponent, [names[0]]: row.a.map(boutBrief), [names[1]]: row.b.map(boutBrief) })) : undefined,
     tape_history: tape?.rows?.length ? {
       about: "How each difference on the tape has gone in earlier decided UFC bouts. wins_by_side counts wins for fighters on this fighter's side of the difference.",
@@ -744,11 +744,15 @@ async function leaderboard(args: Args, data: McpData) {
     board: args.board, about: found.description ?? found.title, division, unit: unit(found.format),
     filters: { since_year: args.since_year, until_year: args.until_year, min_fights: args.min_fights, women_included: query.has("includeWomen") },
     note: args.fighters?.length ? "rank is each fighter's place on the whole board. Without a rank they do not qualify for it, and value means nothing." : undefined,
-    rows: [...(found.rows as any[])].sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity)).slice(0, limit).map(row => prune({
-      rank: row.rank, tied: row.tied || undefined, name: row.name, opponent: row.opponent?.name, verb: row.opponent?.verb,
-      [FULL_ID.test(row.fighter_id ?? "") ? "id" : "slug"]: row.fighter_id, url: row.href ? page(row.href) : fighterUrl(row.fighter_id),
-      division: row.division, value: row.rank == null ? undefined : row.value, detail: row.detail,
-    })),
+    rows: [...(found.rows as any[])].sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity)).slice(0, limit).map(row => {
+      const fightId = row.href?.match(/^\/fights\/([a-f0-9]{16})$/i)?.[1];
+      return prune({
+        rank: row.rank, tied: row.tied || undefined, name: row.name, opponent: row.opponent?.name, verb: row.opponent?.verb,
+        ...(fightId ? { fight_id: fightId, fighter_id: row.fighter_id } : { [FULL_ID.test(row.fighter_id ?? "") ? "id" : "slug"]: row.fighter_id }),
+        url: row.href ? page(row.href) : fighterUrl(row.fighter_id),
+        division: row.division, value: row.rank == null ? undefined : row.value, detail: row.detail,
+      });
+    }),
   });
 }
 

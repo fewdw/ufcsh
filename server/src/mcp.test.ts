@@ -335,6 +335,24 @@ test("a pre-fight answer leaves out what happened after the fight", async () => 
   assert.deepEqual(json.meetings_after.map((row: any) => row.date), ["2030-01-01"]);
 });
 
+test("same-night history uses the public cutoff and preserves earlier bouts", async () => {
+  const sameNight = { date: "2024-11-16", outcome: "win", method: "SUB", opponent: { name: "B" } };
+  const earlier = { ...sameNight, fight_id: REMATCH, before_fight: true };
+  const later = { ...sameNight, fight_id: LATER, before_fight: false };
+  const data = fakeData({ read: async () => fightPayload({
+    head_to_head: [earlier, later],
+    common_opponents: [
+      { opponent: { name: "Earlier Tonight" }, f1_fights: [earlier, later], f2_fights: [earlier] },
+      { opponent: { name: "Only Later Tonight" }, f1_fights: [later], f2_fights: [earlier] },
+    ],
+  }) });
+  const { json } = await call("get_fight", { fight: FIGHT, include: ["history_between"] }, data);
+  assert.deepEqual(json.meetings_before.map((row: any) => row.fight_id), [REMATCH]);
+  assert.deepEqual(json.meetings_after.map((row: any) => row.fight_id), [LATER]);
+  assert.deepEqual(json.common_opponents.map((row: any) => row.opponent), ["Earlier Tonight"]);
+  assert.equal(json.common_opponents[0]["Jon Jones"].length, 1);
+});
+
 test("a fighter who left a list was never its champion", async () => {
   const { json } = await call("get_fighter", { fighter: JONES, include: ["ranking_history"] });
   assert.equal(json.ranking_history.divisions[0].best_rank, 5);
@@ -466,6 +484,24 @@ test("leaderboards link officials to their own pages and give a unit", async () 
   assert.match(seen[1], /includeWomen=1/);
   assert.ok((await call("leaderboard", { board: "wins", division: "Atomweight" })).isError);
   assert.ok((await call("leaderboard", { board: "nope" })).isError);
+});
+
+test("bout leaderboard IDs open the bout and its fighter with the right tools", async () => {
+  const base = fakeData();
+  const data = fakeData({ read: async path => path.startsWith("/api/stats") ? {
+    leaderboards: [{ group: "fights", format: "odds", rows: [{
+      fighter_id: JONES, name: "Jon Jones", href: `/fights/${FIGHT}`, value: 200, rank: 1,
+      opponent: { name: "Daniel Cormier", verb: "def." },
+    }] }],
+  } : base.read(path) });
+  const { json } = await call("leaderboard", { board: "biggest_upsets" }, data);
+  const row = json.rows[0];
+  assert.equal(row.id, undefined);
+  assert.equal(row.fight_id, FIGHT);
+  assert.equal(row.fighter_id, JONES);
+  assert.equal(row.url, `https://ufc.sh/fights/${row.fight_id}`);
+  assert.equal((await call("get_fight", { fight: row.fight_id, include: [] }, data)).json.id, FIGHT);
+  assert.equal((await call("get_fighter", { fighter: row.fighter_id, include: [] }, data)).json.id, JONES);
 });
 
 test("every tool reads public routes only", async () => {

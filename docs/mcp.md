@@ -32,7 +32,8 @@ claude mcp add --transport http ufcsh https://ufc.sh/mcp
 
 - Public data only. Nothing that signs in, writes or depends on who is asking.
 - Say when a number applies. `get_fight` is "entering this fight"; `get_fighter`
-  is today. Keep the labels when adding fields.
+  is today. Keep the labels when adding fields. History rows' `before_fight`
+  uses the shared bout chronology, including earlier bouts on the same night.
 - An unknown value is left out, never zero (`prune`). Agents are told so.
 - Use the shared formulas (`career-metrics.ts`) and ranks (`ranking=media`, the
   site's default, which is not the API's).
@@ -43,6 +44,8 @@ claude mcp add --transport http ufcsh https://ufc.sh/mcp
   use; `leaderboard` must return an error instead of echoing them as applied.
 - Name both corners. Scores are pairs in the order of `fighters`, and the note
   beside them says so.
+- Bout leaderboards return `fight_id` for `get_fight` and `fighter_id` for
+  `get_fighter`; their URL opens the bout.
 - Stay inside `MAX_RESULT_CHARS`. `fitted` drops the largest parts of an answer
   and lists them, as a last resort; prefer `limit` and `include`.
 - News titles and summaries are third-party text. Agents are told to treat them
