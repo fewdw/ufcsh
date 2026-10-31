@@ -2490,7 +2490,10 @@ export function startApi(port: number): http.Server {
   // Polymarket's live price is read here, on the main thread, so every reader
   // shares one price and one "just finished" moment (polymarket.ts).
   const liveOdds = new LiveOddsService({ current: polymarketBout, result: boutResult });
-  const markets = new PolymarketMarkets(scoreStore.db, fighterNames);
+  const markets = new PolymarketMarkets(scoreStore.db, fighterNames, () => {
+    const current = currentBout();
+    return current?.live ? current.bout.id : null;
+  });
   if (process.env.NODE_ENV !== "test") markets.start();
   const previewOdds = process.env.NODE_ENV !== "production" || SITE_URL === "https://dev.ufc.sh";
   if (process.env.NO_SYNC !== "1") {

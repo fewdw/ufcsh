@@ -83,6 +83,9 @@ async function json(url: string, init?: RequestInit): Promise<any> {
 export class PolymarketMarkets {
   private names: (id: string, name: string) => string[];
   private scores: DatabaseSync;
+  private onNow: () => string | null;
+  private onNowId: string | null = null;
+  private onNowAt = 0;
   private quotes = new Map<string, QuoteState>();
   private reads = new Map<string, Promise<void>>();
   private histories = new Set<string>();
@@ -104,9 +107,21 @@ export class PolymarketMarkets {
   constructor(
     scores: DatabaseSync,
     names: (id: string, name: string) => string[],
+    onNow: () => string | null = () => null,
   ) {
     this.scores = scores;
     this.names = names;
+    this.onNow = onNow;
+  }
+
+  /** Round evidence arrives rounds late, so capture follows the bout the site
+   * calls Live. A tick reads every card, so this is re-read once a second. */
+  private boutOnNow(): string | null {
+    if (Date.now() - this.onNowAt >= 1_000) {
+      this.onNowId = this.onNow();
+      this.onNowAt = Date.now();
+    }
+    return this.onNowId;
   }
 
   context(id: string): Context | null {
@@ -131,7 +146,8 @@ export class PolymarketMarkets {
     const live =
       !finished &&
       isFightDay(f.event_date) &&
-      (fightIsUnderway(f) ||
+      (id === this.boutOnNow() ||
+        fightIsUnderway(f) ||
         (admin?.rounds ?? 0) > 0 ||
         (admin?.live ?? 0) > 0);
     let statsRounds = 0;

@@ -44,8 +44,11 @@ token IDs and Protocol V2 position IDs are accepted. The existing live header
 keeps its established price/result-hold behavior.
 
 Current quotes come from CLOB order books. A single upstream market WebSocket
-tracks the bout with confirmed live evidence (feed, Verdict or admin), including
-sized order-book deltas, heartbeats and reconnects. Shared REST reads provide
+tracks the live bout, including sized order-book deltas, heartbeats and
+reconnects. A bout is live as soon as the site calls it Live (`boutIsLive`: the
+previous result landed, or the opener's start passed) or has evidence (feed,
+Verdict or admin). Evidence alone arrives rounds late, after the price has
+moved, and an admin hold still keeps a bout at Next. Shared REST reads provide
 initial books and repair gaps. Additional data/history reads have a concurrency
 limit of four; clients poll the shared server answer. Quotes expire after 15
 seconds live and 90 seconds pre-fight and bypass persisted client page snapshots.
@@ -80,12 +83,13 @@ market keeps its full span (the newest point is always kept). It is recomputed
 when a capture or history read lands, or after five seconds.
 
 The chart uses `client/src/market-chart.ts` to validate, sort and deduplicate
-observations. A confirmed live bout automatically switches to captured live
-observations and follows the last ten captured minutes. It waits if none exist;
-it never guesses a fight start from the card cutoff. A completed fight with live
-captures shows the whole captured fight, excluding source settlement history;
-without captures it retains the full historical view. Missing live minutes stay
-disconnected. Round markers use the first observed round timestamps.
+observations. A live bout automatically switches to captured live observations
+and shows all of them, so the window runs from walkout to the latest price. It
+waits if none exist; it never guesses a fight start from the card cutoff. A
+completed fight with live captures shows the whole captured fight, excluding
+source settlement history; without captures it retains the full historical view.
+Missing live minutes stay disconnected. Round markers use the first observed
+round timestamps.
 
 Manual ranges use absolute epoch milliseconds, so appending or backfilling history
 does not shift the selected period. Handles cannot cross, extend outside the data,
@@ -147,7 +151,7 @@ Run `./start` and append the paths below to the printed Tailscale URL.
 | Upcoming matchup | `/fights/FIGHT_ID?tab=odds` | One-line logo/percentage badge, sportsbook comparison, draggable window, grouped props and hover/keyboard interaction |
 | Completed matchup | `/fights/FIGHT_ID?tab=odds` | No hero badge; retained chart; full captured fight when available |
 | Card | `/events/EVENT_ID?markets=1` | Expanded probabilities, hide/show and links into Odds |
-| Live bout | `/fights/FIGHT_ID?tab=odds` | Automatic last-ten-minute focus, confirmed captures only, Follow live after manual zoom |
+| Live bout | `/fights/FIGHT_ID?tab=odds` | Whole capture since the bout went Live, captures only, Follow live after manual zoom |
 | Return to Odds | Switch to Matchup and back | Same chart/range, no loading flash; hidden panels pause requests |
 
 Test phone and desktop widths in both themes. The follow/open-market controls,

@@ -105,6 +105,7 @@ export default function InfoPage() {
             <ul>
               <li>The Polymarket chart header now shows large rolling percentages, a split bar and the time of the point you're inspecting.</li>
               <li>The live bout's division and rounds stay on one line.</li>
+              <li>The Polymarket chart now follows a live fight from start to finish, so you see the whole swing in the odds.</li>
             </ul>
           </Section>
         </div>

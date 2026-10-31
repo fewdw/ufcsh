@@ -145,7 +145,13 @@ does not roll the database schema back.
 GitHub Actions runs CI when a draft PR is marked ready and on pushes to main.
 Feature pushes do not run Actions or replace the dev review. After a successful CI run
 on `main`, it connects through a restricted SSH key and runs
-`deploy/update.sh` automatically. That script builds with the bounded builder and shared heavy-job lock, takes a backup,
+`deploy/update.sh` automatically. A release needs 2.5 GiB of available memory
+(`tools/heavy.sh`); when there is less, `deploy/remote-deploy.sh` stops the dev
+app for the release and restarts it afterward, because a busy card can otherwise
+fail the deploy after a ten-minute wait. A failed deploy leaves the previous
+release serving while `main` is ahead of it, so check the `deploy-production`
+job, then `gh run rerun RUN_ID --failed` once the cause is gone.
+That script builds with the bounded builder and shared heavy-job lock, takes a backup,
 then hands over between two releases without stopping the site:
 
 - Production runs one release as the Compose service `app-blue` or `app-green`
