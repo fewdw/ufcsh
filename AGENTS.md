@@ -60,7 +60,9 @@ small/large screens. Prefer the smallest maintainable solution.
 - **"Merge to main"** (a release): on `develop`, replace the entire changelog in
   `client/src/pages/InfoPage.tsx` with the release date and a few short lines,
   push, open a PR `develop` → `main`, get CI green, and merge it with a **merge
-  commit** (never squash). Then fast-forward `develop` to `main`.
+  commit** (never squash). Then fast-forward `develop` to `main`. It is released
+  only when the `deploy-production` job on `main` succeeds: wait for it, and fix
+  or rerun a failure rather than reporting the merge as done.
 - A PR that already targets `main` (an urgent fix) is released the same way:
   changelog, CI, merge; then bring `develop` up to `main`.
 
