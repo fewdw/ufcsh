@@ -14,16 +14,17 @@ import { wasAdmin } from "../admin";
 import { lastName } from "../format";
 
 
-/** The community card and the reader's scoring controls. Result uses
- *  communityOnly to show existing scores without the editor.
+/** The community card and the reader's scoring controls. The Live and Result
+ *  tabs use communityOnly to show the scores without the editor.
  *
  *  Blind scoring, automatic and only while a bout is live: the round being
  *  fought is hidden from everyone (the server leaves it out) until it ends. */
 export default function FightScoring({ fight, communityOnly = false }: { fight: Matchup; communityOnly?: boolean }) {
   const { data, error, retry } = useApi<ScoreSummary>(`/api/fights/${fight.id}/scores`, 5_000);
-  // Result includes existing community scores, while Score keeps the full
-  // loading/error state and the controls for creating a card.
-  if (communityOnly && (!data || data.totals.scorers === 0)) return null;
+  // Result includes existing community scores and Live holds the card ready for
+  // them, while Score keeps the full loading/error state and the controls for
+  // creating a card.
+  if (communityOnly && (!data || (fight.status === "past" && data.totals.scorers === 0))) return null;
   if (!data)
     return (
       <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
