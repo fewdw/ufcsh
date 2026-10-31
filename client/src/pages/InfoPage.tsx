@@ -101,11 +101,10 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-30">October 30, 2026</time></p>
+            <p><time dateTime="2026-10-31">October 31, 2026</time></p>
             <ul>
-              <li>AI assistants can read UFC.sh's public data through a read-only MCP server.</li>
-              <li>More reported fighter purses, with follow-up checks for salary reports published after an event.</li>
-              <li>Newly signed fighters appear in search before their UFC debut.</li>
+              <li>The Polymarket chart header now shows large rolling percentages, a split bar and the time of the point you're inspecting.</li>
+              <li>The live bout's division and rounds stay on one line.</li>
             </ul>
           </Section>
         </div>

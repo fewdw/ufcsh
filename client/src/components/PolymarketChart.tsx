@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import type { PointerEvent } from "react";
+import type { PointerEvent, ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { MarketDetail } from "../polymarket-types";
 import {
@@ -68,27 +68,36 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
     <div>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold">Probability history</h3>
+        {point ? (
+          <span className="text-[10px] tabular-nums text-zinc-500">
+            {chartTime(point.at, seconds)}
+          </span>
+        ) : null}
       </div>
       {point ? (
         <>
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs">
-            <span>
-              <span className="font-semibold text-blue-700 dark:text-blue-400">
-                {data.fight.f1.name}{" "}
-                <span className="inline-block w-[6ch] whitespace-nowrap text-right tabular-nums">
-                  {pct(point.p)}
-                </span>
-              </span>
-              <span className="text-zinc-400"> / </span>
-              <span className="font-semibold text-red-700 dark:text-red-400">
-                {data.fight.f2.name}{" "}
-                <span className="inline-block w-[6ch] whitespace-nowrap text-right tabular-nums">
-                  {pct(1 - point.p)}
-                </span>
-              </span>
-            </span>
+          <div className="grid grid-cols-2 items-end gap-x-4">
+            <div className="min-w-0 text-blue-700 dark:text-blue-400">
+              <div className="text-xs font-semibold leading-4">
+                {data.fight.f1.name}
+              </div>
+              <RollingPct value={point.p} />
+            </div>
+            <div className="min-w-0 text-right text-red-700 dark:text-red-400">
+              <div className="text-xs font-semibold leading-4">
+                {data.fight.f2.name}
+              </div>
+              <RollingPct value={1 - point.p} />
+            </div>
           </div>
-          <div className="relative mt-1 pl-9">
+          <div className="mt-1.5 flex h-1.5 gap-0.5" aria-hidden="true">
+            <div
+              className="rounded-full bg-blue-500 transition-[width] duration-300 ease-out"
+              style={{ width: `${point.p * 100}%` }}
+            />
+            <div className="flex-1 rounded-full bg-red-500" />
+          </div>
+          <div className="relative mt-2 pl-9">
             {[0, 0.25, 0.5, 0.75, 1].map((p) => (
               <span
                 key={p}
@@ -270,6 +279,62 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
           {data.historyError}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/** A digit on a strip of 0–9 that slides to its place, so a drag rolls the
+ *  number and a new value mid-roll just changes where it is heading. */
+function Digit({ digit }: { digit: number }) {
+  return (
+    <span className="relative inline-block h-[1.2em] w-[1ch] overflow-hidden [mask-image:linear-gradient(transparent,black_12%,black_88%,transparent)]">
+      <span
+        className="absolute inset-x-0 top-0 transition-transform duration-300 ease-out"
+        style={{ transform: `translateY(-${digit * 10}%)` }}
+      >
+        {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+          <span key={n} className="block h-[1.2em] text-center leading-[1.2em]">
+            {n}
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+/** Folds an unused place away, as in 86% against 100% or 85.5%. */
+function Place({ shown, children }: { shown: boolean; children: ReactNode }) {
+  return (
+    <span
+      className={`inline-flex justify-end overflow-hidden transition-[max-width,opacity] duration-300 ease-out ${shown ? "max-w-[2ch] opacity-100" : "max-w-0 opacity-0"}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** `marketPct`'s text, rolling. Every place stays mounted, so one that appears
+ *  slides open rather than popping in. */
+function RollingPct({ value }: { value: number }) {
+  const text = pct(value);
+  const [whole, tenths = ""] = text.slice(0, -1).split(".");
+  const places = whole.padStart(3);
+  return (
+    <div className="text-2xl font-semibold leading-none tabular-nums">
+      <span className="sr-only">{text}</span>
+      <span aria-hidden="true" className="inline-flex items-center">
+        {[...places].map((place, i) => (
+          <Place key={i} shown={place !== " "}>
+            <Digit digit={Number(place)} />
+          </Place>
+        ))}
+        <Place shown={tenths !== ""}>
+          <span className="flex items-center">
+            .<Digit digit={Number(tenths)} />
+          </span>
+        </Place>
+        %
+      </span>
     </div>
   );
 }
