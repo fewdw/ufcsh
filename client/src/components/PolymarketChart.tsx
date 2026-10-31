@@ -17,14 +17,14 @@ type Model = ReturnType<typeof chartModel>;
 
 export default function PolymarketChart({ data }: { data: MarketDetail }) {
   const model = useMemo(() => chartModel(data), [data]);
-  // An identity/source change or transition into confirmed live capture starts a new window.
+  // An identity/source change or transition into live capture starts a new window.
   return <ChartWindow key={model.key} data={data} model={model} />;
 }
 
 function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
   const [manual, setManual] = useState<TimeRange | null>(null);
   const [cursor, setCursor] = useState<number | null>(null);
-  const range = clampRange(manual ?? model.automatic, model.domain);
+  const range = clampRange(manual ?? model.domain, model.domain);
   const points = model.points.filter(
     (p) => p.at >= range.from && p.at <= range.to,
   );
@@ -221,7 +221,7 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
           {model.points.length
             ? "No observations in this time window. Drag the handles to adjust it."
             : model.fightScope
-              ? "Waiting for confirmed live observations. Pre-fight prices are excluded from the fight view."
+              ? "Waiting for the first live observation. Pre-fight prices are excluded from the fight view."
               : data.historyCheckedAt
                 ? "No price history is available yet."
                 : "Fetching source history. New observations will appear automatically."}
