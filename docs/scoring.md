@@ -49,7 +49,8 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
 - One card per Clerk user and fight, enforced by a database unique constraint.
   Updating it replaces its contribution rather than adding another vote. A
   decision's **Result** tab carries the fan average beside the judges' cards,
-  which opens the Score tab.
+  which opens the Score tab. The **Live** tab shows the community card as the
+  rounds close; scoring stays on the Score tab.
 - Choose 10–10, 10–9 or 10–8 in either direction **before referee deductions**;
   choosing the selected score takes that round back off the card. The API also
   accepts 10–7. Base scores and a user's provisional deductions remain stored
