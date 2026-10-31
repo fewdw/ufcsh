@@ -174,6 +174,9 @@ function EventSidebar({
   mobileOpen,
   onBack,
   dock,
+  pending,
+  failed,
+  onRetry,
 }: {
   events: EventListItem[];
   selectedId: string | null;
@@ -181,6 +184,9 @@ function EventSidebar({
   /** Closes the list on a phone, back to the card it was opened from. */
   onBack: () => void;
   dock: (typeof DOCK)[keyof typeof DOCK];
+  pending: boolean;
+  failed: boolean;
+  onRetry: () => void;
 }) {
   const [kind, setKind] = useRememberedState<KindFilter>("events:kind", "all", oneOf("all", "ppv", "fight_night"));
   const [showTop, setShowTop] = useState(false);
@@ -335,7 +341,11 @@ function EventSidebar({
               </div>
             </div>
           ))}
-          {filtered.length === 0 ? (
+          {pending || failed ? (
+            <div role="status" className="px-3 py-8 text-center text-sm text-zinc-400">
+              {failed ? <>Could not load events. <button type="button" onClick={onRetry} className="underline">Retry</button></> : "Loading events…"}
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="px-3 py-8 text-center text-sm text-zinc-400">
               No {KIND_NOUN[kind]} on record
             </div>
@@ -1119,6 +1129,8 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
 
 // ---------------------------------------------------------------------------
 
+const NO_EVENTS: EventListItem[] = [];
+
 export default function EventsPage() {
   const { eventId, fightId } = useParams();
   const { settings } = useSettings();
@@ -1143,7 +1155,7 @@ export default function EventsPage() {
     setSheetLocation(location.key);
     setMobileEventsOpen(false);
   }
-  const { data: events, loading, error } = useApi<EventListItem[]>("/api/events",
+  const { data: events, loading, error, retry } = useApi<EventListItem[]>("/api/events",
     data => data?.some(event => isFightDay(event.date)) ? 30_000 : 5 * 60_000);
   const fightEventIdHint =
     fightId &&
@@ -1155,31 +1167,19 @@ export default function EventsPage() {
       : null;
 
   // When a matchup is open, the sidebar highlights its event.
-  const { data: openFight } = useApi<Matchup>(fightId && (!fightEventIdHint || new URLSearchParams(location.search).has("stat")) ? withRanking(`/api/fights/${fightId}`, settings.rankingSource) : null);
+  const { data: openFight } = useApi<Matchup>(fightId ? withRanking(`/api/fights/${fightId}`, settings.rankingSource) : null);
   const statModal = fightId ? <CareerStatModal fighters={openFight ? [openFight.f1, openFight.f2] : []} before={fightId.startsWith("potential-") ? undefined : fightId} /> : null;
   // "/" opens the tagged card (live, finished tonight, or next announced): it
   // is drawn straight away, and the address catches up behind it.
   const landingId = !eventId && !fightId && events?.length ? landingEvent(events)!.id : null;
   const shownEventId = eventId ?? landingId;
-  const selectedId = shownEventId ?? fightEventIdHint ?? openFight?.event.id ?? null;
+  const selectedId = shownEventId ?? openFight?.event.id ?? fightEventIdHint ?? null;
   useEffect(() => {
     if (landingId) navigate(`/events/${landingId}`, { replace: true });
   }, [landingId, navigate]);
 
   const oddsMode = new URLSearchParams(location.search).get("odds") === "1";
   const dock = fightId ? DOCK.matchup : DOCK.card;
-  if (error && !events) {
-    return (
-      <>{statModal}
-      <div className="flex h-full items-center justify-center text-sm text-zinc-500">
-        Backend unreachable — is the server running on port 8000?
-      </div>
-      </>
-    );
-  }
-  if (loading || !events) {
-    return <>{statModal}<div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading events…</div></>;
-  }
 
   return (
     <>{statModal}
@@ -1197,7 +1197,10 @@ export default function EventsPage() {
         </button>
       ) : null}
       <EventSidebar
-        events={events}
+        events={events ?? NO_EVENTS}
+        pending={!events && loading}
+        failed={!events && Boolean(error)}
+        onRetry={retry}
         selectedId={selectedId}
         mobileOpen={mobileEventsOpen}
         onBack={() => setMobileEventsOpen(false)}
@@ -1205,12 +1208,12 @@ export default function EventsPage() {
       />
       <main className={`${mobileEventsOpen ? "hidden" : "block"} min-h-0 min-w-0 flex-1 ${dock.main}`}>
         {fightId ? (
-          <FightView fightId={fightId} eventIdHint={fightEventIdHint ?? openFight?.event.id} />
+          <FightView fightId={fightId} eventIdHint={openFight?.event.id ?? fightEventIdHint} />
         ) : shownEventId ? (
-          <EventPane eventId={shownEventId} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, shownEventId), onBrowse: browseEvents }} />
+          <EventPane eventId={shownEventId} oddsMode={oddsMode} nav={{ ...eventNeighbours(events ?? NO_EVENTS, shownEventId), onBrowse: browseEvents }} />
         ) : (
           <div className={`flex h-full items-center justify-center ${shell}`}>
-            <div className="text-sm text-zinc-400">Select an event.</div>
+            <div role="status" className="text-sm text-zinc-400">{!events && loading ? "Loading events…" : !events && error ? "Could not load events." : "Select an event."}</div>
           </div>
         )}
       </main>
