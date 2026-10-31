@@ -67,7 +67,7 @@ test("upcoming history is sorted, validated and deduplicated in favor of capture
     ]),
   );
   assert.deepEqual(model.points, [point(0), captured, point(2000)]);
-  assert.deepEqual(model.automatic, { from: start, to: start + 2000 });
+  assert.deepEqual(model.domain, { from: start, to: start + 2000 });
 });
 
 test("live without captures waits rather than using card time or source history as fight timing", () => {
@@ -85,7 +85,7 @@ test("live without captures waits rather than using card time or source history 
   assert.deepEqual(model.points, []);
 });
 
-test("live defaults to the latest ten minutes of confirmed fight capture", () => {
+test("live spans the whole fight capture and leaves out earlier prices", () => {
   const model = chartModel(
     detail(
       [
@@ -99,10 +99,7 @@ test("live defaults to the latest ten minutes of confirmed fight capture", () =>
     ),
   );
   assert.deepEqual(model.domain, { from: start, to: start + 1200_000 });
-  assert.deepEqual(model.automatic, {
-    from: start + 600_000,
-    to: start + 1200_000,
-  });
+  assert.equal(model.points.length, 3);
 });
 
 test("finished capture shows the whole observed fight and excludes settlement prices", () => {
@@ -116,7 +113,7 @@ test("finished capture shows the whole observed fight and excludes settlement pr
       "finished",
     ),
   );
-  assert.deepEqual(model.automatic, model.domain);
+  assert.deepEqual(model.domain, { from: start, to: start + 1200_000 });
   assert.equal(model.points.length, 2);
 });
 

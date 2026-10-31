@@ -40,13 +40,6 @@ export function chartModel(data: MarketDetail) {
       data.url,
       fightScope,
     ]),
-    automatic:
-      data.fight.state === "live"
-        ? {
-            from: Math.max(domain.from, domain.to - 10 * 60_000),
-            to: domain.to,
-          }
-        : domain,
   };
 }
 

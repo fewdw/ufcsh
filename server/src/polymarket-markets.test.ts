@@ -7,12 +7,20 @@ import { PolymarketMarkets } from "./polymarket-markets.ts";
 let serial = 0;
 function fixture(
   t: TestContext,
-  options: { reversed?: boolean; failure?: boolean; closed?: boolean } = {},
+  options: {
+    reversed?: boolean;
+    failure?: boolean;
+    closed?: boolean;
+    today?: boolean;
+    onNow?: boolean;
+  } = {},
 ) {
   const suffix = String(++serial).padStart(4, "0");
   const id = `db0000000000${suffix}`,
     event = `dc0000000000${suffix}`;
-  const date = `2035-01-${String(serial + 1).padStart(2, "0")}`;
+  const date = options.today
+    ? new Date().toISOString().slice(0, 10)
+    : `2035-01-${String(serial + 1).padStart(2, "0")}`;
   const at = Date.now(),
     cutoff = at + 3_600_000;
   const scores = new DatabaseSync(":memory:");
@@ -116,7 +124,11 @@ function fixture(
       });
     throw new Error(`Unexpected test URL: ${url}`);
   });
-  const service = new PolymarketMarkets(scores, (_id, name) => [name]);
+  const service = new PolymarketMarkets(
+    scores,
+    (_id, name) => [name],
+    () => (options.onNow ? id : null),
+  );
   t.after(async () => {
     service.stop();
     await new Promise((resolve) => setImmediate(resolve));
@@ -242,6 +254,19 @@ test("current quotes expire even when a reader retains the summary", async (t) =
   assert.ok(f.service.summary(context).quote);
   t.mock.method(Date, "now", () => f.at + 120_000);
   assert.equal(f.service.summary(context).quote, null);
+});
+
+test("the bout on now is captured live before any evidence it has started", async (t) => {
+  const waiting = fixture(t, { today: true });
+  assert.equal(waiting.service.context(waiting.id)!.state, "upcoming");
+
+  const f = fixture(t, { today: true, onNow: true });
+  const detail = (await f.service.detail(f.id))!;
+  assert.equal(detail.fight.state, "live");
+  assert.equal(detail.rounds.length, 0);
+  assert.ok(
+    detail.history.some((p) => p.source === "observed" && p.phase === "live"),
+  );
 });
 
 test("long histories are thinned over their whole span and keep every live capture", async (t) => {
