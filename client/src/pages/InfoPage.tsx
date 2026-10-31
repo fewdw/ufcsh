@@ -103,9 +103,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-31">October 31, 2026</time></p>
             <ul>
-              <li>The Polymarket chart header now shows large rolling percentages, a split bar and the time of the point you're inspecting.</li>
-              <li>The live bout's division and rounds stay on one line.</li>
-              <li>The Polymarket chart now follows a live fight from start to finish, so you see the whole swing in the odds.</li>
+              <li>The Polymarket chart no longer sits above the scorecard in the Score tab. It stays in the Result and Odds tabs.</li>
             </ul>
           </Section>
         </div>
