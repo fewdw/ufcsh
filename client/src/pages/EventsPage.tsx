@@ -532,7 +532,9 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
   const open = () => navigate(`/fights/${fight.id}`, { state: { eventId, eventReturnDepth: 1 } });
   // Beside the price in the face-off layout; the compact layout writes its own.
   const weightClassRow = (
-    <div className="flex flex-wrap items-center justify-center gap-1.5">
+    // Live adds a label the column has no room for: one line, overflowing the
+    // column evenly so the prices below keep their width.
+    <div className={`flex items-center justify-center gap-1.5 ${live ? "w-max whitespace-nowrap" : "flex-wrap"}`}>
       {/* The dot and the word both say live, so neither colour nor
           motion carries it alone. */}
       {live ? <>
