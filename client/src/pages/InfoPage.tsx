@@ -103,7 +103,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-31">October 31, 2026</time></p>
             <ul>
-              <li>A fight’s first tab now reads Live while it’s on, with the Polymarket chart, community scores and stats. It becomes Result when the fight ends and keeps all three.</li>
+              <li>The live scorecard is cleaner: the round being fought shows a dash, with no lock or note. Its scores still appear only when it ends.</li>
             </ul>
           </Section>
         </div>
