@@ -280,7 +280,7 @@ function PolymarketView({
       <div className="space-y-5 p-4 sm:p-5">
         <PolymarketChart data={data} />
         {!compact ? <Comparison data={data} now={now} /> : null}
-        {!q ? (
+        {!q && !(compact && data.fight.state === "finished") ? (
           <div
             role="status"
             className="rounded-lg bg-zinc-50 p-4 text-xs leading-relaxed text-zinc-500 dark:bg-zinc-800"

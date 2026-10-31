@@ -718,10 +718,13 @@ function CommonOpponents({ fight }: { fight: Matchup }) {
 
 type MatchupTab = "fight" | "matchup" | "odds" | "score" | "predict" | "discussion";
 const TAB_LABEL: Record<MatchupTab, string> = { fight: "Result", matchup: "Matchup", odds: "Odds", score: "Score", predict: "Predict", discussion: "Discussion" };
+// The first card the Polymarket feed watched: older bouts on the Result tab would
+// each start an outside market lookup. Their Odds tab can still open one.
+const MARKET_FEED_START = "2026-10-28";
 
 /** The matchup's sections, grouped by the question they answer. Arrow keys move
  *  between tabs the way a native tab control does. */
-function MatchupTabs({ tabs, current, onSelect }: { tabs: MatchupTab[]; current: MatchupTab; onSelect: (tab: MatchupTab) => void }) {
+function MatchupTabs({ tabs, current, live, onSelect }: { tabs: MatchupTab[]; current: MatchupTab; live: boolean; onSelect: (tab: MatchupTab) => void }) {
   const refs = useRef(new Map<MatchupTab, HTMLButtonElement>());
   const move = (event: React.KeyboardEvent, index: number) => {
     const next = event.key === "ArrowRight" ? index + 1 : event.key === "ArrowLeft" ? index - 1
@@ -748,7 +751,7 @@ function MatchupTabs({ tabs, current, onSelect }: { tabs: MatchupTab[]; current:
           onKeyDown={(event) => move(event, index)}
           className={`${segmentedTab} ${tab === current ? segmentedSelected : segmentedIdle}`}
         >
-          {TAB_LABEL[tab]}
+          {tab === "fight" && live ? "Live" : TAB_LABEL[tab]}
         </button>
       ))}
     </div>
@@ -883,8 +886,8 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
 
   const detail: FightDetailBlock | null = fight.detail;
   const hasStats = detail?.type === "past" && Boolean(detail.totals || detail.sigStrikes);
-  // Numbers but no verdict: this bout is happening as the page is read.
-  const statsLive = hasStats && fight.status !== "past";
+  // No verdict yet: this bout is happening as the page is read.
+  const live = fight.status !== "past";
   const result = fight.status === "past" ? resultSummary(fight) : null;
   // Each corner keeps its own full-body cut-out; one without stands in with
   // its headshot at the same size, so a single missing cut-out never shrinks
@@ -928,6 +931,9 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     if (tabBar.current) tabAnchor.keep(tabBar.current);
     navigate({ search: `?tab=${next}` }, { replace: true, state: location.state });
   };
+
+  const market = !fight.potential && fight.event.date >= MARKET_FEED_START
+    ? <PolymarketPanel key={fight.id} fightId={fight.id} compact past={!live} /> : null;
 
   const cardSteps = {
     previous: <FightStepLink fight={previous} direction="prev" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={NAV_STEP} />,
@@ -1041,25 +1047,26 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
               // The same segmented control the sidebar filters use, on the
               // same white panel it sits on there.
               <div ref={tabBar} className={`${shell} p-1.5`}>
-                <MatchupTabs tabs={tabs} current={tab} onSelect={selectTab} />
+                <MatchupTabs tabs={tabs} current={tab} live={live} onSelect={selectTab} />
               </div>
             ) : null}
 
             <div id="matchup-tabpanel" role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `matchup-tab-${tab}` : undefined} className="flex flex-col gap-2 sm:gap-3">
               {tab === "fight" ? <>
-                {fight.in_progress ? <PolymarketPanel key={fight.id} fightId={fight.id} compact /> : null}
+                {live ? market : null}
                 <Scorecards fight={fight} />
-                {fight.status === "past" && !detail?.judges?.length ? <FightScoring key={fight.id} fight={fight} communityOnly /> : null}
-                {hasStats ? <FightStatistics fight={fight} live={statsLive} /> : fight.in_progress ? (
+                {!detail?.judges?.length ? <FightScoring key={fight.id} fight={fight} communityOnly /> : null}
+                {hasStats ? <FightStatistics fight={fight} live={live} /> : fight.in_progress ? (
                   <div className={`${shell} flex items-center justify-center gap-2 px-5 py-10 text-sm text-zinc-500`} role="status">
                     <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-                    Fight Live, results will appear soon
+                    Fight live, stats will appear soon
                   </div>
                 ) : (
                   <div className={`${shell} px-5 py-4 text-xs text-zinc-500`} role="status">
                     Result confirmed. Detailed statistics are still being published{isFightDay(fight.event.date) ? " — checking automatically." : "."}
                   </div>
                 )}
+                {live ? null : market}
                 <FightPay fight={fight} />
               </> : null}
               {tab === "matchup" ? <>
