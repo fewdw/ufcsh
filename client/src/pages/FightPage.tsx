@@ -1103,7 +1103,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 <CommonOpponents fight={fight} />
               </> : null}
               <FightOdds key={fight.id} fight={fight} active={tab === "odds"} />
-              {tab === "score" ? <>{fight.in_progress ? <PolymarketPanel key={fight.id} fightId={fight.id} compact /> : null}<FightScoring key={fight.id} fight={fight} /></> : null}
+              {tab === "score" ? <FightScoring key={fight.id} fight={fight} /> : null}
               {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} /> : null}
               {tab === "discussion" ? (
                 <FightDiscussion key={fight.id} fightId={fight.id} />

@@ -8,7 +8,7 @@ UFC.sh reads public market data only. It does not connect a wallet or place orde
 - A matchup's Odds tab (`?tab=odds`): sportsbook moneylines/props and a Polymarket
   panel with the probability chart first, followed by source comparisons and
   source-listed props. The chart and comparison stay stacked at every screen size.
-- During a live fight, the Result and Score tabs also include the compact chart.
+- During a live fight, the Result tab also includes the compact chart.
 - A finished bout keeps its Odds tab only when it has sportsbook prices, and shows
   the Polymarket panel only when a market was matched or prices were captured, so
   the archive before Polymarket's UFC markets shows no empty panels. A finished
