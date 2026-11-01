@@ -86,13 +86,17 @@ async function readCard(verdictId: number, fights: LocalFight[], now: number, ag
   if (now < card.dueAt) return;
   // The bout's own page lists the card's other bouts too, so while one is on
   // a single read covers both it and what follows.
-  const html = await fetchVerdictDocument(card.on != null ? `/event/${verdictId}/fight/${card.on}` : `/event/${verdictId}`);
+  const path = card.on != null ? `/event/${verdictId}/fight/${card.on}` : `/event/${verdictId}`;
+  const html = await fetchVerdictDocument(path);
   const listed = parseVerdictLiveCard(html, verdictId);
+  // Every card page lists its bouts, so none means the page has changed: an
+  // error retried soon, not a card with nothing of ours left.
+  if (!listed.length) throw new Error(`no bouts read from ${path}`);
   const watched = listed.filter(fight => localFor(fight, fights));
   const on = watched.find(fight => fight.status === 1) ?? null;
   // The page read is the bout's own: record it, including its last word
-  // once Verdict calls it over.
-  const read = card.on != null ? listed.find(fight => fight.fightNumber === card.on) : undefined;
+  // once Verdict calls it over. A bare listing can't say how far it has got.
+  const read = card.on != null ? listed.find(fight => fight.fightNumber === card.on && fight.rounds.length) : undefined;
   const match = read && localFor(read, fights);
   if (read && match) {
     const state = JSON.stringify(liveState(read, html, match.order, `${VERDICT}/event/${verdictId}/fight/${read.fightNumber}`));

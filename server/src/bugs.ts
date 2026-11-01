@@ -1,5 +1,6 @@
 import { crewGaps, eventBroadcast, syncCrewFeed, type CrewEvent } from "./event-crew.ts";
 import { completedScorecardRounds, parseCommunityScorecard } from "./community-scorecards.ts";
+import { fightIsComplete, fightIsUnderway } from "./live-state.ts";
 import { potentialMatchups, syncPotentialMatchups } from "./potential-matchups.ts";
 import { db, getMeta, setMeta } from "./db.ts";
 import { confirmedTitleResults, missingCurrentRankingHistory, relinkRankingHistory } from "./ranking-history.ts";
@@ -1297,6 +1298,28 @@ function verdictImportErrors(): BugCheck {
   ]);
 }
 
+/** Tonight's safety net for `verdict-live.ts`: a read that goes wrong only
+ * shows as a bout with no live state, on a card that otherwise imports fine. */
+function verdictLiveMissed(): BugCheck {
+  const fights = (db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, f.method, f.round, f.f1_outcome, f.f2_outcome, f.detail_json
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.date BETWEEN date('now', '-2 day') AND date('now') AND f.verdict_live_json IS NULL
+    ORDER BY e.date DESC, f.ord
+  `).all() as (FightRow & { method: string | null; round: string | null; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null })[])
+    .filter(fight => fightIsComplete(fight) ? completedScorecardRounds(fight) > 0 : fightIsUnderway(fight));
+  return check({
+    id: "verdict-live-missed",
+    group: "Scorecards",
+    label: "Bouts Verdict's live read missed",
+    description: "Bouts fought in the last two days past their first round with nothing read from Verdict MMA while they were on, so their rounds never opened from it and its fans' average never joined the Score tab. Finished bouts get their tally from the import regardless; a list covering a whole card or half of one means the live read has stopped working (see verdict-live.ts).",
+    grade: "must",
+  }, fights.map(fight => fightItem(fight, {
+    facts: [["State", fightIsComplete(fight) ? `Finished, ${fight.method ?? "unknown"} round ${fight.round ?? "?"}` : "Being fought"]],
+    links: [{ label: "Verdict events", href: "https://verdictmma.com/events" }],
+  })));
+}
+
 function untrustworthyFightStats(): BugCheck {
   const rows = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, f.round, f.f1_str, f.f2_str, f.f1_td, f.f2_td, f.f1_kd, f.f2_kd, f.f1_sub, f.f2_sub,
@@ -2352,6 +2375,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     fightsWithoutCommunityScores(),
     invalidCommunityScores(),
     verdictImportErrors(),
+    verdictLiveMissed(),
     suspiciousOdds(),
     wrongFighterPages(),
     fightOddsUnread(),
