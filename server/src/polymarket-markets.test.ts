@@ -60,10 +60,16 @@ function fixture(
       }),
     );
   let books = 0,
-    failing = options.failure ?? false;
-  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    failing = options.failure ?? false,
+    bookFailure = false;
+  const bookReads: string[] = [];
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     if (failing) return new Response("upstream failed", { status: 503 });
+    if (url.includes("/books")) {
+      bookReads.push(String(init?.body));
+      if (bookFailure) return new Response("upstream failed", { status: 503 });
+    }
     if (url.includes("gamma-api"))
       return Response.json([
         {
@@ -90,6 +96,17 @@ function fixture(
               sportsMarketType: "ufc_go_the_distance",
               outcomes: '["Yes","No"]',
               outcomePrices: '["0.3","0.7"]',
+              clobTokenIds: '["333","444"]',
+            },
+            {
+              id: `resolved-${suffix}`,
+              slug: "round-one",
+              question: "Before round 2?",
+              sportsMarketType: "ufc_round_of_finish",
+              closed: true,
+              outcomes: '["Yes","No"]',
+              outcomePrices: '["0","1"]',
+              clobTokenIds: '["555","666"]',
             },
           ],
         },
@@ -109,6 +126,13 @@ function fixture(
           asks: [{ price: "0.61", size: "1000" }],
           last_trade_price: "0.4",
         },
+        {
+          asset_id: "333",
+          bids: [{ price: "0.8", size: "10" }],
+          asks: [{ price: "0.9", size: "10" }],
+          last_trade_price: "0.2",
+        },
+        { asset_id: "444", bids: [], asks: [] },
       ]);
     }
     if (url.includes("prices-history"))
@@ -153,8 +177,12 @@ function fixture(
     at,
     service,
     books: () => books,
+    bookReads,
     fail: () => {
       failing = true;
+    },
+    failBooks: () => {
+      bookFailure = true;
     },
   };
 }
@@ -267,6 +295,40 @@ test("the bout on now is captured live before any evidence it has started", asyn
   assert.ok(
     detail.history.some((p) => p.source === "observed" && p.phase === "live"),
   );
+});
+
+test("a live bout's props are priced from their books, never a reader's wait", async (t) => {
+  const f = fixture(t, { today: true, onNow: true });
+  const first = (await f.service.detail(f.id))!;
+  const [prop, resolved] = first.extras;
+  assert.deepEqual(prop.outcomes.map((o) => o.p), [0.3, 0.7]);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const live = (await f.service.detail(f.id))!;
+  assert.deepEqual(
+    live.extras[0].outcomes.map((o) => Math.round(o.p! * 100) / 100),
+    [0.85, 0.15],
+  );
+  assert.ok(!("tokens" in live.extras[0]), "tokens are never served");
+  assert.ok(!f.bookReads.at(-1)!.includes("555"), "no book is read for a resolved market");
+  assert.deepEqual(live.extras[1].outcomes, resolved.outcomes);
+  assert.equal(live.extras[1].closed, true);
+
+  const now = Date.now();
+  t.mock.method(Date, "now", () => now + 31_000);
+  f.failBooks();
+  const fallback = (await f.service.detail(f.id))!;
+  assert.deepEqual(fallback.extras[0].outcomes.map((o) => o.p), [0.3, 0.7]);
+});
+
+test("props before the fight stay on Gamma's price and read no books", async (t) => {
+  const f = fixture(t);
+  await f.service.detail(f.id);
+  await new Promise((resolve) => setImmediate(resolve));
+  const detail = (await f.service.detail(f.id))!;
+  assert.deepEqual(detail.extras[0].outcomes.map((o) => o.p), [0.3, 0.7]);
+  assert.equal(f.books(), 1);
+  assert.ok(!f.bookReads.at(-1)!.includes("333"));
 });
 
 test("long histories are thinned over their whole span and keep every live capture", async (t) => {
