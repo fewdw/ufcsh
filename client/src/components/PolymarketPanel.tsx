@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ExternalLink } from "lucide-react";
 import PolymarketChart from "./PolymarketChart";
@@ -22,7 +22,31 @@ function freshMarketQuote(row: MarketSummary, now: number) {
     : null;
 }
 
-function ExtraMarkets({ markets }: { markets: ExtraMarket[] }) {
+/** A percentage that lights up for a moment when a live bout moves it. */
+function LivePct({ p, live }: { p: number | null | undefined; live: boolean }) {
+  const text = marketPct(p);
+  const shown = useRef(text);
+  const [flashes, setFlashes] = useState(0);
+  useEffect(() => {
+    if (text === shown.current) return;
+    shown.current = text;
+    if (live) setFlashes((n) => n + 1);
+  }, [text, live]);
+  // A new key restarts the animation; the first paint has none.
+  return (
+    <span key={flashes} className={flashes ? "market-flash" : undefined}>
+      {text}
+    </span>
+  );
+}
+
+function ExtraMarkets({
+  markets,
+  live,
+}: {
+  markets: ExtraMarket[];
+  live: boolean;
+}) {
   if (!markets.length)
     return (
       <p className="text-xs text-zinc-500">
@@ -138,7 +162,7 @@ function ExtraMarkets({ markets }: { markets: ExtraMarket[] }) {
                           key={i}
                           className={`px-2 py-2 text-center align-middle tabular-nums ${o.p != null && o.p === best && prices.filter((p) => p === best).length === 1 ? "bg-zinc-50 font-semibold text-zinc-950 dark:bg-zinc-800/50 dark:text-white" : "text-zinc-500 dark:text-zinc-400"}`}
                         >
-                          {marketPct(o.p)}
+                          <LivePct p={o.p} live={live} />
                         </td>
                       ))}
                     </tr>
@@ -155,6 +179,7 @@ function ExtraMarkets({ markets }: { markets: ExtraMarket[] }) {
 
 function Comparison({ data, now }: { data: MarketDetail; now: number }) {
   const q = freshMarketQuote(data, now);
+  const live = data.fight.state === "live";
   const rows = [
     {
       label: "Polymarket",
@@ -168,7 +193,9 @@ function Comparison({ data, now }: { data: MarketDetail; now: number }) {
     {
       label: "Sportsbooks",
       p: data.sports?.p ?? null,
-      detail: data.sports ? null : "No two-sided odds available",
+      detail: data.sports || live ? null : "No two-sided odds available",
+      // Books take no bets once a bout starts; their line stops being a price.
+      closed: live,
     },
     ...(data.community && data.community.n > 0
       ? [
@@ -226,12 +253,23 @@ function Comparison({ data, now }: { data: MarketDetail; now: number }) {
                     </span>
                   ) : null}
                 </th>
-                <td className="px-2 py-2.5 text-center align-middle text-sm font-semibold tabular-nums text-blue-700 dark:text-blue-400">
-                  {marketPct(row.p)}
-                </td>
-                <td className="px-2 py-2.5 text-center align-middle text-sm font-semibold tabular-nums text-red-700 dark:text-red-400">
-                  {marketPct(row.p == null ? null : 1 - row.p)}
-                </td>
+                {row.closed ? (
+                  <td
+                    colSpan={2}
+                    className="px-2 py-2.5 text-center align-middle text-zinc-500"
+                  >
+                    Closed
+                  </td>
+                ) : (
+                  <>
+                    <td className="px-2 py-2.5 text-center align-middle text-sm font-semibold tabular-nums text-blue-700 dark:text-blue-400">
+                      <LivePct p={row.p} live={live} />
+                    </td>
+                    <td className="px-2 py-2.5 text-center align-middle text-sm font-semibold tabular-nums text-red-700 dark:text-red-400">
+                      <LivePct p={row.p == null ? null : 1 - row.p} live={live} />
+                    </td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
@@ -308,7 +346,10 @@ function PolymarketView({
         {!compact ? (
           <div className="border-t border-zinc-200 pt-4 dark:border-zinc-700">
             <h3 className="mb-3 text-sm font-semibold">More markets</h3>
-            <ExtraMarkets markets={data.extras} />
+            <ExtraMarkets
+              markets={data.extras}
+              live={data.fight.state === "live"}
+            />
           </div>
         ) : null}
       </div>
