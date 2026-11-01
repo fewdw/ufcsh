@@ -932,8 +932,10 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     navigate({ search: `?tab=${next}` }, { replace: true, state: location.state });
   };
 
+  // Keys differ across the tab panel: React keeps stale copies of siblings that
+  // share one, which stacked the community scorecard on a finished bout.
   const market = !fight.potential && fight.event.date >= MARKET_FEED_START
-    ? <PolymarketPanel key={fight.id} fightId={fight.id} compact past={!live} /> : null;
+    ? <PolymarketPanel key={`market-${fight.id}`} fightId={fight.id} compact past={!live} /> : null;
 
   const cardSteps = {
     previous: <FightStepLink fight={previous} direction="prev" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={NAV_STEP} />,
@@ -1109,11 +1111,11 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 <Meetings fight={fight} />
                 <CommonOpponents fight={fight} />
               </> : null}
-              <FightOdds key={fight.id} fight={fight} active={tab === "odds"} />
-              {tab === "score" ? <FightScoring key={fight.id} fight={fight} /> : null}
-              {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} /> : null}
+              <FightOdds key={`odds-${fight.id}`} fight={fight} active={tab === "odds"} />
+              {tab === "score" ? <FightScoring key={`score-${fight.id}`} fight={fight} /> : null}
+              {tab === "predict" ? <FightPredictions key={`predict-${fight.id}`} fight={fight} /> : null}
               {tab === "discussion" ? (
-                <FightDiscussion key={fight.id} fightId={fight.id} />
+                <FightDiscussion key={`discussion-${fight.id}`} fightId={fight.id} />
               ) : null}
             </div>
           </div>

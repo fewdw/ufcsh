@@ -117,7 +117,10 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   still has the bout on: its stoppage round also reads as ended). Its fans'
   average — thousands of cards — joins ours for those rounds, and the total
   once it covers every closed round; the finished tally from
-  `verdict-import.ts` replaces it after the result.
+  `verdict-import.ts` replaces it after the result. Verdict splits a card over
+  two ids and serves the main card's fight models for both, so the prelims are
+  found from the `fighterVersus` rows and read from their own bout pages. A
+  bout past its first round with no live read is in Admin → Bugs.
 - A bout is called **Live** (the header's pill, its row on the card, the
   admin panel) once the bout before it has a result: the header shows that
   result (**Final**) for three minutes, then the next bout as Live with its place
