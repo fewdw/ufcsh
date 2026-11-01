@@ -103,6 +103,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-31">October 31, 2026</time></p>
             <ul>
+              <li>Verdict MMA's live fan scores now reach the prelims as well as the main card.</li>
+              <li>A finished fight no longer repeats its community scorecard.</li>
               <li>The live scorecard is cleaner: the round being fought shows a dash, with no lock or note. Its scores still appear only when it ends.</li>
             </ul>
           </Section>
