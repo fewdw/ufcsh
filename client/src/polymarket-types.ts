@@ -24,6 +24,8 @@ export type ExtraMarket = {
   volume: number | null;
   liquidity: number | null;
   closed: boolean;
+  /** Its two outcomes' order books; stored by the server, never served. */
+  tokens?: [string, string];
 };
 export type MarketFight = {
   id: string;

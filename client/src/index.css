@@ -350,6 +350,19 @@ select:not([multiple]):not([size]) {
   50% { opacity: 0.35; transform: scale(0.82); }
 }
 
+/* A live price that just moved: a soft wash in its own colour, so it works in
+   both themes and on either corner, gone before the next update. */
+.market-flash {
+  margin-inline: -0.25rem;
+  border-radius: 0.25rem;
+  padding-inline: 0.25rem;
+  animation: market-flash 1.2s ease-out;
+}
+
+@keyframes market-flash {
+  from { background-color: color-mix(in srgb, currentColor 22%, transparent); }
+}
+
 /* Until the first page is drawn nothing animates its colours: an element
    styled before the theme settles must not fade from one palette to the other. */
 .no-transitions *, .no-transitions *::before, .no-transitions *::after {

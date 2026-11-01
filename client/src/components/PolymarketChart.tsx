@@ -24,7 +24,7 @@ export default function PolymarketChart({ data }: { data: MarketDetail }) {
 function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
   const [manual, setManual] = useState<TimeRange | null>(null);
   const [cursor, setCursor] = useState<number | null>(null);
-  const range = clampRange(manual ?? model.domain, model.domain);
+  const range = clampRange(manual ?? model.initial, model.domain);
   const points = model.points.filter(
     (p) => p.at >= range.from && p.at <= range.to,
   );

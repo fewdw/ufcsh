@@ -19,6 +19,9 @@ UFC.sh reads public market data only. It does not connect a wallet or place orde
 - The hero badge is one line: the official Polymarket symbol and both percentages.
   It appears only while a fresh quote is available and the fight has no result.
   A result from the matchup feed hides it even if the price feed has not caught up.
+- While a bout is live, the comparison's Sportsbooks row reads Closed (books stop
+  taking bets at the start), and a Polymarket price that changes in the comparison
+  or More markets gets a brief wash (`LivePct`).
 
 There is no standalone Markets page, watchlist, follow UI, or replay slider.
 Hover over the chart or focus it and use arrow/Home/End keys to inspect points.
@@ -62,6 +65,15 @@ card's first start (matching source history buckets) and one per minute between
 that start and the bout. A Gamma discovery outage keeps the last good mapping, so
 current quotes and the live stream continue.
 
+More markets come from Gamma, re-read every 10 minutes and every minute for the
+live bout (props close as rounds pass). Gamma's prices ran minutes behind a live
+bout when sampled (moneyline 72.5% against a 90/91 book), so the live bout's props
+are priced from their CLOB books on the shared 8-second cadence: no reader waits,
+resolved markets have no book, and a read older than 30 seconds falls back to
+Gamma's price. They use `midpointPrices`, Gamma's own formula (the plain midpoint,
+an empty side counting as 0 or 1), not `displayPrices`: last trades on these thin
+books are old and read a market bid at 99¢ as 89%.
+
 The archive contains three new tables:
 
 - `polymarket_bouts`: matched market metadata and source/history diagnostics,
@@ -77,7 +89,10 @@ History uses the Data API v2 price-history endpoint and cursor pagination,
 bounded to eight pages per read. Partial and failed reads stay visible. Source
 history with unconfirmed live timing remains in the historical view; a bucket is
 pre-fight only if its whole interval precedes the current card cutoff. Samples retain
-their identity after a replacement and are excluded from the changed matchup.
+their identity after a replacement and are excluded from the changed matchup. A
+result that swaps the corners (UFCStats lists a winner first) is the same matchup:
+captures, rounds and the frozen snapshot under the swapped identity are read with
+their prices flipped, and source history is read again under the new one.
 History is retained for analysis; it is not reconstructed from results.
 
 The matchup response carries every live capture and at most 1,500 other points,
@@ -91,6 +106,9 @@ and shows all of them, so the window runs from walkout to the latest price. It
 waits if none exist; it never guesses a fight start from the card cutoff. A
 completed fight with live captures shows the whole captured fight, excluding
 source settlement history; without captures it retains the full historical view.
+Its range opens 30 seconds before round 1 when round 2 was first seen a full round
+(5+ minutes) later; round evidence can land late or together, so otherwise it opens
+on every capture. The navigator still reaches back to the walkout.
 Missing live minutes stay disconnected. Round markers use the first observed
 round timestamps.
 

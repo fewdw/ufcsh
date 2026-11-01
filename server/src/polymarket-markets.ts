@@ -4,8 +4,10 @@ import {
   findMarket,
   displayPrices,
   marketDiscoveryFailed,
+  midpointPrices,
   type Market,
   type Book,
+  type Pair,
 } from "./polymarket.ts";
 import {
   fightIsComplete,
@@ -17,6 +19,7 @@ import { log } from "./util.ts";
 import { updateMarketBooks } from "./polymarket-stream.ts";
 import { noVig, parseHistory, probability } from "./polymarket-math.ts";
 import type {
+  ExtraMarket,
   MarketDetail,
   MarketFight,
   MarketPoint,
@@ -26,6 +29,10 @@ import type {
 
 const CLOB = "https://clob.polymarket.com";
 const CHART_POINTS = 1500;
+/** A live bout's props resolve as rounds pass; Gamma says so, in its own time. */
+const LIVE_MARKETS_MS = 60_000;
+/** Past this a live prop falls back to Gamma's price, minutes old but honest. */
+const LIVE_EXTRAS_MS = 30_000;
 type Context = MarketFight & {
   identity: string;
   names: [string[], string[]];
@@ -34,6 +41,13 @@ type Context = MarketFight & {
   community: MarketSummary["community"];
 };
 type Mapping = { market: Market; reversed: boolean };
+/** UFCStats lists a winner first, so a result can swap the corners of a bout
+ * captured before it. Captures can't be read again and are the same pairing:
+ * their prices were the old first corner's, flipped here (?1 is our identity). */
+const swappedCorners = (c: Context) =>
+  `${c.eventId}:${c.date}:${c.f2.id}:${c.f1.id}`;
+const OUR_SIDE = (column: string) =>
+  `IIF(identity=?1, ${column}, 1-${column})`;
 type Stored = {
   identity: string;
   market_json: string | null;
@@ -48,6 +62,7 @@ type QuoteState = {
   identity: string;
   key: string;
 };
+type ExtraPrices = { at: number; identity: string; prices: Map<string, Pair> };
 
 let fetching = 0;
 const pending: (() => void)[] = [];
@@ -87,6 +102,8 @@ export class PolymarketMarkets {
   private onNowId: string | null = null;
   private onNowAt = 0;
   private quotes = new Map<string, QuoteState>();
+  private extraPrices = new Map<string, ExtraPrices>();
+  private extraReads = new Set<string>();
   private reads = new Map<string, Promise<void>>();
   private histories = new Set<string>();
   private refreshTimer?: NodeJS.Timeout;
@@ -243,16 +260,15 @@ export class PolymarketMarkets {
         Date.now() - saved.checked_at >
           (c.state === "finished"
             ? 86_400_000
-            : mapping
+            : mapping && c.state !== "live"
               ? 10 * 60_000
-              : 60_000)
+              : LIVE_MARKETS_MS)
       ) {
-        const found = await findMarket({
-          id: c.id,
-          date: c.date,
-          f1: c.names[0],
-          f2: c.names[1],
-        });
+        const found = await findMarket(
+          { id: c.id, date: c.date, f1: c.names[0], f2: c.names[1] },
+          Date.now(),
+          c.state === "live" ? LIVE_MARKETS_MS : undefined,
+        );
         if (this.stopped) return;
         if (this.context(c.id)?.identity !== c.identity) return;
         // A discovery outage keeps the last good mapping and its live quotes.
@@ -300,6 +316,7 @@ export class PolymarketMarkets {
           ]);
         }
       }
+      if (c.state === "live") void this.readExtras(c, mapping);
       const row = this.stored(c);
       if (
         !row?.history_at ||
@@ -324,6 +341,62 @@ export class PolymarketMarkets {
         "Polymarket could not be reached. Retrying automatically.",
       );
     }
+  }
+
+  /** Gamma's prop prices run minutes behind a live bout, so its books are read
+   * directly, on the shared cadence. No reader waits for it, and a failed read
+   * leaves Gamma's price. A resolved market has no book and is left out. */
+  private async readExtras(c: Context, mapping: Mapping): Promise<void> {
+    const open = (mapping.market.extras ?? []).filter(
+      (m) => m.tokens && !m.closed,
+    );
+    if (!open.length || this.extraReads.has(c.id)) return;
+    this.extraReads.add(c.id);
+    try {
+      const books: Book[] = await json(`${CLOB}/books`, {
+        method: "POST",
+        body: JSON.stringify(
+          open.flatMap((m) => m.tokens!).map((token_id) => ({ token_id })),
+        ),
+      });
+      if (this.stopped || this.context(c.id)?.identity !== c.identity) return;
+      const byToken = new Map(books.map((b) => [b.asset_id, b]));
+      const prices = new Map<string, Pair>();
+      for (const m of open) {
+        const pair = midpointPrices(
+          byToken.get(m.tokens![0]),
+          byToken.get(m.tokens![1]),
+        );
+        if (pair) prices.set(m.id, pair);
+      }
+      this.extraPrices.set(c.id, {
+        at: Date.now(),
+        identity: c.identity,
+        prices,
+      });
+      if (this.extraPrices.size > 20)
+        this.extraPrices.delete(this.extraPrices.keys().next().value!);
+    } catch {
+      /* the next read retries; prices past LIVE_EXTRAS_MS are not served */
+    } finally {
+      this.extraReads.delete(c.id);
+    }
+  }
+
+  private extras(c: Context, mapping: Mapping | null): ExtraMarket[] {
+    const live = this.extraPrices.get(c.id);
+    const prices =
+      c.state === "live" &&
+      live?.identity === c.identity &&
+      Date.now() - live.at < LIVE_EXTRAS_MS
+        ? live.prices
+        : null;
+    return (mapping?.market.extras ?? []).map(({ tokens: _tokens, ...m }) => {
+      const pair = m.closed ? null : prices?.get(m.id);
+      return pair
+        ? { ...m, outcomes: m.outcomes.map((o, i) => ({ ...o, p: pair[i] })) }
+        : m;
+    });
   }
 
   private accept(
@@ -556,13 +629,14 @@ export class PolymarketMarkets {
       c.state === "finished" && mapping
         ? (db
             .prepare(
-              `SELECT at, p, sports, community, community_n AS n FROM polymarket_samples
-      WHERE fight_id=? AND identity=? AND market_key=? AND phase='prefight' AND source='observed' AND at < ?
+              `SELECT at, ${OUR_SIDE("p")} AS p, ${OUR_SIDE("sports")} AS sports, ${OUR_SIDE("community")} AS community, community_n AS n
+      FROM polymarket_samples WHERE fight_id=?2 AND identity IN (?1, ?3) AND market_key=?4 AND phase='prefight' AND source='observed' AND at < ?5
       ORDER BY at DESC LIMIT 1`,
             )
             .get(
-              c.id,
               c.identity,
+              c.id,
+              swappedCorners(c),
               mapping.market.slug,
               c.cutoff,
             ) as MarketSummary["snapshot"])
@@ -607,16 +681,19 @@ export class PolymarketMarkets {
     return {
       ...this.summary(c),
       history: mapping ? this.chart(c, mapping) : [],
-      extras: mapping?.market.extras ?? [],
+      extras: this.extras(c, mapping),
       stream: this.socketId === id && Date.now() - this.streamAt < 15_000,
       historyCheckedAt: saved?.history_at ?? null,
       historyError: saved?.history_error ?? null,
       marketCheckedAt: saved?.checked_at ?? null,
       rounds: db
         .prepare(
-          "SELECT round, at FROM polymarket_rounds WHERE fight_id=? AND identity=? ORDER BY at",
+          "SELECT round, MIN(at) AS at FROM polymarket_rounds WHERE fight_id=? AND identity IN (?, ?) GROUP BY round ORDER BY at",
         )
-        .all(id, c.identity) as { round: number; at: number }[],
+        .all(id, c.identity, swappedCorners(c)) as {
+        round: number;
+        at: number;
+      }[],
     };
   }
 
@@ -629,9 +706,15 @@ export class PolymarketMarkets {
       return cached.points;
     const rows = db
       .prepare(
-        `SELECT at, end_at AS endAt, p, phase, source FROM polymarket_samples WHERE fight_id=? AND identity=? AND market_key=? ORDER BY at`,
+        `SELECT at, end_at AS endAt, ${OUR_SIDE("p")} AS p, phase, source FROM polymarket_samples
+        WHERE fight_id=?2 AND identity IN (?1, ?3) AND market_key=?4 AND (identity=?1 OR source='observed') ORDER BY at`,
       )
-      .all(c.id, c.identity, mapping.market.slug) as MarketPoint[];
+      .all(
+        c.identity,
+        c.id,
+        swappedCorners(c),
+        mapping.market.slug,
+      ) as MarketPoint[];
     const points = rows.map(
       (p): MarketPoint => ({
         at: p.at,

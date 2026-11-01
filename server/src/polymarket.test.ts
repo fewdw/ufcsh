@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  displayPrices, HOLD_MS, LiveOddsService, matchMarket, nameMatch, ODDS_MAX_AGE_MS, ODDS_STALE_MS, ODDS_TTL_MS, parseMarkets,
-  type FinishedBout, type LiveBout, type Market, type Pair,
+  displayPrices, HOLD_MS, LiveOddsService, matchMarket, midpointPrices, nameMatch, ODDS_MAX_AGE_MS, ODDS_STALE_MS, ODDS_TTL_MS, parseExtra, parseMarkets,
+  type Book, type FinishedBout, type LiveBout, type Market, type Pair,
 } from "./polymarket.ts";
 
 /** Trimmed from Gamma's answer for UFC 333's main event. */
@@ -129,6 +129,32 @@ function card() {
     },
   };
 }
+
+test("prop prices are Gamma's plain midpoint, an empty side counting as 0 or 1", () => {
+  const book = (bids: string[], asks: string[], last?: string): Book => ({
+    asset_id: "x", bids: bids.map((price) => ({ price })), asks: asks.map((price) => ({ price })), last_trade_price: last,
+  });
+  const first = (b: Book) => Math.round(midpointPrices(b, undefined)![0] * 1e4) / 1e4;
+  // Each from a live market on Oct 31, 2026, against Gamma's published price.
+  assert.equal(first(book(["0.39"], ["0.45"])), 0.42);
+  assert.equal(first(book(["0.25"], ["1"])), 0.625);
+  assert.equal(first(book([], ["0.06"])), 0.03);
+  assert.equal(first(book(["0.991"], [], "0.11")), 0.9955);
+  assert.equal(first(book([], ["1"])), 0.5);
+  // The other outcome's book counts too, flipped; both sides always add to 1.
+  assert.deepEqual(midpointPrices(book([], []), book(["0.2"], ["0.4"]))?.map((p) => Math.round(p * 100) / 100), [0.7, 0.3]);
+  assert.equal(midpointPrices(book([], []), book([], [])), null);
+  assert.equal(midpointPrices(undefined, undefined), null);
+  assert.equal(midpointPrices(book(["0.6"], ["0.5"]), undefined), null, "a crossed book says nothing");
+});
+
+test("a prop keeps its books only with one token per outcome", () => {
+  const prop = { id: "1", slug: "p", question: "Q?", outcomes: '["Yes","No"]', outcomePrices: '["0.3","0.7"]' };
+  assert.deepEqual(parseExtra({ ...prop, clobTokenIds: '["11","22"]' }, "e")[0].tokens, ["11", "22"]);
+  assert.deepEqual(parseExtra({ ...prop, version: "v2", clobTokenIds: '["11","22"]', positionIds: '["33","44"]' }, "e")[0].tokens, ["33", "44"]);
+  assert.equal(parseExtra({ ...prop, clobTokenIds: '["11"]' }, "e")[0].tokens, undefined);
+  assert.equal(parseExtra(prop, "e")[0].tokens, undefined);
+});
 
 test("live odds: prices for the bout on now, the result held, then the next bout", async () => {
   const c = card();
