@@ -331,3 +331,36 @@ test("decision or draw stays with outcomes even when source tags it as a round w
   assert.equal(groupMarkets([row])[0].label, "Fight outcome");
   assert.equal(marketLabel(row.question), "Decision or draw");
 });
+
+test("a finished fight opens at the first bell once a second round confirms it", () => {
+  const history = [point(0, "live"), point(600_000, "live"), point(2_000_000, "live")];
+  const bell = start + 600_000;
+  const finished = (rounds: MarketDetail["rounds"]) =>
+    chartModel({ ...detail(history, "finished"), rounds });
+  const model = finished([
+    { round: 1, at: bell },
+    { round: 2, at: bell + 360_000 },
+    { round: 3, at: bell + 720_000 },
+  ]);
+  assert.deepEqual(model.initial, { from: bell - 30_000, to: model.domain.to });
+  assert.deepEqual(model.domain, { from: start, to: start + 2_000_000 });
+  // Round evidence landing late or together, or a live fight, keeps every capture.
+  assert.deepEqual(finished([{ round: 1, at: bell }]).initial, model.domain);
+  assert.deepEqual(
+    finished([
+      { round: 1, at: bell },
+      { round: 2, at: bell + 90_000 },
+    ]).initial,
+    model.domain,
+  );
+  assert.deepEqual(
+    chartModel({
+      ...detail(history, "live"),
+      rounds: [
+        { round: 1, at: bell },
+        { round: 2, at: bell + 360_000 },
+      ],
+    }).initial,
+    model.domain,
+  );
+});

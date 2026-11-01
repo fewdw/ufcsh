@@ -89,7 +89,10 @@ History uses the Data API v2 price-history endpoint and cursor pagination,
 bounded to eight pages per read. Partial and failed reads stay visible. Source
 history with unconfirmed live timing remains in the historical view; a bucket is
 pre-fight only if its whole interval precedes the current card cutoff. Samples retain
-their identity after a replacement and are excluded from the changed matchup.
+their identity after a replacement and are excluded from the changed matchup. A
+result that swaps the corners (UFCStats lists a winner first) is the same matchup:
+captures, rounds and the frozen snapshot under the swapped identity are read with
+their prices flipped, and source history is read again under the new one.
 History is retained for analysis; it is not reconstructed from results.
 
 The matchup response carries every live capture and at most 1,500 other points,
@@ -103,6 +106,9 @@ and shows all of them, so the window runs from walkout to the latest price. It
 waits if none exist; it never guesses a fight start from the card cutoff. A
 completed fight with live captures shows the whole captured fight, excluding
 source settlement history; without captures it retains the full historical view.
+Its range opens 30 seconds before round 1 when round 2 was first seen a full round
+(5+ minutes) later; round evidence can land late or together, so otherwise it opens
+on every capture. The navigator still reaches back to the walkout.
 Missing live minutes stay disconnected. Round markers use the first observed
 round timestamps.
 

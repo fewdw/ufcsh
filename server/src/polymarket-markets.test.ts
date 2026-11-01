@@ -259,6 +259,41 @@ test("a completed fight freezes its last observed pre-fight snapshot, ignoring s
   assert.equal(finished?.community?.at, finished?.snapshot?.at);
 });
 
+test("a result that swaps the corners keeps every capture on the right fighter", async (t) => {
+  const f = fixture(t);
+  await f.service.detail(f.id);
+  await new Promise((resolve) => setImmediate(resolve));
+  const c = f.service.context(f.id)!;
+  const key = `market-${String(serial).padStart(4, "0")}`;
+  const insert = db.prepare(
+    "INSERT INTO polymarket_samples(fight_id, identity, market_key, at, p, phase, source, sports, community, community_n) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  insert.run(f.id, c.identity, key, f.cutoff - 60_000, 0.3, "prefight", "observed", 0.25, 0.2, 10);
+  insert.run(f.id, c.identity, key, f.cutoff - 30_000, 0.31, "prefight", "history", null, null, null);
+  insert.run(f.id, c.identity, key, f.cutoff + 1_000, 0.35, "live", "observed", null, null, null);
+  db.prepare("INSERT INTO polymarket_rounds VALUES (?, ?, 1, ?)").run(f.id, c.identity, f.cutoff + 1_000);
+  db.prepare(
+    `UPDATE fights SET f1_id=f2_id, f2_id=f1_id, f1_name=f2_name, f2_name=f1_name, f1_outcome='win', f2_outcome='loss' WHERE id=?`,
+  ).run(f.id);
+  const after = f.service.context(f.id)!;
+  assert.notEqual(after.identity, c.identity);
+  const detail = await f.service.detail(f.id);
+  await new Promise((resolve) => setImmediate(resolve));
+  const live = detail!.history.filter((p) => p.phase === "live");
+  assert.deepEqual(live.map((p) => p.p), [0.65]);
+  assert.equal(detail!.snapshot?.p, 0.7);
+  assert.equal(detail!.snapshot?.sports, 0.75);
+  assert.equal(detail!.snapshot?.community, 0.8);
+  assert.deepEqual(detail!.rounds.map((r) => ({ ...r })), [
+    { round: 1, at: f.cutoff + 1_000 },
+  ]);
+  assert.equal(
+    detail!.history.some((p) => p.source === "history" && p.at === f.cutoff - 30_000),
+    false,
+    "the old corners' source history is read again, never served twice",
+  );
+});
+
 test("discovery outages report unavailable rather than claiming there is no market", async (t) => {
   const f = fixture(t, { failure: true });
   const detail = await f.service.detail(f.id);
