@@ -113,6 +113,15 @@ export function parseVerdictEventPage(html: string): VerdictEventPage {
   return { title, date: toIsoDate(dateText), fights };
 }
 
+/** A `fighterVersus` row: how every Verdict card page lists the bouts of both
+ * halves of a split card, with the route that says which half each is on. */
+function versusRow(candidate: Record<string, unknown>, value: (index: unknown) => any): (VerdictEventFight & { fightNumber: number }) | null {
+  const route = String(value(value(candidate.action)?.link) ?? "").match(/\/event\/(\d+)\/fight\/(\d+)/);
+  const f1Name = cleanText(String(value(candidate.fighter1Name) ?? ""));
+  const f2Name = cleanText(String(value(candidate.fighter2Name) ?? ""));
+  return route && f1Name && f2Name ? { eventId: Number(route[1]), fightNumber: Number(route[2]), f1Name, f2Name } : null;
+}
+
 /** Nuxt's flattened hydration data repeats fight models in several rails. We
  * only resolve models carrying this event id, then de-duplicate their stable
  * fight number. This is intentionally a narrow decoder, not a dependency on
@@ -138,16 +147,8 @@ export function parseVerdictEventFightNumbers(html: string, eventId: number): Ve
     // The BFF fight rows contain the authoritative route, including cards
     // whose main and prelim halves use adjacent internal event ids.
     if ("fighter1Name" in candidate && "fighter2Name" in candidate && "action" in candidate) {
-      const action = object(candidate.action);
-      const link = String(value(action?.link) ?? "");
-      const route = link.match(/\/event\/(\d+)\/fight\/(\d+)/);
-      const f1Name = cleanText(String(value(candidate.fighter1Name) ?? ""));
-      const f2Name = cleanText(String(value(candidate.fighter2Name) ?? ""));
-      if (route && f1Name && f2Name) {
-        const sourceEventId = Number(route[1]);
-        const fightNumber = Number(route[2]);
-        fights.set(`${sourceEventId}:${fightNumber}`, { eventId: sourceEventId, fightNumber, f1Name, f2Name });
-      }
+      const row = versusRow(candidate, value);
+      if (row) fights.set(`${row.eventId}:${row.fightNumber}`, row);
       continue;
     }
     if (!("eventID" in candidate) || !("fightNumber" in candidate)
@@ -256,7 +257,10 @@ function nuxtPayload(html: string): { flat: any[]; value: (index: unknown) => an
  * (0 upcoming, 1 being fought, 3 over) and each round's (0 not started, 1
  * being fought, 2 or more over and open to its scorers). A page repeats fight
  * models from other cards in its rails, so only this card's are read, and a
- * model listing its rounds wins over a bare copy of the same bout.
+ * model listing its rounds wins over a bare copy of the same bout. Both halves
+ * of a split card serve the main card's models, so the other half's bouts are
+ * known from their `fighterVersus` rows alone, until a bout's own page gives
+ * its rounds.
  */
 export function parseVerdictLiveCard(html: string, eventId: number): VerdictLiveFight[] {
   const nuxt = nuxtPayload(html);
@@ -269,6 +273,12 @@ export function parseVerdictLiveCard(html: string, eventId: number): VerdictLive
   const fights = new Map<number, VerdictLiveFight>();
   for (const candidate of flat) {
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+    if ("fighter1Name" in candidate && "fightStatus" in candidate && "action" in candidate) {
+      const row = versusRow(candidate, value);
+      const status = Number(value(candidate.fightStatus));
+      if (row?.eventId === eventId && Number.isInteger(status) && !fights.has(row.fightNumber)) fights.set(row.fightNumber, { ...row, status, rounds: [] });
+      continue;
+    }
     if (!("eventID" in candidate) || !("fightNumber" in candidate) || !("fightStatus" in candidate) || !("fighter1" in candidate)) continue;
     if (Number(value(candidate.eventID)) !== eventId) continue;
     const fightNumber = Number(value(candidate.fightNumber));
