@@ -2,6 +2,9 @@ import type { MarketDetail, MarketPoint } from "./polymarket-types.ts";
 
 export type TimeRange = { from: number; to: number };
 
+const ROUND_MS = 5 * 60_000;
+const LEAD_IN_MS = 30_000;
+
 export const marketPct = (p: number | null | undefined) =>
   p == null ? "—" : `${(p * 100).toFixed(1).replace(/\.0$/, "")}%`;
 
@@ -27,9 +30,21 @@ export function chartModel(data: MarketDetail) {
   const points = [...unique.values()].sort((a, b) => a.at - b.at);
   const domain = { from: points[0]?.at ?? 0, to: points.at(-1)?.at ?? 0 };
   const { fight } = data;
+  // Rounds are stamped when first seen and can land late or together, so only a
+  // second round a full round later confirms the first bell.
+  const [first, second] = data.rounds;
+  const initial =
+    fight.state === "finished" &&
+    fightScope &&
+    first?.round === 1 &&
+    second?.round === 2 &&
+    second.at - first.at >= ROUND_MS
+      ? { from: Math.max(domain.from, first.at - LEAD_IN_MS), to: domain.to }
+      : domain;
   return {
     points,
     domain,
+    initial,
     fightScope,
     key: JSON.stringify([
       fight.id,

@@ -41,6 +41,13 @@ type Context = MarketFight & {
   community: MarketSummary["community"];
 };
 type Mapping = { market: Market; reversed: boolean };
+/** UFCStats lists a winner first, so a result can swap the corners of a bout
+ * captured before it. Captures can't be read again and are the same pairing:
+ * their prices were the old first corner's, flipped here (?1 is our identity). */
+const swappedCorners = (c: Context) =>
+  `${c.eventId}:${c.date}:${c.f2.id}:${c.f1.id}`;
+const OUR_SIDE = (column: string) =>
+  `IIF(identity=?1, ${column}, 1-${column})`;
 type Stored = {
   identity: string;
   market_json: string | null;
@@ -622,13 +629,14 @@ export class PolymarketMarkets {
       c.state === "finished" && mapping
         ? (db
             .prepare(
-              `SELECT at, p, sports, community, community_n AS n FROM polymarket_samples
-      WHERE fight_id=? AND identity=? AND market_key=? AND phase='prefight' AND source='observed' AND at < ?
+              `SELECT at, ${OUR_SIDE("p")} AS p, ${OUR_SIDE("sports")} AS sports, ${OUR_SIDE("community")} AS community, community_n AS n
+      FROM polymarket_samples WHERE fight_id=?2 AND identity IN (?1, ?3) AND market_key=?4 AND phase='prefight' AND source='observed' AND at < ?5
       ORDER BY at DESC LIMIT 1`,
             )
             .get(
-              c.id,
               c.identity,
+              c.id,
+              swappedCorners(c),
               mapping.market.slug,
               c.cutoff,
             ) as MarketSummary["snapshot"])
@@ -680,9 +688,12 @@ export class PolymarketMarkets {
       marketCheckedAt: saved?.checked_at ?? null,
       rounds: db
         .prepare(
-          "SELECT round, at FROM polymarket_rounds WHERE fight_id=? AND identity=? ORDER BY at",
+          "SELECT round, MIN(at) AS at FROM polymarket_rounds WHERE fight_id=? AND identity IN (?, ?) GROUP BY round ORDER BY at",
         )
-        .all(id, c.identity) as { round: number; at: number }[],
+        .all(id, c.identity, swappedCorners(c)) as {
+        round: number;
+        at: number;
+      }[],
     };
   }
 
@@ -695,9 +706,15 @@ export class PolymarketMarkets {
       return cached.points;
     const rows = db
       .prepare(
-        `SELECT at, end_at AS endAt, p, phase, source FROM polymarket_samples WHERE fight_id=? AND identity=? AND market_key=? ORDER BY at`,
+        `SELECT at, end_at AS endAt, ${OUR_SIDE("p")} AS p, phase, source FROM polymarket_samples
+        WHERE fight_id=?2 AND identity IN (?1, ?3) AND market_key=?4 AND (identity=?1 OR source='observed') ORDER BY at`,
       )
-      .all(c.id, c.identity, mapping.market.slug) as MarketPoint[];
+      .all(
+        c.identity,
+        c.id,
+        swappedCorners(c),
+        mapping.market.slug,
+      ) as MarketPoint[];
     const points = rows.map(
       (p): MarketPoint => ({
         at: p.at,
