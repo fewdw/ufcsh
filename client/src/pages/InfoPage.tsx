@@ -101,10 +101,9 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-31">October 31, 2026</time></p>
+            <p><time dateTime="2026-11-02">November 2, 2026</time></p>
             <ul>
-              <li>Polymarket props now update every few seconds during a live fight, and changed prices flash.</li>
-              <li>A finished fight keeps its Polymarket chart and round marks after the result is in.</li>
+              <li>Newly announced cards no longer raise a false alarm while ufc.com's live feed catches up with the event page.</li>
             </ul>
           </Section>
         </div>

@@ -100,6 +100,10 @@ test("a source's passing failure waits to see whether it lasts; an answer in bet
   // An hourly job is reported on its second failure in a row.
   assert.equal(outageReport("hourly", new Error("database is locked"), t0), false);
   assert.equal(outageReport("hourly", new Error("database is locked"), t0 + 60 * MIN), true);
+  // A live feed still catching up with its event page is a lag, not a fault.
+  const lag = new Error("Error: ufc.com event 1351 carried no fight card");
+  assert.equal(outageReport("card_feed x", lag, t0), false);
+  assert.equal(outageReport("card_feed x", lag, t0 + OUTAGE_MS), true);
 });
 
 test("a fault of our own is reported at once, then not again on every pass", () => {
