@@ -153,6 +153,8 @@ export function cardPay(
 
 let running = false;
 const REPORTS_VERSION = createHash("sha256").update(JSON.stringify(PURSE_REPORTS)).digest("hex");
+// Revisit existing source issues when name matching or the reviewed aliases change.
+const PARSER_VERSION = createHash("sha256").update(JSON.stringify([2, SEARCH_ALIASES])).digest("hex");
 type PayEvent = { id: string; name: string; date: string; wiki_title: string | null };
 
 export function pendingFightPayEvents(limit: number, now = Date.now()): PayEvent[] {
@@ -177,6 +179,10 @@ export async function syncFightPay(limit = 20, eventIds?: string[]): Promise<{ r
       db.prepare(`UPDATE events SET pay_checked_at = NULL WHERE complete = 1 AND date IN (${dates.map(() => "?").join(",")})`).run(...dates);
       setMeta("fight_pay_reports_version", REPORTS_VERSION);
     }
+    if (getMeta("fight_pay_parser_version") !== PARSER_VERSION) {
+      db.prepare("UPDATE events SET pay_checked_at = NULL WHERE complete = 1 AND pay_issues_json IS NOT NULL").run();
+      setMeta("fight_pay_parser_version", PARSER_VERSION);
+    }
     const events = (eventIds?.length
       ? db.prepare(`SELECT id, name, date, wiki_title FROM events WHERE id IN (${eventIds.map(() => "?").join(",")})`).all(...eventIds)
       : pendingFightPayEvents(limit)) as PayEvent[];
@@ -195,19 +201,31 @@ export async function syncFightPay(limit = 20, eventIds?: string[]): Promise<{ r
     }
     const storeFight = db.prepare("UPDATE fights SET pay_json = ? WHERE id = ?");
     const storeEvent = db.prepare("UPDATE events SET pay_checked_at = ?, pay_issues_json = ? WHERE id = ?");
+    const failedRead = (event: PayEvent, reason: string) => {
+      db.prepare(`UPDATE events SET pay_checked_at = NULL,
+        pay_issues_json = json_set(COALESCE(pay_issues_json, '{}'), '$.failed', json(?))
+        WHERE id = ?`).run(JSON.stringify([reason]), event.id);
+      total.failed++;
+    };
     for (const event of events) {
+      if (postsError && event.date >= "2008-01-01") {
+        // A partial read cannot replace a previously disclosed purse or erase
+        // an unresolved source conflict. Keep it queued for a complete retry.
+        failedRead(event, `MMA Payout could not be read: ${postsError}`);
+        continue;
+      }
       let article: { title: string; text: string } | null = null;
       try {
         const text = event.wiki_title ? await fetchArticleByTitle(event.wiki_title) : null;
         const section = text ? eventSection(text, event.date) : null;
+        if (event.wiki_title && !section) throw new Error("Wikipedia did not return the matching event article");
         article = section ? { title: event.wiki_title!, text: section } : null;
       } catch (err) {
-        total.failed++;
+        failedRead(event, `Wikipedia could not be read: ${String(err)}`);
         log(`fight pay failed [${event.name}]:`, String(err));
         continue;
       }
       const { pay, issues } = cardPay(cardOf(event.id), article, posts, event.date);
-      if (postsError && event.date >= "2008-01-01") issues.failed.push(`MMA Payout could not be read: ${postsError}`);
       const stored = (entry: StoredPay) => entry.purse || entry.bonuses ? JSON.stringify(entry) : null;
       db.exec("BEGIN IMMEDIATE");
       try {

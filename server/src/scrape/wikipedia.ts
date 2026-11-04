@@ -273,7 +273,10 @@ function datedNotice(raw: string, event: string | null): string | null {
   const eventYear = Number(event.slice(0, 4));
   const when = year ? at(Number(year)) : at(eventYear) > held ? at(eventYear - 1) : at(eventYear);
   const days = Math.round((held - when) / 86_400_000);
-  return days >= 1 && days <= 60 ? `${days} day${days === 1 ? "" : "s"}` : null;
+  if (days < 1 || days > 60) return null;
+  // The date of a reported withdrawal or booking does not establish when the
+  // replacement accepted. Explicit acceptance notice is handled by noticeIn.
+  return `announced ${days} day${days === 1 ? "" : "s"} before`;
 }
 
 /** A cited replacement report dates the announcement, not when the fighter
@@ -922,7 +925,7 @@ const ALPHA2: Record<string, string> = {
   GRC: "GR", HUN: "HU", INA: "ID", IDN: "ID", IND: "IN", IRE: "IE", IRL: "IE", IRN: "IR", IRQ: "IQ", ISL: "IS",
   ISR: "IL", ITA: "IT", JAM: "JM", JPN: "JP", KAZ: "KZ", KEN: "KE", KGZ: "KG", KOR: "KR", LAT: "LV", LVA: "LV",
   LIT: "LT", LTU: "LT", MAR: "MA", MDA: "MD", MEX: "MX", MMR: "MM", MNE: "ME", MGL: "MN", MNG: "MN", NED: "NL",
-  NLD: "NL", NGA: "NG", NGR: "NG", NOR: "NO", NZL: "NZ", PAN: "PA", PER: "PE", PHI: "PH", PHL: "PH", POL: "PL",
+  NLD: "NL", NEP: "NP", NPL: "NP", NGA: "NG", NGR: "NG", NOR: "NO", NZL: "NZ", PAN: "PA", PER: "PE", PHI: "PH", PHL: "PH", POL: "PL",
   POR: "PT", PRT: "PT", PSE: "PS", PLE: "PS", PUR: "PR", PRI: "PR", ROU: "RO", RSA: "ZA", ZAF: "ZA", RUS: "RU",
   SEN: "SN", SRB: "RS", SVK: "SK", SLO: "SI", SVN: "SI", SWE: "SE", THA: "TH", TJK: "TJ", TPE: "TW", TWN: "TW",
   TUN: "TN", TUR: "TR", UAE: "AE", ARE: "AE", UGA: "UG", UKR: "UA", URU: "UY", URY: "UY", USA: "US", UZB: "UZ",

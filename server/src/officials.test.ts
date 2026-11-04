@@ -136,3 +136,29 @@ test("the bug board's officials checks only list real pairs and real merges", as
   const duplicates = checks.find((check) => check.id === "official-possible-duplicate")!;
   for (const item of duplicates.items) assert.match(item.title, / \/ /);
 });
+
+
+test("symbolic whole-bout votes remain results and never enter a judge round sample", async t => {
+  const id = "748657d9ba9d7c71";
+  const row = db.prepare("SELECT detail_json, judge_rounds_json FROM fights WHERE id = ?").get(id) as any;
+  assert.ok(row);
+  const update = db.prepare("UPDATE fights SET detail_json = ?, judge_rounds_json = ? WHERE id = ?");
+  t.after(async () => {
+    update.run(row.detail_json, row.judge_rounds_json, id);
+    await new Promise(resolve => setTimeout(resolve, 5100));
+    fightIndex();
+  });
+  const judges = ["Symbolic Vote Judge A", "Symbolic Vote Judge B", "Symbolic Vote Judge C"].map((judge, index) => ({
+    judge, f1Score: 1, f2Score: index === 2 ? 1 : 0,
+    rounds: [{ round: 1, f1Score: 1, f2Score: index === 2 ? 1 : 0 }],
+  }));
+  update.run(JSON.stringify({ ...JSON.parse(row.detail_json ?? "{}"), judges: [] }),
+    JSON.stringify({ source: "MMA Decisions", sourceUrl: "https://mmadecisions.com/decision/169/Randy-Couture-vs-Maurice-Smith", judges }), id);
+  await new Promise(resolve => setTimeout(resolve, 5100));
+  const profile = judgeProfile("symbolic-vote-judge-c", new URLSearchParams()) as any;
+  assert.equal(profile.total, 1);
+  assert.equal(profile.rows[0].fight_id, id);
+  assert.deepEqual([profile.rows[0].card.f1, profile.rows[0].card.f2], [1, 1]);
+  assert.deepEqual(profile.rows[0].card.rounds, []);
+  assert.equal(profile.summary.rounds_scored, 0);
+});

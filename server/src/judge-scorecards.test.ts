@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { combineJudgeRounds, compatibleJudgeCards, decisionFromCards, hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
+import { panelCards, symbolicJudgeVote } from "./judge-scorecards.ts";
 
 const rounds = (a: number[], b: number[]) => a.map((f1Score, index) => ({ round: index + 1, f1Score, f2Score: b[index] }));
 
@@ -144,4 +145,23 @@ test("a decision's kind follows its three cards", () => {
   assert.equal(decisionFromCards("U-DEC", "win", cards([28, 29], [28, 29], [29, 28])), "U-DEC", "cards for the loser are a different error");
   assert.equal(decisionFromCards("U-DEC", "draw", cards([28, 28], [28, 28], [28, 28])), "U-DEC");
   assert.equal(decisionFromCards("KO/TKO", "win", cards([29, 28], [28, 29], [29, 28])), "KO/TKO");
+});
+
+
+test("whole-bout symbolic votes retain their result without fabricated ten-point rounds", () => {
+  const votes: JudgeCard[] = [
+    { judge: "Takahiri Fukase", f1Score: 1, f2Score: 0, rounds: [{ round: 1, f1Score: 1, f2Score: 0 }] },
+    { judge: "Joe Hamilton", f1Score: 1, f2Score: 0, rounds: [{ round: 1, f1Score: 1, f2Score: 0 }] },
+    { judge: "John Peretti", f1Score: 1, f2Score: 1, rounds: [{ round: 1, f1Score: 1, f2Score: 1 }] },
+  ];
+  assert.ok(votes.every(symbolicJudgeVote));
+  assert.equal(hasCompleteJudgeRounds([], votes), false);
+  const expected = votes.map(({ rounds, ...vote }) => vote);
+  assert.deepEqual(panelCards([], votes), expected);
+  assert.deepEqual(panelCards(votes, votes), expected);
+  assert.deepEqual(compatibleJudgeCards([], votes), []);
+  assert.equal(decisionFromCards("U-DEC", "win", expected), "M-DEC");
+  const penalized: JudgeCard = { judge: "Real round", f1Score: 9, f2Score: 9, rounds: [{ round: 1, f1Score: 9, f2Score: 9 }] };
+  assert.equal(symbolicJudgeVote(penalized), false);
+  assert.deepEqual(panelCards([], [penalized])[0].rounds, penalized.rounds);
 });

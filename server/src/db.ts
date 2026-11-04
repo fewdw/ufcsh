@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { repairVerifiedPointDeductions } from "./verified-point-deductions.ts";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { mkdirSync } from "node:fs";
@@ -852,6 +853,8 @@ for (const [table, revisions] of Object.entries(revisionTables)) {
     db.exec(sql);
   }
 }
+// Reviewed source omissions are repaired only after schema and revision triggers exist.
+repairVerifiedPointDeductions(db);
 }
 
 export function dataRevision(key: "analytics" | "profiles" | "search"): string {
