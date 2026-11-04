@@ -1,8 +1,9 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
 import { cardPay, complianceEstimate, complianceTier, pendingFightPayEvents, syncFightPay, VENUM_START } from "./fight-pay.ts";
 import { PURSE_REPORTS, type PurseReport } from "./purse-reports-data.ts";
+import { SEARCH_ALIASES } from "./search-aliases.ts";
 
 test("compliance tiers count the bout itself and step at UFC's published boundaries", () => {
   const amounts = [1, 3, 4, 5, 6, 10, 11, 15, 16, 20, 21, 40].map((bouts) => complianceTier(bouts, null).amount);
@@ -216,4 +217,103 @@ test("bouts before the Venum scale have no estimate, and say nothing about it", 
   const fight = db.prepare(`SELECT f.*, e.date AS event_date FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.complete = 1 AND e.date < ? ORDER BY e.date DESC LIMIT 1`).get(VENUM_START) as any;
   assert.deepEqual(complianceEstimate(fight.f1_id, fight), { estimate: null, gap: null });
+});
+
+
+test("reviewed source names award real archive fighters their bonuses", () => {
+  const pairs = [
+    ["Joe Kropschot", "Joseph Kropschot"], ["Dooho Choi", "Choi Doo-ho"],
+    ["Bia Mesquita", "Beatriz Mesquita"], ["Shara Magomedov", "Sharabutdin Magomedov"],
+    ["Michelle Waterson-Gomez", "Michelle Waterson"], ["Chepe Mariscal", "Jose Mariscal"],
+    ["Daniel Lacerda", "Daniel da Silva"], ["Edimilson Souza", "Kevin Souza"],
+    ["Yuta Sasaki", "Ulka Sasaki"], ["War Machine", "Jon Koppenhaver"],
+    ["Aleksei Oleinik", "Oleksiy Oliynyk"], ["Maheshate", "Hayisaer Maheshate"],
+    ["Marco Polo Reyes", "Polo Reyes"], ["Mirko Filipovic", "Mirko Cro Cop"],
+  ];
+  for (const [stored, published] of pairs) {
+    const fight = db.prepare("SELECT id, f1_name AS f1, f2_name AS f2, f1_outcome AS f1Outcome, f2_outcome AS f2Outcome, method FROM fights WHERE f1_name = ? OR f2_name = ? LIMIT 1").get(stored, stored) as any;
+    assert.ok(fight, stored);
+    fight.f1Aliases = SEARCH_ALIASES[fight.f1]; fight.f2Aliases = SEARCH_ALIASES[fight.f2];
+    const result = cardPay([fight], { title: "Test card", text: `==Bonus awards==
+The following fighters received $50,000 bonuses.
+* Performance of the Night: ${published}
+==Next==` }, [], "2000-01-01", []);
+    assert.deepEqual(result.issues.unread, [], published);
+    const corner = fight.f1 === stored ? "f1" : "f2";
+    assert.equal(result.pay.get(fight.id)?.bonuses?.[corner][0]?.amount, 50_000, published);
+  }
+});
+
+test("a parser update queues existing source issues once and preserves their stored pay", async () => {
+  db.exec("SAVEPOINT pay_parser_version_test");
+  try {
+    await syncFightPay(0);
+    const add = db.prepare("INSERT INTO events (id, name, date, complete, pay_checked_at, pay_issues_json) VALUES (?, ?, ?, ?, 123, ?)");
+    add.run("pay-parser-issue", "Old source issue", "2000-01-01", 1, JSON.stringify({ unread: ["Bonus award: Performance of the Night, Mirko Cro Cop"] }));
+    add.run("pay-parser-clean", "Old clean read", "2000-01-02", 1, null);
+    add.run("pay-parser-future", "Unfinished card", "2099-01-01", 0, "{}");
+    db.prepare("DELETE FROM meta WHERE key = ?").run("fight_pay_parser_version");
+    const before = db.prepare("SELECT id, pay_json FROM fights ORDER BY id").all();
+    await syncFightPay(0);
+    const checked = (id: string) => (db.prepare("SELECT pay_checked_at FROM events WHERE id = ?").get(id) as any).pay_checked_at;
+    assert.equal(checked("pay-parser-issue"), null);
+    assert.equal(checked("pay-parser-clean"), 123);
+    assert.equal(checked("pay-parser-future"), 123);
+    assert.deepEqual(db.prepare("SELECT id, pay_json FROM fights ORDER BY id").all(), before);
+    db.prepare("UPDATE events SET pay_checked_at = 456 WHERE id = ?").run("pay-parser-issue");
+    await syncFightPay(0);
+    assert.equal(checked("pay-parser-issue"), 456);
+  } finally { db.exec("ROLLBACK TO pay_parser_version_test; RELEASE pay_parser_version_test"); }
+});
+
+test("a failed salary source preserves disclosed pay and conflicts and leaves the card queued", async () => {
+  db.exec("SAVEPOINT pay_source_failure");
+  const originalPay = JSON.stringify({ purse: { sources: [{ label: "MMA Payout", url: "https://example.test/salaries" }], f1: { total: 40000, source: 0 } }, bonuses: { f1: [{ kind: "potn", amount: 50000 }], f2: [] } });
+  const previousIssues = { unread: ["Bonus award: Performance of the Night, Published Name"], conflicts: ["Two reports disagree"], bonusNotes: [] };
+  const failedFetch = mock.method(globalThis, "fetch", async () => new Response("Source unavailable", { status: 503 }));
+  try {
+    db.prepare("INSERT INTO events (id, name, date, complete, wiki_title, pay_checked_at, pay_issues_json) VALUES (?, ?, ?, 1, ?, 123, ?)")
+      .run("pay-failed-source", "Pay source failure fixture", "2026-10-01", "Pay source failure fixture", JSON.stringify(previousIssues));
+    db.prepare("INSERT INTO fights (id, event_id, f1_name, f2_name, pay_json) VALUES (?, ?, ?, ?, ?)")
+      .run("pay-failed-bout", "pay-failed-source", "Stored Fighter", "Stored Opponent", originalPay);
+    const result = await syncFightPay(1, ["pay-failed-source"]);
+    assert.deepEqual(result, { read: 0, failed: 1 });
+    assert.equal((db.prepare("SELECT pay_json FROM fights WHERE id = ?").get("pay-failed-bout") as any).pay_json, originalPay);
+    const event = db.prepare("SELECT pay_checked_at, pay_issues_json FROM events WHERE id = ?").get("pay-failed-source") as any;
+    assert.equal(event.pay_checked_at, null);
+    const issues = JSON.parse(event.pay_issues_json);
+    assert.deepEqual(issues.unread, previousIssues.unread);
+    assert.deepEqual(issues.conflicts, previousIssues.conflicts);
+    assert.match(issues.failed[0], /MMA Payout could not be read/);
+    assert.ok(pendingFightPayEvents(10000).some(event => event.id === "pay-failed-source"));
+  } finally { failedFetch.mock.restore(); db.exec("ROLLBACK TO pay_source_failure; RELEASE pay_source_failure"); }
+});
+
+test("a missing or wrong-date Wikipedia article preserves prior pay and keeps its source issues", async () => {
+  db.exec("SAVEPOINT pay_wiki_failure");
+  const originalPay = JSON.stringify({ purse: { sources: [{ label: "Wikipedia", url: "https://en.wikipedia.org/wiki/Fixture" }], f1: { total: 30000, source: 0 } }, bonuses: { f1: [{ kind: "potn", amount: 50000 }], f2: [] } });
+  let wikiText: string | null = null;
+  const sourceFetch = mock.method(globalThis, "fetch", async (url: string | URL | Request) =>
+    new Response(JSON.stringify(String(url).includes("wikipedia.org")
+      ? wikiText == null ? {} : { parse: { wikitext: { "*": wikiText } } }
+      : []), { status: 200, headers: { "Content-Type": "application/json" } }));
+  try {
+    db.prepare("INSERT INTO events (id, name, date, complete, wiki_title) VALUES (?, ?, ?, 1, ?)")
+      .run("pay-wiki-failure", "Pay wiki failure fixture", "2026-10-02", "Pay wiki failure fixture");
+    db.prepare("INSERT INTO fights (id, event_id, f1_name, f2_name, pay_json) VALUES (?, ?, ?, ?, ?)")
+      .run("pay-wiki-bout", "pay-wiki-failure", "Stored Fighter", "Stored Opponent", originalPay);
+    for (const text of [null, "{{Infobox MMA event|date=October 3, 2026}}\n==Bonus awards==\nNo bonuses."]) {
+      wikiText = text;
+      db.prepare("UPDATE events SET pay_checked_at = 123, pay_issues_json = ? WHERE id = ?")
+        .run(JSON.stringify({ unread: ["Source row"], conflicts: ["Unresolved salary disagreement"], bonusNotes: [] }), "pay-wiki-failure");
+      assert.deepEqual(await syncFightPay(1, ["pay-wiki-failure"]), { read: 0, failed: 1 });
+      assert.equal((db.prepare("SELECT pay_json FROM fights WHERE id = ?").get("pay-wiki-bout") as any).pay_json, originalPay);
+      const event = db.prepare("SELECT pay_checked_at, pay_issues_json FROM events WHERE id = ?").get("pay-wiki-failure") as any;
+      assert.equal(event.pay_checked_at, null);
+      const issues = JSON.parse(event.pay_issues_json);
+      assert.deepEqual(issues.conflicts, ["Unresolved salary disagreement"]);
+      assert.deepEqual(issues.unread, ["Source row"]);
+      assert.match(issues.failed[0], /Wikipedia could not be read/);
+    }
+  } finally { sourceFetch.mock.restore(); db.exec("ROLLBACK TO pay_wiki_failure; RELEASE pay_wiki_failure"); }
 });

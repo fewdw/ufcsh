@@ -121,5 +121,9 @@ export function fighterNamed(name: string, division: string, date: string): stri
     WHERE fr.id IN (${ids.map(() => "?").join(",")})
     ORDER BY f.weight_class = ? DESC, ABS(julianday(e.date) - julianday(?)) ASC LIMIT 1
   `).get(...ids, division, date) as { id: string } | undefined;
-  return best?.id ?? "";
+  if (best) return best.id;
+  // UFCStats may create a second directory entry before a debut. A signed
+  // fighter is still linkable when only that entry is on the UFC roster.
+  const eligible = ids.filter(hasUfcFight);
+  return eligible.length === 1 ? eligible[0] : "";
 }

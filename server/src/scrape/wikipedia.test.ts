@@ -325,6 +325,9 @@ test("roster flags read Wikipedia's Lua icon syntax and template syntax", () => 
   assert.equal(moves.cut[0].country, "US");
   const historical = rosterChanges(text.replace("{{#invoke:flag|icon|CAN}}", "{{#invoke:flag|icon|Islamic Republic of Afghanistan}}"));
   assert.equal(historical.signed[0].country, "AF");
+  for (const nepal of ["NEP", "NPL"]) {
+    assert.equal(rosterChanges(text.replace("{{#invoke:flag|icon|CAN}}", `{{#invoke:flag|icon|${nepal}}}`)).signed[0].country, "NP");
+  }
   assert.equal(rosterChanges(text.replace("{{#invoke:flag|icon|CAN}}", "{{flagicon|Unknown country}}" )).signed[0].country, null);
 });
 
@@ -483,7 +486,7 @@ test("notice is counted from a date the replacing sentence states", () => {
     "[[Chris Weidman]] was expected to face Kelvin Gastelum, but was replaced by [[Uriah Hall]] in a bout originally scheduled for October 1.",
   ].join(" ")).replace("{{start date|2024|01|20}}", "{{start date|2018|11|03}}");
   const changes = cardChanges(text, [["Adam Wieczorek", "Marcos Rogerio de Lima"], ["Renato Moicano", "Tom Niinimaki"], ["Uriah Hall", "Kelvin Gastelum"]]).changes;
-  assert.deepEqual(changes.map((change) => [change.name, change.notice]), [["Adam Wieczorek", "10 days"], ["Renato Moicano", "3 days"], ["Uriah Hall", null]]);
+  assert.deepEqual(changes.map((change) => [change.name, change.notice]), [["Adam Wieczorek", "announced 10 days before"], ["Renato Moicano", "announced 3 days before"], ["Uriah Hall", null]]);
 });
 
 test("a bout replaced by another bout, or a sentence about a later card, names no replacement", () => {

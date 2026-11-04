@@ -2,7 +2,7 @@ import { syncFightPay } from "./fight-pay.ts";
 import { syncCrew } from "./event-crew.ts";
 import { startPotentialMatchupSync } from "./potential-matchups.ts";
 import { isFightDay, LIVE_EVENT_INTERVAL, liveDetailDue, fightIsComplete, fightIsUnderway } from "./live-state.ts";
-import { verifiedReplacementAnnouncement } from "./replacement-announcements.ts";
+import { verifiedReplacementAnnouncement, verifiedReplacementIdentity } from "./replacement-announcements.ts";
 import { db, getMeta, metaAgeMs, setMeta, touchMeta } from "./db.ts";
 import { isTransientUpstream, outageReport, recordSyncError } from "./sync-status.ts";
 export { isTransientUpstream };
@@ -260,23 +260,39 @@ function storeSchedules(events: { id: string; name: string; date: string }[], sc
   return timed;
 }
 
-/** A checked report added after a card's article was read dates the
- *  replacement without waiting for that article to be read again. */
+/** Apply newly checked identities and notice without waiting for an unchanged
+ * archive article to be read again. Only already flagged replacement slots
+ * qualify; a report must not create a replacement on an unrelated bout. */
 export function applyVerifiedReplacementNotices(): number {
-  const rows = db.prepare(`SELECT f.id, e.date, f.f1_name, f.f1_replaced, f.f1_notice, f.f2_name, f.f2_replaced, f.f2_notice
+  const rows = db.prepare(`SELECT f.id, e.date, f.weight_class,
+    f.f1_name, f.f1_replaced, f.f1_replaced_id, f.f1_notice, f.f1_short_notice,
+    f.f2_name, f.f2_replaced, f.f2_replaced_id, f.f2_notice, f.f2_short_notice
     FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE (f.f1_replaced IS NOT NULL AND f.f1_notice IS NULL) OR (f.f2_replaced IS NOT NULL AND f.f2_notice IS NULL)`).all() as
-    { id: string; date: string; f1_name: string; f1_replaced: string | null; f1_notice: string | null; f2_name: string; f2_replaced: string | null; f2_notice: string | null }[];
+    WHERE f.f1_replaced IS NOT NULL OR f.f2_replaced IS NOT NULL`).all() as
+    { id: string; date: string; weight_class: string;
+      f1_name: string; f1_replaced: string | null; f1_replaced_id: string | null; f1_notice: string | null; f1_short_notice: number | null;
+      f2_name: string; f2_replaced: string | null; f2_replaced_id: string | null; f2_notice: string | null; f2_short_notice: number | null }[];
   let applied = 0;
   for (const row of rows) for (const side of ["f1", "f2"] as const) {
-    const replaced = row[`${side}_replaced`];
-    if (!replaced || row[`${side}_notice`]) continue;
-    const notice = verifiedReplacementAnnouncement(row[`${side}_name`], replaced, row.date);
-    if (!notice) continue;
-    db.prepare(`UPDATE fights SET ${side}_notice = ? WHERE id = ?`).run(notice, row.id);
+    const previous = row[`${side}_replaced`];
+    if (previous == null) continue;
+    const identity = verifiedReplacementIdentity(row[`${side}_name`], row.date);
+    const replaced = identity ?? previous;
+    if (!replaced || [row.f1_name, row.f2_name].some(name => normName(name) === normName(replaced))) continue;
+    const corrected = identity != null && normName(previous) !== normName(identity);
+    const checkedNotice = verifiedReplacementAnnouncement(row[`${side}_name`], replaced, row.date);
+    // Notice from a different, incorrect pairing must never follow the correction.
+    const notice = corrected ? checkedNotice : row[`${side}_notice`] ?? checkedNotice;
+    const replacedId = identity && (corrected || !row[`${side}_replaced_id`])
+      ? fighterNamed(identity, row.weight_class, row.date) || null : row[`${side}_replaced_id`];
+    const shortNotice = corrected && previous ? null : row[`${side}_short_notice`];
+    if (replaced === previous && replacedId === row[`${side}_replaced_id`]
+      && notice === row[`${side}_notice`] && shortNotice === row[`${side}_short_notice`]) continue;
+    db.prepare(`UPDATE fights SET ${side}_replaced = ?, ${side}_replaced_id = ?,
+      ${side}_notice = ?, ${side}_short_notice = ? WHERE id = ?`).run(replaced, replacedId, notice, shortNotice, row.id);
     applied++;
   }
-  if (applied) log(`replacement notices: ${applied} dated from checked reports`);
+  if (applied) log(`replacement evidence: ${applied} updated from checked reports`);
   return applied;
 }
 

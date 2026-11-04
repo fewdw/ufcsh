@@ -20,8 +20,13 @@ export const eventSearch = (event: { name: string }) => event.name.match(/^UFC\s
 const ARCHIVE: Record<string, Broadcast> = JSON.parse(readFileSync(new URL("./event-crew-archive.json", import.meta.url), "utf8"));
 
 export function eventBroadcast(event: CrewEvent): Broadcast | null {
+  const reviewed = EVENT_BROADCASTS[eventSearch(event)] ?? ARCHIVE[event.id];
+  const complete = (crew: Broadcast | null | undefined) => crew && CORE_ROLES.every(role => crew.roles[role]?.length);
+  if (complete(reviewed)) return reviewed;
   const stored = prepared("SELECT data_json FROM event_crews WHERE event_id = ?").get(event.id) as { data_json: string | null } | undefined;
-  return EVENT_BROADCASTS[eventSearch(event)] ?? ARCHIVE[event.id] ?? (stored?.data_json ? JSON.parse(stored.data_json) : null);
+  const fetched: Broadcast | null = stored?.data_json ? JSON.parse(stored.data_json) : null;
+  // A partial reviewed report must not hide a later complete source read.
+  return complete(fetched) ? fetched : reviewed ?? fetched;
 }
 export function eventCrew(id: string) {
   const event = prepared("SELECT id, name, date FROM events WHERE id = ?").get(id) as CrewEvent | undefined;

@@ -109,3 +109,27 @@ test("archived crews resolve by event ID, with every core role", () => {
   assert.ok(Object.keys(archive).length >= 60);
   for (const [id, entry] of Object.entries(archive)) assert.deepEqual(crewGaps({ id, name: entry.event, date: entry.date }, eventBroadcast({ id, name: entry.event, date: entry.date })), [], entry.event);
 });
+
+
+test("an unpublished desk host stays unknown while the five sourced roles remain available", () => {
+  const event = { id: "crew-unpublished-host", name: "UFC Fight Night: Cortes Acosta vs. Walker", date: "2026-11-07" };
+  const crew = eventBroadcast(event);
+  assert.deepEqual(crew?.roles.play_by_play, ["Brendan Fitzgerald"]);
+  assert.deepEqual(crew?.roles.desk_analysts, ["Chris Weidman", "Rashad Evans", "Michael Chiesa"]);
+  assert.deepEqual(crewGaps(event, crew, Date.parse("2026-11-07")), ["Desk host"]);
+});
+
+test("a complete source read supersedes a partial reviewed report while full reviews retain precedence", () => {
+  db.exec("SAVEPOINT crew_partial_review");
+  try {
+    const event = { id: "crew-partial-review", name: "UFC Fight Night: Cortes Acosta vs. Walker", date: "2026-11-07" };
+    db.prepare("INSERT INTO events (id, name, date) VALUES (?, ?, ?)").run(event.id, event.name, event.date);
+    const partial = EVENT_BROADCASTS[event.name];
+    const fetched = { ...partial, source_url: "https://sports.yahoo.com/corrected-fixture", roles: { ...partial.roles, desk_host: ["Source Named Host"] } };
+    db.prepare("INSERT INTO event_crews (event_id, data_json, url, checked_at) VALUES (?, ?, ?, ?)").run(event.id, JSON.stringify(fetched), fetched.source_url, 123);
+    assert.deepEqual(eventBroadcast(event), fetched);
+    assert.deepEqual(crewGaps(event, eventBroadcast(event), Date.parse("2026-11-07")), []);
+    const completeReview = { ...event, name: "UFC 333: Volkanovski vs. Evloev" };
+    assert.deepEqual(eventBroadcast(completeReview), EVENT_BROADCASTS["UFC 333"]);
+  } finally { db.exec("ROLLBACK TO crew_partial_review; RELEASE crew_partial_review"); }
+});
