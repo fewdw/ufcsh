@@ -1,4 +1,4 @@
-import { panelCards, type JudgeCard } from "./judge-scorecards.ts";
+import { panelCards, symbolicJudgeVote, type JudgeCard } from "./judge-scorecards.ts";
 import type { MmaDecision, MmaMediaScore } from "./scrape/mmadecisions.ts";
 import { normName } from "./util.ts";
 
@@ -6,15 +6,16 @@ import { normName } from "./util.ts";
 export type PointDeduction = { side: "f1" | "f2"; round: number; points: number; reason: string };
 export type DeductionState = { confirmed: boolean; items: PointDeduction[] };
 export type DeductionFight = { detail_json?: string | null; judge_rounds_json?: string | null; deductions_json?: string | null };
-/** MMA Decisions' page is the record; Verdict MMA's round data stands in
- *  until it is read, and only when it lists a penalty (see verdict-import). */
-export type DeductionSource = "MMA Decisions" | "Verdict MMA";
-type Stored = { source: DeductionSource; sourceUrl: string; items: PointDeduction[] };
+/** MMA Decisions is the ordinary record; Verdict supplies provisional penalties.
+ * Reviewed commission/UFC reports can repair explicit, source-verified gaps. */
+export type DeductionSource = "MMA Decisions" | "Verdict MMA" | "Nevada State Athletic Commission" | "UFC official report";
+export type StoredDeductionRecord = { source: DeductionSource; sourceUrl: string; items: PointDeduction[] };
+type Stored = StoredDeductionRecord;
 
 export function storedDeductions(json: string | null | undefined): Stored | null {
   try {
     const value = JSON.parse(json ?? "null");
-    return ["MMA Decisions", "Verdict MMA"].includes(value?.source) && typeof value.sourceUrl === "string" && Array.isArray(value.items)
+    return ["MMA Decisions", "Verdict MMA", "Nevada State Athletic Commission", "UFC official report"].includes(value?.source) && typeof value.sourceUrl === "string" && Array.isArray(value.items)
       && value.items.every((item: PointDeduction) => item && ["f1", "f2"].includes(item.side)
         && Number.isInteger(item.round) && item.round >= 1 && item.round <= 5
         && Number.isInteger(item.points) && item.points >= 1 && item.points <= 3 && typeof item.reason === "string") ? value : null;
@@ -24,7 +25,7 @@ export function storedDeductions(json: string | null | undefined): Stored | null
 /** Adding the referee's penalties back must restore a ten-point round on
  * every available judge's card. Never infer a deduction from a low score. */
 export function deductionProblem(cards: JudgeCard[], items: PointDeduction[]): string | null {
-  const scored = cards.filter(card => Array.isArray(card?.rounds) && card.rounds.length);
+  const scored = cards.filter(card => Array.isArray(card?.rounds) && card.rounds.length && !symbolicJudgeVote(card));
   if (scored.some(card => card.rounds!.some((round, index) => round?.round !== index + 1
     || !Number.isInteger(round.f1Score) || !Number.isInteger(round.f2Score)
     || round.f1Score < 0 || round.f1Score > 10 || round.f2Score < 0 || round.f2Score > 10))) return "Unreadable judge's round scores";

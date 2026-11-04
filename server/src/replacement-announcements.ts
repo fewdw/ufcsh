@@ -1,14 +1,21 @@
 import { normName } from "./util.ts";
 import { readFileSync } from "node:fs";
 
-/** Checked primary reports whose bodies identify the replacement, but whose
- * citation headlines do not. Dates match publisher metadata and date the
- * announcement, never the fighter's acceptance. */
-export const VERIFIED_REPLACEMENT_REPORTS = [
+export type ReplacementReport = {
+  eventDate: string; name: string; replaced: string; date: string; source: string;
+  /** Stated acceptance notice, including retrospective first-person reports.
+   * Its publication date must never be used to derive acceptance notice. */
+  notice?: string;
+};
+
+/** Checked reports whose bodies identify the replacement, but whose citation
+ * headlines do not. Dates match publisher metadata and date the report, never
+ * the fighter's acceptance. Only explicit notice is retained as acceptance. */
+export const VERIFIED_REPLACEMENT_REPORTS: ReplacementReport[] = [
   { eventDate: "2012-07-07", name: "Mike Easton", replaced: "Renan Barao", date: "2012-05-19",
     source: "https://www.mmafighting.com/ufc/2012/5/19/3031421/mike-easton-renan-barao-ivan-menjivar-ufc-148-mma-news" },
   ...JSON.parse(readFileSync(new URL("./replacement-reports.json", import.meta.url), "utf8")) as
-    { eventDate: string; name: string; replaced: string; date: string; source: string }[],
+    ReplacementReport[],
   { eventDate: "2017-12-02", name: "Jose Aldo", replaced: "Frankie Edgar", date: "2017-11-11",
     source: "https://www.mmafighting.com/2017/11/11/16633192/max-holloway-vs-jose-aldo-2-slated-as-new-ufc-218-main-event" },
   { eventDate: "2018-06-01", name: "David Teymur", replaced: "Leonardo Santos", date: "2018-05-01",
@@ -53,6 +60,9 @@ export function verifiedReplacementAnnouncement(name: string, replaced: string, 
   const reports = VERIFIED_REPLACEMENT_REPORTS.filter(report => report.eventDate === eventDate
     && normName(report.name) === normName(name) && normName(report.replaced) === normName(replaced));
   if (!reports.length) return null;
+  const stated = new Set(reports.flatMap(report => report.notice ? [report.notice] : []));
+  // Conflicting stated notice needs review; never pick one arbitrarily.
+  if (stated.size) return stated.size === 1 ? [...stated][0] : null;
   const date = reports.map(report => report.date).sort()[0];
   const days = Math.round((Date.parse(eventDate) - Date.parse(date)) / 86_400_000);
   return days >= 0 && days <= 60 ? days === 0 ? "announced on fight day" : `announced ${days} day${days === 1 ? "" : "s"} before` : null;

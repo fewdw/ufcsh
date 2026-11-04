@@ -244,3 +244,37 @@ test("MMA Payout's other wordings: paid sums, contracts by result, and a winner'
   // Wikipedia's "($X win bonus)" is always inside the total.
   assert.equal(readPurses(["Jake Shields: $150,000 ($70,000 win bonus) def. Martin Kampmann: $27,000"], [{ id: "x", f1: "Jake Shields", f2: "Martin Kampmann", f1Outcome: "win" }]).purses.get("x")?.f1?.total, 150_000);
 });
+
+
+test("Korean given-name spacing and reversed order resolve only one corner", () => {
+  const card = [
+    { id: "a", f1: "Dooho Choi", f2: "JooSang Yoo" },
+    { id: "b", f1: "ChangHo Lee", f2: "HyunSung Park" },
+  ];
+  for (const [name, id, corner] of [["Choi Doo-ho", "a", "f1"], ["Yoo Joo-sang", "a", "f2"], ["Lee Chang-ho", "b", "f1"], ["Park Hyun-sung", "b", "f2"]]) {
+    const at = placeName(name, card);
+    assert.deepEqual([at?.bout.id, at?.corner], [id, corner]);
+  }
+  assert.equal(placeName("Choi Doo-ho", [...card, { id: "c", f1: "Choi Doo Ho", f2: "Someone Else" }]), null);
+  assert.equal(placeName("Choi Seung-woo", card), null);
+});
+
+test("a typo in a reviewed full-name alias is matched without confusing the Nogueira brothers", () => {
+  const card = [
+    { id: "a", f1: "Rogerio Nogueira", f2: "Mauricio Rua", f1Aliases: ["Antonio Rogerio Nogueira"] },
+    { id: "b", f1: "Antonio Rodrigo Nogueira", f2: "Stefan Struve" },
+  ];
+  const at = placeName("Antônio Rogério Nogueria", card);
+  assert.deepEqual([at?.bout.id, at?.corner], ["a", "f1"]);
+  assert.equal(placeName("Antonio Nogueira", card), null);
+});
+
+test("an explicitly unawarded bonus is not treated as a fighter named None", () => {
+  const parsed = wikipediaBonuses(`==Bonus awards==
+The following fighters received $50,000 bonuses.
+* Submission of the Night: None
+* Performance of the Night: None awarded
+* Fight of the Night: Tony Ferguson vs. Anthony Pettis
+==Next==`);
+  assert.deepEqual(parsed?.awards.map(award => award.names), [["Tony Ferguson"], ["Anthony Pettis"]]);
+});

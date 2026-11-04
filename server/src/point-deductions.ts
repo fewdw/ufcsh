@@ -5,6 +5,7 @@ import { mmaDecisionUrl, type MmaMediaScore } from "./scrape/mmadecisions.ts";
 import { log } from "./util.ts";
 import { pageDeductions, pageMedia, storedDeductions, type MediaScore, type PointDeduction } from "./point-deduction-rules.ts";
 import type { JudgeCard } from "./judge-scorecards.ts";
+import { repairVerifiedPointDeductions } from "./verified-point-deductions.ts";
 export { deductionProblem, deductionSide, pageDeductions, pageMedia, verifiedDeductions, fightDeductionState } from "./point-deduction-rules.ts";
 export type { MediaScore, PointDeduction } from "./point-deduction-rules.ts";
 
@@ -65,6 +66,7 @@ export async function readPointDeductions(fights: CrawlFight[], concurrency = 2,
       return;
     }
     store.run(JSON.stringify({ source: "MMA Decisions", sourceUrl: mmaDecisionUrl(path), items }), Date.now(), fight.id);
+    repairVerifiedPointDeductions(db, fight.id);
     saved++;
   }, onProgress);
   return { matched: stats.matched, stored: saved, unplaced, failed: stats.failed, blocked: stats.blocked, unavailable: stats.unavailable, lastError: stats.lastError };

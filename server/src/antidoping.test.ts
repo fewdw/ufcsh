@@ -117,6 +117,37 @@ test("new similar names stay unlinked; reviewed aliases ignore casing and accent
   ], fighters), [null, null, "usman"]);
 });
 
+test("reviewed registered names restore test histories while unrelated leads stay unlinked", () => {
+  const fighters = [
+    { id: "selwady", norm: normName("Abdul-Kareem Al-Selwady"), years: new Set([2024, 2026]) },
+    { id: "loma", norm: normName("Loma Lookboonmee"), years: new Set([2025, 2026]) },
+    { id: "lima", norm: normName("Andre Lima"), years: new Set([2024, 2025, 2026]) },
+    { id: "aslan", norm: normName("Ibo Aslan"), years: new Set([2024, 2025]) },
+    { id: "frey", norm: normName("Jinh Yu Frey"), years: new Set([2020, 2023]) },
+    { id: "medina", norm: normName("Jose Daniel Medina"), years: new Set([2024, 2025, 2026]) },
+    { id: "lucas", norm: normName("Lucas Alexander"), years: new Set([2022, 2023, 2025]) },
+    { id: "punk", norm: normName("CM Punk"), years: new Set([2016, 2018]) },
+    { id: "romero", norm: normName("Roberto Romero"), years: new Set([2024, 2025]) },
+    { id: "nelson", norm: normName("Cam Nelson"), years: new Set([2026]) },
+  ];
+  const cases: [number, string, string | null][] = [
+    [2023, "Abdul K Mubarak", "selwady"], [2026, "Abdul Mubarak", "selwady"],
+    [2025, "Akkararat Konlak", "loma"], [2026, "Akkararat Konlak", "loma"],
+    [2024, "Andre Cardoso", "lima"], [2025, "Andre Cardoso", "lima"], [2026, "Andre Cardoso", "lima"],
+    [2023, "Halil I Demiraslan", "aslan"], [2025, "Halil Demiraslan", "aslan"],
+    [2020, "Jhin H Yu", "frey"], [2023, "Jhin H Yu", "frey"],
+    [2024, "Jose Rivero", "medina"], [2026, "Jose Rivero", "medina"],
+    [2022, "Lucas Dos Santos De Oliveira", "lucas"], [2025, "Lucas Dos Santos De Oliveira", "lucas"],
+    [2016, "Phillip Brooks", "punk"], [2020, "Phillip Brooks", "punk"],
+    [2025, "Roberto Hernandez", null], [2026, "Robert Nelson", null],
+  ];
+  assert.deepEqual(matchAntidopingRows(cases.map(([year, name]) => ({ year, name, tests: 1 })), fighters), cases.map(([, , id]) => id));
+  assert.deepEqual(matchAntidopingRows([
+    { year: 2025, name: "Akkararat Konlak", tests: 3 },
+    { year: 2025, name: "Suphisara Konlak", tests: 2 },
+  ], fighters), [null, null], "confirmed aliases cannot choose between overlapping same-year source rows");
+});
+
 test("bundled public tables contain every year and the source records for GSP and Pereira", () => {
   const snapshot = readAntidopingSnapshot();
   const history = (name: RegExp) => snapshot.years.flatMap(({ year, rows }) => rows.filter(([athlete]) => name.test(athlete)).map(([, tests]) => ({ year, tests })));
@@ -168,6 +199,15 @@ test("offline deployment, failed refreshes, history corrections, and year rollov
     snapshot.years.reduce((n, year) => n + year.rows.length, 0));
   assert.equal(count(alex, 2026), 5);
   assert.equal(count(gsp, 2018), 5);
+  const profileId = (name: string) => (db.prepare("SELECT id FROM fighters WHERE norm_name=?").get(normName(name)) as { id: string }).id;
+  assert.deepEqual(fighterAntidopingTests(profileId("CM Punk")).map(row => ({ ...row })), [
+    { year: 2016, tests: 4 }, { year: 2017, tests: 2 }, { year: 2018, tests: 3 }, { year: 2019, tests: 6 }, { year: 2020, tests: 4 },
+  ]);
+  for (const [name, year, tests] of [
+    ["Andre Lima", 2024, 6], ["Andre Lima", 2025, 5], ["Andre Lima", 2026, 4],
+    ["Loma Lookboonmee", 2025, 5], ["Loma Lookboonmee", 2026, 4],
+    ["Jinh Yu Frey", 2020, 3], ["Jinh Yu Frey", 2021, 6], ["Jinh Yu Frey", 2022, 6], ["Jinh Yu Frey", 2023, 5],
+  ] as const) assert.equal(count(profileId(name), year), tests, `${name} ${year}: published source sessions, unchanged`);
   let revision = dataRevision("profiles");
   seedAntidopingTests();
   assert.equal(dataRevision("profiles"), revision, "restarting does not invalidate profiles");

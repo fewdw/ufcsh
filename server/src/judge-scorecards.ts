@@ -27,7 +27,22 @@ export function decisionFromCards(method: string | null, f1Outcome: string | nul
   return method;
 }
 
+/** MMA Decisions represents old whole-bout votes as 1-0 or 1-1, with an
+ * explicit legend saying numeric scores are unknown or not applicable. These
+ * are valid decision totals, but never a ten-point round. */
+export const symbolicJudgeVote = (card: JudgeCard): boolean =>
+  [0, 1].includes(Number(card?.f1Score)) && [0, 1].includes(Number(card?.f2Score))
+  && Array.isArray(card.rounds) && card.rounds.length === 1
+  && card.rounds[0]?.round === 1 && card.rounds[0].f1Score === Number(card.f1Score) && card.rounds[0].f2Score === Number(card.f2Score);
+
+const withoutSymbolicRounds = (card: JudgeCard): JudgeCard => {
+  if (!symbolicJudgeVote(card)) return card;
+  const { rounds: _rounds, ...total } = card;
+  return total;
+};
+
 const validRounds = (card: JudgeCard): JudgeRound[] => {
+  if (symbolicJudgeVote(card)) return [];
   const rounds = card?.rounds;
   if (!Array.isArray(rounds) || !rounds.length || rounds.length > 5
     || rounds.some((round, index) => round?.round !== index + 1
@@ -106,6 +121,7 @@ export function mergeJudgeRounds(official: JudgeCard[], imported: JudgeCard[]): 
   const completePanel = official.length === 3 && matches.size === 3
     && hasDistinctJudgeNames([...matches.values()].map(at => imported[at]));
   return official.map((judge, index) => {
+    judge = withoutSymbolicRounds(judge);
     const at = matches.get(index);
     if (at == null) return judge;
     const card = imported[at];
@@ -149,5 +165,5 @@ export function panelCards(official: JudgeCard[], imported: unknown[]): JudgeCar
   return (imported as any[]).map(card => ({
     judge: String(card?.judge ?? ""), f1Score: Number(card?.f1Score), f2Score: Number(card?.f2Score),
     rounds: Array.isArray(card?.rounds) ? card.rounds : [],
-  })).filter(card => Number.isFinite(card.f1Score) && Number.isFinite(card.f2Score));
+  })).filter(card => Number.isFinite(card.f1Score) && Number.isFinite(card.f2Score)).map(withoutSymbolicRounds);
 }
