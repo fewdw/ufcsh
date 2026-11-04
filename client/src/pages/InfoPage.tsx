@@ -101,9 +101,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-11-02">November 2, 2026</time></p>
+            <p><time dateTime="2026-11-03">November 3, 2026</time></p>
             <ul>
-              <li>Newly announced cards no longer raise a false alarm while ufc.com's live feed catches up with the event page.</li>
+              <li>More fighter anti-doping history and replacement details now match their published sources.</li>
+              <li>Recovered bonus awards and verified point deductions; corrected historical judge statistics.</li>
+              <li>Pay data stays available when a source cannot be reached.</li>
             </ul>
           </Section>
         </div>
