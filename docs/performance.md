@@ -897,3 +897,20 @@ median, p75 and p95 for any range, shaded at Google's "needs improvement" and
 
 CI also fails when the first load's scripts and styles pass 185 KB gzip
 (166 KB today, 29 files).
+
+### 2026-10-30 — event and fight details without the event list
+
+A production build served on loopback in headless Chrome, with synthetic public
+card/matchup responses ready and `/api/events` either held indefinitely or
+returning 503. Before: all 8 phone/desktop × light/dark × list-state checks
+failed to show the ready event within 2 seconds. After: all 8 passed; the card
+was visible at 242–311 ms after navigation in this run. Card → fight → Escape,
+sidebar recovery, next card and browser Back also passed. The list now owns its
+loading/error/retry state; an explicit card/fight mounts immediately. Its own
+detail response determines selection, with the navigation hint as a fallback.
+Home still selects its opening card from the list.
+
+These are controlled loopback regression timings, with no Clerk key or real
+network latency; they do not establish a production LCP gain. Run after a
+production build with `CHROME_BIN=/path/to/chrome npm run test:browser --prefix
+client`. The browser tests include cold fight entry as well as card entry.

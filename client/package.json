@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "node --test tests/*.test.ts",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:browser": "node --test browser-tests/*.test.ts"
   },
   "dependencies": {
     "@clerk/react": "^6.16.1",
@@ -27,6 +28,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
+    "playwright-core": "^1.64.1",
     "typescript": "~6.0.2",
     "vite": "^8.2.0"
   }
