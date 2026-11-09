@@ -44,7 +44,9 @@ const DEFAULT_FEATURES: RankingFeatures = {
   movement: true,
   streaks: true,
   lastFive: true,
-  activityColors: true,
+  // Off: the opponent line already says "in 13d" or "15d ago", and tinted rows
+  // across every division turned the board into a patchwork.
+  activityColors: false,
 };
 
 /** v3 switches hover previews off while keeping the other v2 choices. */
@@ -109,9 +111,9 @@ function activityMeta(entry: RankingEntry, dateMode: "relative" | "date", at?: s
 }
 
 function streakTone(outcome: NonNullable<RankingEntry["activity"]["current_streak"]>["outcome"]): string {
-  if (outcome === "win") return "text-emerald-600";
-  if (outcome === "loss") return "text-rose-500";
-  if (outcome === "draw") return "text-amber-600";
+  if (outcome === "win") return "text-emerald-700";
+  if (outcome === "loss") return "text-rose-700";
+  if (outcome === "draw") return "text-amber-700";
   return "text-zinc-500";
 }
 
@@ -121,20 +123,6 @@ function move(change: string | null): { label: string; cls: string } | null {
   if (change.startsWith("+")) return { label: `↑${change.slice(1)}`, cls: "text-emerald-600" };
   if (change.startsWith("-")) return { label: `↓${change.slice(1)}`, cls: "text-rose-500" };
   return { label: change, cls: "text-zinc-400" };
-}
-
-function lastFightTone(outcome: RankingEntry["activity"]["last_fight_outcome"]): string {
-  switch (outcome) {
-    case "win":
-      return "text-emerald-500";
-    case "loss":
-      return "text-rose-400";
-    case "draw":
-      return "text-amber-500";
-    case "nc":
-    default:
-      return "text-zinc-400";
-  }
 }
 
 function previewFightLabel(fight: FighterPreviewFight): { label: string; cls: string } {
@@ -238,11 +226,8 @@ function RankRow({
         {features.opponents && meta.hint ? (
           <span
             title={meta.hint}
-            className={`block whitespace-normal text-[10px] leading-3.5 [overflow-wrap:anywhere] ${
-              meta.showsLastFight
-                ? lastFightTone(entry.activity.last_fight_outcome)
-                : "text-zinc-400"
-            }`}
+            // Neutral: the dots and the streak already say how it went.
+            className="block whitespace-normal text-[10.5px] leading-3.5 text-zinc-400 [overflow-wrap:anywhere]"
           >
             {meta.hint}
           </span>
@@ -458,7 +443,14 @@ const FEATURE_OPTIONS: { key: Exclude<keyof RankingFeatures, "top15Scope">; labe
   { key: "movement", label: "Show movement", hint: "Rank changes in the latest update" },
   { key: "lastFive", label: "Show last 5", hint: "The last five results, oldest first" },
   { key: "streaks", label: "Streaks", hint: "4W, 2L, 1D, 1NC" },
-  { key: "activityColors", label: "Activity colours", hint: "Booked and recently active fighters" },
+  { key: "activityColors", label: "Activity colours", hint: "Tint booked and recently active fighters" },
+];
+
+/** The switches grouped by where their effect shows, not by their defaults. */
+const FEATURE_GROUPS: { title: string; keys: Exclude<keyof RankingFeatures, "top15Scope">[] }[] = [
+  { title: "In each row", keys: ["opponents", "lastFive", "streaks", "movement", "top15Record"] },
+  { title: "Highlight", keys: ["activityColors"] },
+  { title: "On hover", keys: ["hoverHistory", "hoverResults"] },
 ];
 
 /** Filters: what the lists show, with the key to their marks. */
@@ -497,52 +489,41 @@ function FeaturesMenu({
       if (selectedDate !== null) onViewDate(null);
     }} iconOnlyOnPhone="lg">
       {close => <>
-      {/* The key to every mark in the lists, whichever are switched on. */}
-      <div className="mb-1 space-y-1.5 border-b border-zinc-100 px-4 pb-3 pt-3 text-[11px] text-zinc-500">
-        {/* Last 5: shape is where, fill how it ended, colour the result. */}
-        <div className="grid grid-cols-3 gap-x-3 gap-y-1">
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-zinc-500 rounded-full bg-zinc-500" />In UFC</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-zinc-500 rounded-full bg-zinc-500" />Finished</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" />Win</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-zinc-500 rounded-[3px] bg-zinc-500" />Outside UFC</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-zinc-500 rounded-full" />Dec</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" />Loss</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{legend}</div>
-      </div>
-      <div className="px-1.5">
-        {[false, true].map((defaultOn) => (
-          <fieldset key={String(defaultOn)} className="min-w-0 border-0 p-0 pb-2">
-            <legend className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-              Default {defaultOn ? "on" : "off"}
-            </legend>
-            {options.filter((option) => DEFAULT_FEATURES[option.key] === defaultOn).map((option) => (
-              <div key={option.key} className={option.key === "top15Record" ? "my-1 rounded-xl border border-zinc-200 bg-zinc-50" : undefined}>
-                <SwitchRow
-                  label={option.key === "hoverResults" && !canHover ? "Tap fighter results" : option.label}
-                  hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents, again for the profile."
-                    : historical && option.key === "opponents" ? "Last result under each name as of the selected date"
-                    : historical && option.key === "top15Record" ? "Record against champions and top 15 on the selected date"
-                    : historical && option.key === "activityColors" ? "Fought within 45 days of the selected date"
-                    : option.hint}
-                  on={features[option.key]}
-                  onChange={(on) => onChange({ ...features, [option.key]: on })} />
-                {option.key === "top15Record" ? (
-                  <div className="mx-2.5 mb-3 border-l-2 border-zinc-200 pl-3">
-                    <SheetField label="Ranked opponents">
-                      <select aria-label="Ranked opponents" value={features.top15Scope} disabled={!features.top15Record}
-                        onChange={(event) => onChange({ ...features, top15Scope: event.target.value as RankingFeatures["top15Scope"] })}
-                        className={`${SHEET_SELECT} disabled:opacity-50`}>
-                        <option value="division">Current division</option>
-                        <option value="all">All divisions</option>
-                      </select>
-                    </SheetField>
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </fieldset>
-        ))}
+      <div className="px-1.5 pt-1">
+        {FEATURE_GROUPS.map((group) => {
+          const shown = options.filter((option) => group.keys.includes(option.key));
+          if (!shown.length) return null;
+          return (
+            <fieldset key={group.title} className="min-w-0 border-0 p-0 pb-1.5">
+              <legend className="px-2.5 pb-0.5 pt-2.5 text-[11px] font-medium text-zinc-400">{group.title}</legend>
+              {group.keys.map((key) => shown.find((option) => option.key === key)).filter((option) => option != null).map((option) => (
+                <div key={option.key}>
+                  <SwitchRow
+                    label={option.key === "hoverResults" && !canHover ? "Tap fighter results" : option.label}
+                    hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents, again for the profile."
+                      : historical && option.key === "opponents" ? "Last result under each name as of the selected date"
+                      : historical && option.key === "top15Record" ? "Record against champions and top 15 on the selected date"
+                      : historical && option.key === "activityColors" ? "Fought within 45 days of the selected date"
+                      : option.hint}
+                    on={features[option.key]}
+                    onChange={(on) => onChange({ ...features, [option.key]: on })} />
+                  {option.key === "top15Record" && features.top15Record ? (
+                    <div className="mb-2 ml-2.5 mr-14 pl-0">
+                      <SheetField label="Ranked opponents from">
+                        <select aria-label="Ranked opponents" value={features.top15Scope}
+                          onChange={(event) => onChange({ ...features, top15Scope: event.target.value as RankingFeatures["top15Scope"] })}
+                          className={SHEET_SELECT}>
+                          <option value="division">Current division</option>
+                          <option value="all">All divisions</option>
+                        </select>
+                      </SheetField>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </fieldset>
+          );
+        })}
       </div>
       <div className="mt-1 grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] items-start gap-2 border-t border-zinc-100 px-4 py-3">
         <SheetField label="Division order">
@@ -559,6 +540,18 @@ function FeaturesMenu({
         </SheetField>
         <RankingsDateControl variant="field" selectedDate={selectedDate} today={today}
           onView={date => { onViewDate(date); close(); }} />
+      </div>
+      {/* The key to the marks in the lists, last: it explains, it is not a choice. */}
+      <div className="space-y-2 border-t border-zinc-100 px-4 pb-3.5 pt-3 text-[11px] text-zinc-500">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <span className="font-medium text-zinc-400">Last 5</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" />Win</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" />Loss</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-zinc-400" />Finish</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full border-[1.5px] border-zinc-400" />Decision</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-[2px] bg-zinc-400" />Outside UFC</span>
+        </div>
+        {legend ? <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{legend}</div> : null}
       </div>
       </>}
     </OptionsSheet>
@@ -731,7 +724,7 @@ export default function RankingsPage() {
                 onDateMode={(mode) => update("dateMode", mode)}
                 divisionOrder={settings.divisionOrder}
                 onDivisionOrder={(order) => update("divisionOrder", order)}
-                legend={<>{activityKey}{features.hoverResults ? <OpponentKey /> : null}{updated}</>}
+                legend={<>{features.activityColors ? activityKey : null}{features.hoverResults ? <OpponentKey /> : null}{updated}</>}
                 historical={historical}
                 selectedDate={selectedDate}
                 today={today}

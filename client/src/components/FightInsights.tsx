@@ -11,10 +11,10 @@ type Insightful = { name: string; insights: FightInsights | null | undefined };
 
 // Checked with the dataviz palette validator against both surfaces: the
 // green and rose stay apart for red-green colour blindness in either mode.
-const WON = "bg-[#047857] dark:bg-[#059669]";
-const LOST = "bg-[#fb7185] dark:bg-[#f43f5e]";
+const WON = "bg-[#059669] dark:bg-[#1f9d74]";
+const LOST = "bg-[#fb7185] dark:bg-[#ec5a6e]";
 // The bouts that went on are the column's track: context behind the finishes.
-const ON = "bg-[#e9e9ec] dark:bg-[#2e2e33]";
+const ON = "bg-[#dcdce1] dark:bg-[#2a2c31]";
 // Strikes wear the same pair: landed is the fighter's good, absorbed their bad.
 const LANDED = WON;
 const ABSORBED = LOST;
@@ -48,7 +48,7 @@ function Bar({ fighter, column, max, dense, active, tipId, onFocus, onBlur }: {
   return <button type="button" aria-label={`${fighter.name}, ${column.title}: ${spoken || "no result in it"}`} aria-describedby={active ? tipId : undefined}
     onFocus={onFocus} onBlur={onBlur} onKeyDown={event => event.key === "Escape" && onBlur()}
     className={`flex h-full min-w-0 flex-1 cursor-default flex-col items-center justify-end rounded-t-md focus-visible:outline-2 focus-visible:outline-zinc-900 ${active ? "bg-zinc-50" : ""}`}>
-    <span aria-hidden="true" className={`mb-1 ${CHART_TEXT} font-medium tabular-nums leading-3 text-zinc-500`}>{column.won + column.lost + column.other || ""}</span>
+    <span aria-hidden="true" className={`mb-1 ${CHART_TEXT} tabular-nums leading-3 text-zinc-400`}>{column.won + column.lost + column.other || ""}</span>
     <span aria-hidden="true" className={`flex flex-col gap-[2px] ${dense ? "w-3 @[40rem]:w-4" : "w-4"}`}>
       {segments.map(([count, tone], segment) => <span key={segment} className={`${tone} ${segment === 0 ? "rounded-t-[4px]" : ""}`} style={{ height: height(count) }} />)}
     </span>
@@ -124,14 +124,14 @@ function RoundKey({ rounds, className, compact }: { rounds: NonNullable<FightIns
   const sum = (side: "won" | "lost") => rounds.rounds.reduce((total, round) => total + round[side], 0);
   const { won, lost, drawn } = rounds.decision;
   const rows = [
-    { tone: WON, label: "Stoppage wins", short: "", value: sum("won") },
-    { tone: LOST, label: "Stoppage losses", short: "", value: sum("lost") },
+    { tone: WON, label: "Stoppage wins", short: "Won", value: sum("won") },
+    { tone: LOST, label: "Stoppage losses", short: "Lost", value: sum("lost") },
     { tone: "", label: "Decisions", short: "Dec", value: `${won}–${lost}${drawn ? `–${drawn}` : ""}` },
   ];
   if (compact) return <dl className={`${className} items-center justify-center gap-x-2.5 pt-2 ${CHART_TEXT}`}>
     {rows.map(row => <div key={row.label} className="flex items-center gap-1">
       {row.tone ? <span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${row.tone}`} /> : null}
-      <dt className="text-zinc-500">{row.short ? <span aria-hidden="true">{row.short}</span> : null}<span className="sr-only">{row.label}</span></dt>
+      <dt className="text-zinc-500"><span aria-hidden="true">{row.short}</span><span className="sr-only">{row.label}</span></dt>
       <dd className="font-semibold tabular-nums text-zinc-900">{row.value}</dd>
     </div>)}
   </dl>;
@@ -157,10 +157,14 @@ export function RoundsPanel({ fighters }: { fighters: Insightful[] }) {
   const length = Math.max(...fighters.map(fighter => fighter.insights?.rounds?.rounds.length ?? 0));
   const two = fighters.length > 1;
   return <section className={`${PANEL_SHELL} @container min-w-0`}>
-    <PanelHeading title="By round" />
+    <PanelHeading title="By round" aside={<span className={`flex flex-wrap items-center justify-end gap-x-3 gap-y-1 ${CHART_TEXT} text-zinc-500`}>
+      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${WON}`} />Won</span>
+      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${LOST}`} />Lost</span>
+      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${ON}`} />Went on</span>
+    </span>} />
     <div className={`grid px-3 pb-2 pt-1.5 @[40rem]:px-4 @[40rem]:pt-2 ${two ? "grid-cols-2 gap-x-4 @[40rem]:gap-x-8" : ""}`}>
       {fighters.map(fighter => <div key={fighter.name} className={`min-w-0 pb-1 ${two ? "" : "pt-2"}`}>
-        {two ? <h3 className={`truncate pb-0.5 pt-1 text-center ${sectionLabel}`} title={fighter.name}>{lastName(fighter.name)}</h3> : null}
+        {two ? <h3 className="truncate pb-1 pt-1 text-center text-[13px] font-semibold text-zinc-900" title={fighter.name}>{lastName(fighter.name)}</h3> : null}
         {fighter.insights?.rounds ? <div className="flex items-center justify-center gap-x-5 @[56rem]:gap-x-8">
           <RoundChart fighter={fighter} rounds={fighter.insights.rounds} length={length} max={max} dense={two} />
           <RoundKey rounds={fighter.insights.rounds} className={two ? "hidden @[44rem]:grid" : "hidden @[21rem]:grid"} />
@@ -171,7 +175,7 @@ export function RoundsPanel({ fighters }: { fighters: Insightful[] }) {
   </section>;
 }
 
-const columnHead = (fighter: Insightful) => <h3 className={`truncate pb-2 pt-1 text-center ${sectionLabel}`} title={fighter.name}>{lastName(fighter.name)}</h3>;
+const columnHead = (fighter: Insightful) => <h3 className="truncate pb-2 pt-1 text-center text-[13px] font-semibold text-zinc-900" title={fighter.name}>{lastName(fighter.name)}</h3>;
 
 /** The mean significant strikes each fighter landed and absorbed in each
  *  round of their UFC bouts: a pair of bars a round on one scale for both
@@ -183,7 +187,7 @@ export function StrikesPanel({ fighters }: { fighters: Insightful[] }) {
   const max = Math.max(1, ...all.flatMap(round => [round.landed, round.absorbed]));
   const length = Math.max(...all.map(round => round.round));
   const bar = (value: number, tone: string, strong: boolean) => <span className="grid grid-cols-[minmax(0,1fr)_2rem] items-center gap-1.5">
-    <span className="flex h-2 bg-plot-track @[40rem]:h-3"><span className={`rounded-r-[3px] ${tone}`} style={{ width: `${Math.max(1, value / max * 100)}%` }} /></span>
+    <span className="flex h-1.5 overflow-hidden rounded-full bg-plot-track @[40rem]:h-2"><span className={`rounded-full ${tone}`} style={{ width: `${Math.max(1, value / max * 100)}%` }} /></span>
     <span className={`text-right tabular-nums leading-none ${strong ? "font-semibold text-zinc-900" : "text-zinc-500"}`}>{value.toFixed(1)}</span>
   </span>;
   return <section className={`${PANEL_SHELL} @container min-w-0`}>
@@ -196,9 +200,9 @@ export function StrikesPanel({ fighters }: { fighters: Insightful[] }) {
         const strikes = fighter.insights?.strikes;
         return <div key={fighter.name} className={`min-w-0 ${two ? "" : "pt-2"}`}>
           {two ? columnHead(fighter) : null}
-          {strikes?.length ? <div role="img" className={`mx-auto grid max-w-md gap-y-2.5 ${CHART_TEXT}`}
+          {strikes?.length ? <div role="img" className={`mx-auto grid max-w-sm gap-y-2.5 ${CHART_TEXT}`}
             aria-label={`${fighter.name}, average significant strikes by round: ${strikes.map(round => `round ${round.round}, ${round.landed.toFixed(1)} landed and ${round.absorbed.toFixed(1)} absorbed over ${round.fights} ${round.fights === 1 ? "fight" : "fights"}`).join("; ")}`}>
-            {Array.from({ length }, (_, index) => strikes[index]).map((round, index) => <div key={index} aria-hidden="true" className="grid grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-x-2">
+            {Array.from({ length }, (_, index) => strikes[index]).map((round, index) => <div key={index} aria-hidden="true" className={`grid grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-x-2 ${round ? "" : "opacity-50"}`}>
               <span className="leading-tight">
                 <span className="block font-medium text-zinc-700">R{index + 1}</span>
                 <span className={`block whitespace-nowrap ${metaText}`}>{round ? `${round.fights} ${round.fights === 1 ? "fight" : "fights"}` : "none"}</span>
@@ -215,7 +219,7 @@ export function StrikesPanel({ fighters }: { fighters: Insightful[] }) {
 /** What a fighter's UFC decisions read on the cards on average, theirs then
  *  the opponent's, over every judge's card and every bout's fan average:
  *  three- and five-round bouts apart, their totals not being on one scale.
- *  The bar is the margin, winning every round on the left to losing every
+ *  The bar is the margin, losing every round on the left to winning every
  *  round on the right. */
 export function DecisionsPanel({ fighters, before }: { fighters: Insightful[]; before?: boolean }) {
   const two = fighters.length > 1;
@@ -250,15 +254,15 @@ export function DecisionsPanel({ fighters, before }: { fighters: Insightful[]; b
                 </dt>
                 <dd className="mt-1 flex items-baseline justify-between gap-2 whitespace-nowrap tabular-nums"
                   aria-label={`${lastName(fighter.name)} ${group.own.toFixed(1)}, opponents ${group.opponent.toFixed(1)}, a margin of ${signed} on average over ${group.fights} ${group.fights === 1 ? "fight" : "fights"}`}>
-                  <span className="text-base text-zinc-500"><span className="font-semibold text-zinc-900">{group.own.toFixed(1)}</span>–{group.opponent.toFixed(1)}</span>
+                  <span className="text-[17px] tracking-[-0.01em] text-zinc-400"><span className="font-semibold text-zinc-900">{group.own.toFixed(1)}</span> – {group.opponent.toFixed(1)}</span>
                   <span className={`${CHART_TEXT} font-semibold text-zinc-700`}>{signed}</span>
                 </dd>
                 <dd aria-hidden="true" className="mt-1.5">
-                  <span className="relative block h-2 rounded-full bg-zinc-100">
-                    {margin ? <span className={`absolute inset-y-0 ${margin > 0 ? `right-1/2 rounded-l-full ${WON}` : `left-1/2 rounded-r-full ${LOST}`}`} style={{ width: `${Math.max(1.5, reach)}%` }} /> : null}
-                    <span className="absolute inset-y-[-2px] left-1/2 w-px -translate-x-1/2 bg-zinc-400" />
+                  <span className="relative block h-1.5 rounded-full bg-plot-track">
+                    {margin ? <span className={`absolute inset-y-0 ${margin > 0 ? `left-1/2 rounded-r-full ${WON}` : `right-1/2 rounded-l-full ${LOST}`}`} style={{ width: `${Math.max(1.5, reach)}%` }} /> : null}
+                    <span className="absolute inset-y-[-3px] left-1/2 w-[2px] -translate-x-1/2 rounded-full bg-zinc-400" />
                   </span>
-                  <span className={`mt-1 flex justify-between ${metaText}`}><span>+{rounds}</span><span>Even</span><span>−{rounds}</span></span>
+                  <span className={`mt-1 flex justify-between ${metaText}`}><span>−{rounds}</span><span>Even</span><span>+{rounds}</span></span>
                 </dd>
               </div>;
             })}

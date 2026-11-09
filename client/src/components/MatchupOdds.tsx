@@ -74,7 +74,7 @@ function Price({ quote, bet }: { quote: OddsQuote | undefined; bet?: Bet }) {
   const { toggle, isSelected } = useParlay();
   const best = bestPrice(quote);
   if (!best) return <span className="self-center text-xs text-zinc-300 dark:text-zinc-600">—</span>;
-  if (!bet) return <span className="text-[11px] font-semibold tabular-nums text-zinc-900 @[40rem]:text-xs dark:text-zinc-100">{best.line}</span>;
+  if (!bet) return <span className="text-[11px] font-medium tabular-nums text-zinc-900 @[40rem]:text-[13px] dark:text-zinc-100">{best.line}</span>;
   const leg: ParlayLeg = { id: outcomeId(bet.outcome), fightId: bet.fightId, fightLabel: bet.fightLabel, market: bet.market, selection: bet.selection, price: best.line, outcome: bet.outcome };
   const selected = isSelected(leg.id);
   return (
@@ -83,7 +83,7 @@ function Price({ quote, bet }: { quote: OddsQuote | undefined; bet?: Bet }) {
       onClick={(event) => { event.stopPropagation(); toggle(leg); }}
       aria-pressed={selected}
       title={`${leg.selection} — click to ${selected ? "remove from" : "add to"} your parlay`}
-      className="rounded px-1 py-px text-[11px] font-semibold tabular-nums text-zinc-900 transition hover:opacity-70 @[40rem]:py-0.5 @[40rem]:text-xs dark:text-zinc-100"
+      className="rounded px-1 py-px text-[11px] font-medium tabular-nums text-zinc-900 transition hover:opacity-70 @[40rem]:py-0.5 @[40rem]:text-[13px] dark:text-zinc-100"
       style={selected ? { boxShadow: "0 0 0 2px var(--color-series-1)" } : undefined}
     >
       {best.line}
@@ -98,9 +98,9 @@ function Price({ quote, bet }: { quote: OddsQuote | undefined; bet?: Bet }) {
 function MethodMarkets({ odds, f1Name, f2Name, fightId }: { odds: MethodOdds; f1Name: string; f2Name: string; fightId?: string }) {
   const fightLabel = `${f1Name} vs ${f2Name}`;
   const methods = [
-    { label: "DEC", f1: odds.f1.decision, f2: odds.f2.decision, outcome: (winner: 1 | 2): Outcome => ({ fightId: fightId ?? "", winner, decision: true }) },
-    { label: "KO/TKO", f1: odds.f1.ko, f2: odds.f2.ko, outcome: (winner: 1 | 2): Outcome => ({ fightId: fightId ?? "", winner, decision: false, method: "KO/TKO" }) },
-    { label: "SUB", f1: odds.f1.submission, f2: odds.f2.submission, outcome: (winner: 1 | 2): Outcome => ({ fightId: fightId ?? "", winner, decision: false, method: "SUB" }) },
+    { label: "Decision", short: "DEC", f1: odds.f1.decision, f2: odds.f2.decision, outcome: (winner: 1 | 2): Outcome => ({ fightId: fightId ?? "", winner, decision: true }) },
+    { label: "KO/TKO", short: "KO/TKO", f1: odds.f1.ko, f2: odds.f2.ko, outcome: (winner: 1 | 2): Outcome => ({ fightId: fightId ?? "", winner, decision: false, method: "KO/TKO" }) },
+    { label: "Submission", short: "SUB", f1: odds.f1.submission, f2: odds.f2.submission, outcome: (winner: 1 | 2): Outcome => ({ fightId: fightId ?? "", winner, decision: false, method: "SUB" }) },
   ] as const;
   const visible = methods.filter((m) => m.f1 || m.f2);
 
@@ -125,25 +125,28 @@ function MethodMarkets({ odds, f1Name, f2Name, fightId }: { odds: MethodOdds; f1
   const totalOutcome = (side: "over" | "under"): Outcome => ({ fightId: fightId ?? "", totalRounds: { side, line: closestLine ? Number.parseFloat(closestLine.rounds) + 0.5 : 0 } });
 
   return (
-    <div className="border-t border-zinc-200 px-1.5 py-1 @[40rem]:px-2.5 @[40rem]:py-2 dark:border-zinc-700">
+    <div className="border-t border-zinc-100 px-1.5 py-1 @[40rem]:px-3 @[40rem]:py-2.5">
       {visible.length ? (
-        <div className="grid grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1fr)] items-center gap-x-0.5 @[40rem]:grid-cols-[minmax(0,1fr)_3.25rem_minmax(0,1fr)] @[40rem]:gap-x-1 @[40rem]:gap-y-1.5">
+        <div className="grid grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1fr)] items-center gap-x-0.5 @[40rem]:grid-cols-[minmax(0,1fr)_4.75rem_minmax(0,1fr)] @[40rem]:gap-x-1 @[40rem]:gap-y-1">
           {visible.map((m) => <div className="contents" key={m.label}>
-            <Price quote={m.f1} bet={bet("Method", `${f1Name} by ${m.label}`, m.outcome(1))} />
-            <span className="text-[8px] font-semibold text-zinc-500 @[40rem]:text-[9px]">{m.label}</span>
-            <Price quote={m.f2} bet={bet("Method", `${f2Name} by ${m.label}`, m.outcome(2))} />
+            <Price quote={m.f1} bet={bet("Method", `${f1Name} by ${m.short}`, m.outcome(1))} />
+            <span className="truncate text-[10px] text-zinc-500 @[40rem]:text-[11px]">
+              <span className="@[40rem]:hidden">{m.short}</span><span className="hidden @[40rem]:inline">{m.label}</span>
+            </span>
+            <Price quote={m.f2} bet={bet("Method", `${f2Name} by ${m.short}`, m.outcome(2))} />
           </div>)}
         </div>
       ) : null}
-      {mean ? <div className="mt-1.5 text-[8px] text-zinc-400">Average closing odds</div> : null}
+      {mean ? <div className="mt-1.5 text-[9px] text-zinc-400">Average closing odds</div> : null}
       {closestLine ? (
-        <div className={`flex flex-col @[40rem]:gap-1 ${visible.length ? "-mx-1.5 mt-1 border-t border-zinc-200 px-1.5 pt-1 @[40rem]:-mx-2.5 @[40rem]:mt-1.5 @[40rem]:px-2.5 @[40rem]:pt-1.5 dark:border-zinc-700" : ""}`}>
+        // One line: the toss-up total, Over on the left and Under on the right.
+        <div className={`grid grid-cols-1 gap-y-0.5 @[40rem]:grid-cols-2 @[40rem]:gap-x-4 ${visible.length ? "-mx-1.5 mt-1 border-t border-zinc-100 px-1.5 pt-1 @[40rem]:-mx-3 @[40rem]:mt-2 @[40rem]:px-3 @[40rem]:pt-2" : ""}`}>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[8px] font-semibold text-zinc-500 @[40rem]:text-[9px]">Over {closestLine.rounds}<span className="hidden @[24rem]:inline"> rounds</span></span>
+            <span className="text-[10px] text-zinc-500 @[40rem]:text-[11px]">Over {closestLine.rounds}</span>
             <Price quote={closestLine.over} bet={bet("Total rounds", `Over ${closestLine.rounds} rounds`, totalOutcome("over"))} />
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[8px] font-semibold text-zinc-500 @[40rem]:text-[9px]">Under {closestLine.rounds}<span className="hidden @[24rem]:inline"> rounds</span></span>
+            <span className="text-[10px] text-zinc-500 @[40rem]:text-[11px]">Under {closestLine.rounds}</span>
             <Price quote={closestLine.under} bet={bet("Total rounds", `Under ${closestLine.rounds} rounds`, totalOutcome("under"))} />
           </div>
         </div>
@@ -446,13 +449,13 @@ export default function MatchupOdds({ f1, f2, f1Open, f2Open, f1Name, f2Name, pr
   const hasOpen = Boolean(f1Open || f2Open);
   const fightLabel = `${f1Name} vs ${f2Name}`;
   return (
-    <div className="odds-pair w-full overflow-hidden rounded-lg border text-center" aria-label="Pre-fight betting odds">
-      {f1 || f2 ? <div className="grid grid-cols-[minmax(0,1fr)_1rem_minmax(0,1fr)] items-center gap-y-0.5 px-1 py-1.5 @[40rem]:grid-cols-[minmax(0,1fr)_2rem_minmax(0,1fr)] @[40rem]:py-3">
-        <Moneyline leg={moneylineLeg(fightId, fightLabel, 1, f1Name, f1)} value={f1} name={f1Name} className="col-start-1 row-start-1 text-[11px] font-semibold leading-4 tracking-tight tabular-nums @[40rem]:text-base @[40rem]:leading-6" />
-        <Moneyline leg={moneylineLeg(fightId, fightLabel, 2, f2Name, f2)} value={f2} name={f2Name} className="col-start-3 row-start-1 text-[11px] font-semibold leading-4 tracking-tight tabular-nums @[40rem]:text-base @[40rem]:leading-6" />
+    <div className="odds-pair w-full overflow-hidden rounded-xl border text-center" aria-label="Pre-fight betting odds">
+      {f1 || f2 ? <div className="grid grid-cols-[minmax(0,1fr)_1rem_minmax(0,1fr)] items-center gap-y-0.5 px-1 py-1.5 @[40rem]:grid-cols-[minmax(0,1fr)_2rem_minmax(0,1fr)] @[40rem]:py-3.5">
+        <Moneyline leg={moneylineLeg(fightId, fightLabel, 1, f1Name, f1)} value={f1} name={f1Name} className="col-start-1 row-start-1 text-[12px] font-semibold leading-4 tracking-tight tabular-nums @[40rem]:text-[20px] @[40rem]:leading-7" />
+        <Moneyline leg={moneylineLeg(fightId, fightLabel, 2, f2Name, f2)} value={f2} name={f2Name} className="col-start-3 row-start-1 text-[12px] font-semibold leading-4 tracking-tight tabular-nums @[40rem]:text-[20px] @[40rem]:leading-7" />
         {hasOpen ? <>
-          <span className="col-start-1 row-start-2 hidden whitespace-nowrap text-[9px] leading-3 tabular-nums text-zinc-500 @[40rem]:block">{f1Open ? `from ${f1Open}` : ""}</span>
-          <span className="col-start-3 row-start-2 hidden whitespace-nowrap text-[9px] leading-3 tabular-nums text-zinc-500 @[40rem]:block">{f2Open ? `from ${f2Open}` : ""}</span>
+          <span className="col-start-1 row-start-2 hidden whitespace-nowrap text-[10px] leading-4 tabular-nums text-zinc-400 @[40rem]:block">{f1Open ? `from ${f1Open}` : ""}</span>
+          <span className="col-start-3 row-start-2 hidden whitespace-nowrap text-[10px] leading-4 tabular-nums text-zinc-400 @[40rem]:block">{f2Open ? `from ${f2Open}` : ""}</span>
         </> : null}
         <span className="col-start-2 row-start-1 row-span-2 grid self-stretch">
           {movement ? <Movement movement={movement} name={movement.toward === "f1" ? f1Name : f2Name} /> : <span className="self-center text-[9px] text-zinc-500" aria-hidden="true">vs</span>}

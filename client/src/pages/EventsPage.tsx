@@ -44,7 +44,7 @@ function beltTag(fight: EventFight) {
   return fight.title_type === "interim" ? TITLE_TAG.interim
     : fight.title_type === "title" ? TITLE_TAG.title : null;
 }
-const METHOD_TAG = "shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
+const METHOD_TAG = "shrink-0 rounded-md px-1.5 py-px text-[10px] font-semibold uppercase leading-4 tracking-[0.02em]";
 const MONTHS = [
   "January",
   "February",
@@ -326,9 +326,9 @@ function EventSidebar({
         >
           {(drawn ? groups : []).map(([yearMonth, list]) => (
             <div key={yearMonth}>
-              {yearMonth && yearMonth !== "potential" ? <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
-                <span>{yearMonth.slice(0, 4)}</span>
-                <span>{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
+              {yearMonth && yearMonth !== "potential" ? <div className="sticky top-0 z-10 -mx-2 mb-0.5 flex items-baseline gap-1.5 bg-white px-4 pb-1.5 pt-3 text-[13px]">
+                <span className="font-semibold text-zinc-900">{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
+                <span className="text-zinc-400">{yearMonth.slice(0, 4)}</span>
               </div> : null}
               <div className="flex flex-col gap-1 pb-2">
                 {list.map((event) => (
@@ -430,7 +430,7 @@ function FighterBlock({
 }) {
   const dimmed = past && side.outcome === "loss";
   const rank = side.ranking?.rank === "IC" || side.ranking?.rank === "I" ? "I" : rankLabel(side.ranking) || "NR";
-  const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title={rankingTitle(side.ranking, past)}>{rank}</span>;
+  const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-[18px] min-w-6 shrink-0 items-center justify-center rounded-md px-1 text-[10.5px] font-semibold leading-none tabular-nums ${rank === "C" ? "bg-amber-400/15 text-belt" : rank === "I" ? "bg-zinc-100 text-belt-interim" : "bg-zinc-100 text-zinc-500"}`} title={rankingTitle(side.ranking, past)}>{rank}</span>;
   const nameBlock = (
     <div className={`min-w-0 max-w-full ${align === "right" ? "text-right" : ""}`}>
       {/* Mirrored for the right corner: ranking outermost, then the name,
@@ -549,13 +549,13 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
           motion carries it alone. */}
       {live ? <>
         <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-        <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-emerald-700">Live</span>
         <span className="text-[10px] text-zinc-300" aria-hidden="true">·</span>
       </> : null}
       <span className="text-[10px] font-medium text-zinc-500">{divisionName(fight.weight_class, fight.catch_weight)}</span>
       {fight.scheduled_rounds ? <span className="text-[10px] font-medium text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
       {beltTag(fight) ? (
-        <span className={`rounded px-1 py-px text-[9px] font-bold uppercase ${beltTag(fight)!.className}`}>
+        <span className={`rounded-md px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-[0.04em] ${beltTag(fight)!.className}`}>
           {beltTag(fight)!.label}
         </span>
       ) : null}
@@ -638,14 +638,14 @@ function CompactSide({ side, fight, done, other, profileLink = false }: { side: 
           <FormDots side={side} align="left" />
         </div>
       </div>
-      {/* A bout with no line yet keeps the same box, holding a dash, so
-          every row on the card lines up. */}
-      <Moneyline
+      {/* One side priced: the other keeps its box with a dash so the pair
+          lines up. Neither priced: no empty boxes, the name gets the width. */}
+      {fight.odds?.f1.close || fight.odds?.f2.close ? <Moneyline
         leg={moneylineLeg(betFightId(fight, done), fightLabel, corner, side.name, price)}
         value={price || "-"}
         name={side.name}
         className={`odds-pair w-14 shrink-0 rounded-md border py-0.5 text-center text-[12px] font-semibold tabular-nums ${price ? "" : "text-zinc-300"} ${other.outcome === "win" ? "opacity-60" : ""}`}
-      />
+      /> : null}
     </div>
   );
 }
@@ -665,11 +665,11 @@ function CompactFightRow({ fight, done, live, cancellation }: { fight: EventFigh
       <div className="flex items-center gap-1.5 text-[10px] leading-4 text-zinc-400">
         {live ? <>
           <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-          <span className="font-bold uppercase tracking-[0.14em] text-emerald-700">Live</span>
+          <span className="font-semibold uppercase tracking-[0.06em] text-emerald-700">Live</span>
         </> : null}
         <span className="font-medium text-zinc-500">{divisionName(fight.weight_class, fight.catch_weight)}</span>
         {fight.scheduled_rounds ? <span>{roundsLabel(fight.scheduled_rounds)}</span> : null}
-        {title ? <span className={`rounded px-1 py-px text-[9px] font-bold uppercase leading-3 ${title.className}`}>{title.label}</span> : null}
+        {title ? <span className={`rounded-md px-1.5 py-px text-[9.5px] font-semibold uppercase leading-3 tracking-[0.04em] ${title.className}`}>{title.label}</span> : null}
         <ControversyTag fight={fight} />
         {cancellation ? <span className="ml-auto font-semibold text-red-700 dark:text-red-300">Cancelled</span> : null}
         {result ? <span className="ml-auto text-right" title={fight.method_details ?? result}>{result}</span> : null}
@@ -764,11 +764,11 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
             <div className="flex w-full flex-wrap items-center justify-center gap-1.5">
               {live ? <>
                 <span className="live-dot h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
-                <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
+                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.06em] text-emerald-700">Live</span>
               </> : null}
               {fight.scheduled_rounds ? <span className="whitespace-nowrap text-[10px] font-medium text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
               {beltTag(fight) ? (
-                <span className={`shrink-0 rounded px-1 py-px text-[9px] font-bold uppercase ${beltTag(fight)!.className}`}>
+                <span className={`shrink-0 rounded-md px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-[0.04em] ${beltTag(fight)!.className}`}>
                   {beltTag(fight)!.label}
                 </span>
               ) : null}
@@ -809,7 +809,7 @@ const STATUS_TAG = {
   next: { label: "Next", className: "bg-amber-100 text-amber-700" },
 } as const;
 
-const TAG_SHAPE = "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em]";
+const TAG_SHAPE = "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.04em]";
 
 const SEGMENT_LABEL: Record<CardSegment, string> = {
   main: "Main card",

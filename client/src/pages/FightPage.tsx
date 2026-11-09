@@ -55,7 +55,7 @@ import { useShortcutNav } from "../shortcuts";
 import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import OppositionDetails from "../components/OppositionDetails";
 import TapeHistory from "../components/TapeHistory";
-import { DecisionsPanel, RoundsPanel, SideName, StrikesPanel } from "../components/FightInsights";
+import { DecisionsPanel, RoundsPanel, StrikesPanel } from "../components/FightInsights";
 import { betFightId } from "../parlay";
 
 const shell = PANEL_SHELL;
@@ -109,14 +109,14 @@ function WeightClassLabel({ fight }: { fight: Matchup }) {
   const tournament = belt === "tuf" || belt === "tournament";
   return (
     <span
-      className={`inline-flex flex-col items-center text-balance rounded-xl border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[9px] uppercase leading-[13px] tracking-[0.05em] @[30rem]:flex-row @[30rem]:rounded-full @[30rem]:px-2.5 @[30rem]:text-[10px] @[30rem]:leading-4 @[30rem]:tracking-[0.14em] ${
+      className={`inline-flex flex-col items-center text-balance text-[11px] leading-4 @[30rem]:flex-row @[30rem]:text-[13px] ${
         belt === "interim"
-          ? "font-bold text-belt-interim"
+          ? "font-semibold text-belt-interim"
           : belt
             ? tournament
               ? "font-semibold text-zinc-600"
-              : "font-bold text-belt"
-            : "font-semibold text-zinc-500"
+              : "font-semibold text-belt"
+            : "font-medium text-zinc-700"
       }`}
     >
       {belt === "tuf" ? "TUF Tournament" : belt === "tournament" ? "Tournament" : (
@@ -126,7 +126,7 @@ function WeightClassLabel({ fight }: { fight: Matchup }) {
           {belt ? " Title" : ""}
         </>
       )}
-      {fight.scheduled_rounds ? <span className="whitespace-nowrap text-zinc-400 @[30rem]:ml-1.5">{roundsLabel(fight.scheduled_rounds)}</span> : null}
+      {fight.scheduled_rounds ? <span className="whitespace-nowrap font-normal text-zinc-500 @[30rem]:ml-1.5"><span className="max-@[30rem]:hidden" aria-hidden="true">· </span>{roundsLabel(fight.scheduled_rounds)}</span> : null}
     </span>
   );
 }
@@ -163,7 +163,7 @@ function FighterHero({
   past: boolean;
 }) {
   const rank = side.ranking?.rank === "IC" || side.ranking?.rank === "I" ? "I" : rankLabel(side.ranking) || "NR";
-  const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title={rankingTitle(side.ranking, past)}>{rank}</span>;
+  const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-md px-1.5 text-[11px] font-semibold leading-none tabular-nums ${rank === "C" ? "bg-amber-400/15 text-belt" : rank === "I" ? "bg-zinc-100 text-belt-interim" : "bg-zinc-100 text-zinc-500"}`} title={rankingTitle(side.ranking, past)}>{rank}</span>;
   const showResult = side.outcome ? RESULT_PREFIX[side.outcome] : undefined;
   const change = boutChange(side);
   const compactResult = result?.replace(/^(UNANIMOUS|SPLIT|MAJORITY)\b/, (word) => `${word[0]}-DEC`);
@@ -253,8 +253,6 @@ function FighterHero({
 // body is a divided stack of mirrored rows (f1 left, f2 right, the thing being
 // compared between them). Everything shared lives in FightStats.
 
-const FORM_LIMIT = 5;
-
 function formOutcomeWord(outcome: HistoryRow["outcome"]): string {
   switch (outcome) {
     case "win":
@@ -312,101 +310,48 @@ function FormTarget({ row, className, children }: { row: UfcHistoryRow; classNam
 
 /** Marks a bout fought outside the UFC, in the violet the fighter page uses. */
 function OutsideTag() {
-  return <span className="text-[9px] font-semibold uppercase leading-3 tracking-[0.04em] text-violet-600">Outside UFC</span>;
+  return <span className="shrink-0 text-[10px] font-medium leading-3 text-violet-600">Outside UFC</span>;
 }
 
-/** First name over everything after it, so "Rafael dos Anjos" keeps its
- *  particle with the surname. A single-word name sits on the surname line. */
-function splitName(name: string): [string, string] {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length < 2) return ["", parts[0] ?? name];
-  return [parts[0], parts.slice(1).join(" ")];
-}
-
-/** One stop in a fighter's run into this bout. The opponent leads — that is
- *  what the eye hunts for — with how it ended under it and the date last.
- *  Colour never carries the result alone: the mark spells it out as W/L/D/NC
- *  and screen readers are given the whole word. */
-function FormBout({ row }: { row: UfcHistoryRow }) {
-  const method = resultDot(row).shortMethod ?? "";
-  const [given, surname] = splitName(row.opponent.name);
-  return (
-    <FormTarget
-      row={row}
-      className="group flex h-full min-w-0 flex-col items-center gap-1 rounded-lg px-1.5 py-2 text-center transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900"
-    >
-      <span className="flex w-full min-w-0 flex-col text-[11px] leading-4">
-        <span className="block truncate font-medium text-zinc-500">{given || " "}</span>
-        <span className="block truncate font-semibold text-zinc-800">{surname}</span>
-      </span>
-      <span className="flex max-w-full flex-wrap items-center justify-center gap-1">
-        <FormMark row={row} />
-        <span className="text-[9px] font-semibold uppercase leading-4 tracking-[0.04em] text-zinc-500">
-          {method || "—"}
-        </span>
-      </span>
-      <span className={`block whitespace-nowrap leading-3 ${metaText}`}>
-        {formatDateShortWithYear(row.date)}
-      </span>
-      {row.promotion === "outside" ? <OutsideTag /> : null}
-    </FormTarget>
-  );
-}
-
-/** One stop as a line of its own, for a panel too narrow for five columns:
- *  the result and opponent, and under them how it ended and when. */
+/** One bout in a fighter's run into this one, newest first: the result, the
+ *  opponent (what the eye hunts for), then how it ended and when. Wide, the
+ *  method and date sit on the same line in their own columns; narrow, they
+ *  drop under the name. Colour never carries the result alone: the mark spells
+ *  it out as W/L/D/NC. */
 function FormListBout({ row }: { row: UfcHistoryRow }) {
   const method = resultDot(row).shortMethod ?? "";
   return (
     <FormTarget
       row={row}
-      className="flex min-w-0 items-start gap-1.5 rounded-lg px-1 py-1 transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900"
+      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900 @[56rem]:grid-cols-[auto_minmax(0,1fr)_4.5rem_5.5rem]"
     >
       <FormMark row={row} />
-      <span className="min-w-0 flex-1">
-        <span className={`block truncate ${CHART_TEXT} font-semibold leading-4 text-zinc-800`}>{row.opponent.name}</span>
-        <span className="block truncate text-[10px] leading-3 text-zinc-400">
-          <span className="font-semibold uppercase text-zinc-500">{method || "—"}</span> · {formatDateShortWithYear(row.date)}
+      <span className="min-w-0">
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="truncate text-[13px] font-medium leading-5 text-zinc-900">{row.opponent.name}</span>
+          {row.promotion === "outside" ? <OutsideTag /> : null}
         </span>
-        {row.promotion === "outside" ? <span className="mt-0.5 block leading-3"><OutsideTag /></span> : null}
+        <span className="block truncate text-[11px] leading-4 text-zinc-500 @[56rem]:hidden">
+          {method || "—"} · {formatDateShortWithYear(row.date)}
+        </span>
       </span>
+      <span className="hidden truncate text-[12px] text-zinc-600 @[56rem]:block">{method || "—"}</span>
+      <span className="hidden whitespace-nowrap text-right text-[12px] text-zinc-400 @[56rem]:block">{formatDateShortWithYear(row.date)}</span>
     </FormTarget>
   );
 }
 
-/** One fighter's last five, oldest to newest. Side by side the second half
- *  is mirrored so both latest bouts meet at the centre; too narrow, it
- *  becomes a newest-first list. */
+/** One fighter's last five as a newest-first list under their name. */
 function FormHalf({ name, rows, side }: { name: string; rows: UfcHistoryRow[]; side: "f1" | "f2" }) {
-  const chronological = [...rows].reverse();
-  const cells: (UfcHistoryRow | null)[] = [
-    ...Array<null>(Math.max(0, FORM_LIMIT - chronological.length)).fill(null),
-    ...chronological,
-  ];
-  const mirror = side === "f2" ? "@[56rem]:flex-row-reverse" : "";
   return (
     <div className="min-w-0" aria-label={`${name}'s last five`}>
-      <div className="px-1"><SideName name={name} /></div>
-      <div className="flex flex-col @[34rem]:hidden">
+      <h3 className="mb-1 flex items-center gap-2 px-2 text-[13px] font-semibold text-zinc-900" title={name}>
+        <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${side === "f1" ? "bg-f1" : "bg-f2"}`} />
+        <span className="truncate">{lastName(name)}</span>
+      </h3>
+      <div className="flex flex-col">
         {rows.length ? rows.map((row, index) => <FormListBout key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} row={row} />)
-          : <p className={`px-1 py-1 ${CHART_TEXT} text-zinc-400`}>No earlier bouts available.</p>}
-      </div>
-      <div className={`hidden items-stretch @[34rem]:flex ${mirror}`}>
-        {cells.map((row, index) =>
-          row ? (
-            <div key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} className="min-w-0 flex-1 basis-0">
-              <FormBout row={row} />
-            </div>
-          ) : (
-            <div
-              key={`empty-${index}`}
-              aria-hidden="true"
-              className={`flex min-w-0 flex-1 basis-0 items-center justify-center ${CHART_TEXT} text-zinc-300`}
-            >
-              —
-            </div>
-          ),
-        )}
+          : <p className={`px-2 py-1 ${CHART_TEXT} text-zinc-400`}>No earlier bouts available.</p>}
       </div>
     </div>
   );
@@ -414,9 +359,8 @@ function FormHalf({ name, rows, side }: { name: string; rows: UfcHistoryRow[]; s
 
 function FormTimeline({ fight, f1, f2 }: { fight: Matchup; f1: UfcHistoryRow[]; f2: UfcHistoryRow[] }) {
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] gap-x-2 px-2 py-2 @[34rem]:grid-cols-1 @[34rem]:gap-y-4 @[34rem]:px-3 @[34rem]:py-3 @[56rem]:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] @[56rem]:gap-x-3 @[56rem]:gap-y-0">
+    <div className="grid grid-cols-2 gap-x-3 px-2 pb-3 pt-1 @[34rem]:gap-x-8 @[34rem]:px-3">
       <FormHalf name={fight.f1.name} rows={f1} side="f1" />
-      <div aria-hidden="true" className="bg-zinc-100 @[34rem]:hidden @[56rem]:block @[56rem]:bg-zinc-200" />
       <FormHalf name={fight.f2.name} rows={f2} side="f2" />
     </div>
   );
@@ -440,6 +384,19 @@ function EnteringRow({ label, f1, f2, note, action }: { label: React.ReactNode; 
       action={action}
     />
   );
+}
+
+/** The two corners over the tape's columns: once, or over each half when
+ *  the tape splits into two columns. */
+function TapeHead({ fight, split }: { fight: Matchup; split: boolean }) {
+  const names = (className = "") => (
+    <div aria-hidden="true" className={`grid grid-cols-[minmax(0,1fr)_112px_minmax(0,1fr)] gap-2 pb-1 text-[12px] font-semibold ${className}`}>
+      <span className="flex min-w-0 items-center justify-end gap-1.5 text-zinc-700"><span className="truncate">{lastName(fight.f1.name)}</span><span className="h-2 w-2 shrink-0 rounded-full bg-f1" /></span>
+      <span />
+      <span className="flex min-w-0 items-center gap-1.5 text-zinc-700"><span className="h-2 w-2 shrink-0 rounded-full bg-f2" /><span className="truncate">{lastName(fight.f2.name)}</span></span>
+    </div>
+  );
+  return <div className={`grid gap-x-12 ${split ? "@[52rem]:grid-cols-2" : ""}`}>{names()}{split ? names("hidden @[52rem]:grid") : null}</div>;
 }
 
 function MatchupContext({ fight }: { fight: Matchup }) {
@@ -478,7 +435,7 @@ function MatchupContext({ fight }: { fight: Matchup }) {
       <EnteringRow label="UFC record" f1={fight.f1.ufc_record_before ?? "0-0"} f2={fight.f2.ufc_record_before ?? "0-0"} />
       {fight.scheduled_rounds === 5 ? <EnteringRow label="5-round fights" f1={fiveRounders(fight.f1)} f2={fiveRounders(fight.f2)} note="UFC bouts booked for five rounds before this one, however they ended" /> : null}
       <OppositionDetails key={fight.id} fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id}>
-        {action => <EnteringRow action={action} label={<span className="inline-block border-b border-current pb-0.5 text-zinc-700">OPP. Record</span>} f1={fight.f1.ufc_opponents_record_before ?? "0-0"} f2={fight.f2.ufc_opponents_record_before ?? "0-0"} note="Combined UFC record of their UFC opponents on the night they fought them — view fighters" />}
+        {action => <EnteringRow action={action} label={<span className="underline decoration-zinc-400 decoration-dotted underline-offset-[3px]">Opp. record</span>} f1={fight.f1.ufc_opponents_record_before ?? "0-0"} f2={fight.f2.ufc_opponents_record_before ?? "0-0"} note="Combined UFC record of their UFC opponents on the night they fought them — view fighters" />}
       </OppositionDetails>
       <EnteringRow label="Time out" f1={layoff(fight.f1.ufc_days_since_before, fight.f1.ufc_record_before)} f2={layoff(fight.f2.ufc_days_since_before, fight.f2.ufc_record_before)} note="Days since their previous UFC bout" />
       <EnteringRow label="Last fight" f1={lastFight(f1Last)} f2={lastFight(f2Last)} note="Result and method in each fighter's previous professional bout, in any promotion" />
@@ -1036,7 +993,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 {fight.awards?.length ? (
                   <div className="-mt-2 flex flex-wrap justify-center gap-1 pb-4">
                     {fight.awards.map((award) => (
-                      <Link key={award.category} to="/awards" title="Sherdog Year-End Awards" className={BONUS_TAG.replace("cursor-default", "transition hover:bg-amber-300")}>{award.label} {award.period}</Link>
+                      <Link key={award.category} to="/awards" title="Sherdog Year-End Awards" className={BONUS_TAG.replace("cursor-default", "transition hover:bg-amber-400/25")}>{award.label} {award.period}</Link>
                     ))}
                   </div>
                 ) : null}
@@ -1082,9 +1039,12 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                   {/* Wide: the saved Show more puts the pies beside the tape. Narrow: a
                       toggle under it opens them for this matchup only, closed by default. */}
                   <div className={`grid items-start gap-x-9 px-5 pb-3 ${settings.tapeAdvanced ? "@[40rem]:grid-cols-2 @[52rem]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" : ""}`}>
-                    <div className="matchup-comparisons grid min-w-0 content-start">
-                      <TaleOfTape fight={fight} compact />
-                      <MatchupContext fight={fight} />
+                    <div className="min-w-0">
+                      <TapeHead fight={fight} split={!settings.tapeAdvanced} />
+                      <div className={`matchup-comparisons grid min-w-0 content-start ${settings.tapeAdvanced ? "" : "tape-split"}`}>
+                        <TaleOfTape fight={fight} compact />
+                        <MatchupContext fight={fight} />
+                      </div>
                     </div>
                     <button
                       type="button"

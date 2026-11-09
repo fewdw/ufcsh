@@ -22,7 +22,7 @@ const shell = PANEL_SHELL;
 export function FightRailSkeleton() {
   return (
     <aside className={`hidden w-40 shrink-0 flex-col overflow-hidden sm:flex lg:w-48 ${shell}`} aria-label="Loading fight card">
-      <div className="border-b border-zinc-200 px-2 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">Card</div>
+      <div className="border-b border-zinc-100 px-2 py-2.5 text-center text-[12px] font-medium text-zinc-500">Card</div>
       <div className="flex min-h-0 flex-1 flex-col gap-1 p-1.5">
         {Array.from({ length: 5 }, (_, index) => (
           <div key={index} className="grid grid-cols-2 items-center gap-3 rounded-xl bg-zinc-50 px-1.5 py-2.5" aria-hidden="true">
@@ -125,7 +125,7 @@ export function FightRail({ eventId, currentId, returnDepth, onReselect }: {
   const search = cardFightSearch(location.search);
   return (
     <aside className={`hidden w-40 shrink-0 flex-col overflow-hidden sm:flex lg:w-48 ${shell}`}>
-      <div className="border-b border-zinc-200 px-2 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+      <div className="border-b border-zinc-100 px-2 py-2.5 text-center text-[12px] font-medium text-zinc-500">
         Card
       </div>
       <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto p-1.5">

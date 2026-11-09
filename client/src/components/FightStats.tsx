@@ -77,9 +77,9 @@ export function PanelHeading({
   divider?: boolean;
 }) {
   return (
-    <div className={`px-4 py-2.5 sm:px-5 sm:py-3 ${divider ? "border-b border-zinc-100" : ""}`}>
+    <div className={`px-4 pt-3 sm:px-5 sm:pt-4 ${divider ? "pb-1.5" : "pb-0"}`}>
       <div className="flex min-h-6 items-center justify-between gap-3">
-        <h2 className="shrink-0 whitespace-nowrap text-sm font-semibold text-zinc-900">{title}</h2>
+        <h2 className="shrink-0 whitespace-nowrap text-[15px] font-semibold tracking-[-0.01em] text-zinc-900">{title}</h2>
         {subtitle || aside ? (
           <div className="flex min-w-0 items-center justify-end gap-2">
             {subtitle ? (
@@ -106,16 +106,16 @@ const compareGrid =
   "grid grid-cols-[minmax(0,1fr)_5rem_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)]";
 const comparePad = "py-2";
 /** The middle column's quiet, uppercase caption. */
-export const compareLabel = `block truncate text-center ${CHART_TEXT} font-semibold uppercase leading-4 tracking-[0.12em] text-zinc-400`;
+export const compareLabel = `block truncate text-center ${CHART_TEXT} leading-4 text-zinc-500`;
 
 /** Small uppercase caption for any label inside a panel: chart names, column
  *  heads, group names. One style so every section reads as the same app. */
-export const sectionLabel = `${CHART_TEXT} font-semibold uppercase tracking-[0.12em] text-zinc-400`;
+export const sectionLabel = `${CHART_TEXT} font-medium text-zinc-500`;
 /** Dates and other trailing detail under a value. */
 export const metaText = "text-[10px] tabular-nums text-zinc-400";
 
 /** The value either side of it — the thing the eye should land on first. */
-export const compareValue = `truncate ${CHART_TEXT} font-semibold text-zinc-900`;
+export const compareValue = `truncate text-[13px] font-medium text-zinc-900`;
 
 export function PanelEmpty({ children }: { children: React.ReactNode }) {
   return <p className={`py-6 text-center ${CHART_TEXT} text-zinc-400`}>{children}</p>;
@@ -990,26 +990,26 @@ function ProfileRow({
       : (values.f1! < values.f2! ? "f1" : "f2");
 
   return (
-    <CareerStatDetails fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id} view={metricView(metric)} className="block w-full py-1 text-left">
-      <span className={`block text-center text-[10px] leading-4 text-zinc-500 @[40rem]:text-[11px]`}>
+    <CareerStatDetails fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id} view={metricView(metric)} className="block w-full rounded-lg px-1 py-1.5 text-left transition-colors hover:bg-zinc-50">
+      <span className={`mb-1 block text-center text-[11px] leading-4 text-zinc-600 @[40rem]:text-[12px]`}>
         <span className="@[40rem]:hidden">{metric.short}</span>
         <span className="hidden @[40rem]:inline">{metric.label}</span>
         {metric.better === "low" ? <span className="text-zinc-400"> ↓</span> : null}
         {median != null ? <span className="hidden text-zinc-400 @[40rem]:inline"> · median {profileText(median, metric.format)}</span> : null}
       </span>
-      <span className="grid grid-cols-2 items-center gap-x-1 @[40rem]:gap-x-1.5">
+      <span className="grid grid-cols-2 items-center gap-x-[3px]">
         {SIDES.map((side) => {
           const value = values[side];
           const width = value == null ? 3 : Math.max(3, (value / scale) * 100);
           const bar = (
-            <span key={`${side}-bar`} className={`relative flex h-2 items-center bg-plot-track @[40rem]:h-3 ${side === "f1" ? "justify-end" : "border-l border-plot-axis"}`}>
+            <span key={`${side}-bar`} className={`relative flex h-1.5 items-center bg-plot-track @[40rem]:h-2 ${side === "f1" ? "justify-end rounded-l-full" : "rounded-r-full"}`}>
               <span
-                className={`stat-bar plot-grow block h-full ${side === "f1" ? "rounded-l-[3px]" : "rounded-r-[3px]"}`}
+                className={`stat-bar plot-grow block h-full ${side === "f1" ? "rounded-l-full" : "rounded-r-full"}`}
                 data-stat-side={side}
                 style={{
                   width: value == null ? 3 : `${width}%`,
                   backgroundColor: value == null ? "var(--color-zinc-300)" : SIDE[side].fill,
-                  opacity: ahead && ahead !== side ? 0.55 : 1,
+                  opacity: ahead && ahead !== side ? 0.38 : 1,
                 }}
               />
               {median != null ? <MedianTick at={(median / scale) * 100} from={side === "f1" ? "right" : "left"} /> : null}
@@ -1018,14 +1018,14 @@ function ProfileRow({
           const figure = (
             <span
               key={`${side}-value`}
-              className={`${CHART_TEXT} tabular-nums ${side === "f1" ? "text-right" : "text-left"} ${ahead === side ? "font-bold" : "font-medium"}`}
-              style={{ color: value == null ? "var(--color-zinc-400)" : SIDE[side].ink }}
+              className={`text-[12px] tabular-nums @[40rem]:text-[13px] ${side === "f1" ? "text-right" : "text-left"} ${ahead === side ? "font-semibold text-zinc-900" : "font-medium text-zinc-500"}`}
+              style={{ color: value == null ? "var(--color-zinc-400)" : undefined }}
             >
               {profileText(value, metric.format)}
             </span>
           );
           return <span key={side}
-            className={`grid w-full items-center gap-x-1 @[40rem]:gap-x-1.5 ${side === "f1" ? "grid-cols-[2.25rem_minmax(0,1fr)] @[40rem]:grid-cols-[3rem_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)_2.25rem] @[40rem]:grid-cols-[minmax(0,1fr)_3rem]"}`}>
+            className={`grid w-full items-center gap-x-1.5 @[40rem]:gap-x-2.5 ${side === "f1" ? "grid-cols-[2.25rem_minmax(0,1fr)] @[40rem]:grid-cols-[3rem_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)_2.25rem] @[40rem]:grid-cols-[minmax(0,1fr)_3rem]"}`}>
             {side === "f1" ? [figure, bar] : [bar, figure]}
           </span>;
         })}
@@ -1037,20 +1037,20 @@ function ProfileRow({
 /** How a fighter's wins, or losses, have been split between the three endings. */
 function MethodBar({ side, counts, total }: { side: Side; counts: { ko: number; sub: number; decision: number }; total: number }) {
   const segments = [
-    { key: "ko", label: "KO/TKO", value: counts.ko, color: SIDE[side].deep },
-    { key: "sub", label: "Submission", value: counts.sub, color: SIDE[side].fill },
-    { key: "dec", label: "Decision or other", value: counts.decision, color: SIDE[side].soft },
+    { key: "ko", label: "KO/TKO", value: counts.ko, opacity: 1 },
+    { key: "sub", label: "Submission", value: counts.sub, opacity: 0.6 },
+    { key: "dec", label: "Decision or other", value: counts.decision, opacity: 0.3 },
   ];
   return (
     <>
       {/* None yet is an empty track, so both fighters' rows keep one shape. */}
-      <span className="flex h-2 w-full gap-[2px] overflow-hidden rounded-[3px] bg-plot-track @[36rem]:h-3" role="img" aria-label={total > 0 ? segments.map((segment) => `${segment.value} by ${segment.label}`).join(", ") : "None yet"}>
+      <span className="flex h-1.5 w-full gap-[2px] overflow-hidden rounded-full bg-plot-track @[36rem]:h-2" role="img" aria-label={total > 0 ? segments.map((segment) => `${segment.value} by ${segment.label}`).join(", ") : "None yet"}>
         {segments.filter((segment) => segment.value > 0).map((segment) => (
-          <span key={segment.key} title={`${segment.value} by ${segment.label}`} style={{ width: `${(segment.value / total) * 100}%`, backgroundColor: segment.color }} />
+          <span key={segment.key} title={`${segment.value} by ${segment.label}`} style={{ width: `${(segment.value / total) * 100}%`, backgroundColor: SIDE[side].fill, opacity: segment.opacity }} />
         ))}
       </span>
-      <span className="mt-0.5 block whitespace-nowrap text-[10px] leading-4 tabular-nums text-zinc-500 @[36rem]:mt-1 @[36rem]:text-[11px]">
-        {counts.ko} KO · {counts.sub} SUB · {counts.decision} DEC
+      <span className="mt-1 block whitespace-nowrap text-[10px] leading-4 tabular-nums text-zinc-500 @[36rem]:mt-1.5 @[36rem]:text-[11px]">
+        <span className="font-semibold text-zinc-800">{counts.ko}</span> KO · <span className="font-semibold text-zinc-800">{counts.sub}</span> Sub · <span className="font-semibold text-zinc-800">{counts.decision}</span> Dec
       </span>
     </>
   );
@@ -1071,7 +1071,7 @@ function MethodProfile({ fight, careers }: { fight: Matchup; careers: Record<Sid
     { key: "losses", label: "Losses", view: resultView("loss") },
   ] as const;
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-zinc-100 px-3 py-2.5 @[36rem]:gap-x-6 @[36rem]:px-4 @[36rem]:py-3">
+    <div className="mx-3 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-zinc-100 pb-3 pt-3 @[36rem]:mx-5 @[36rem]:gap-x-10">
       {rows.map((row) => (
         <CareerStatDetails key={row.key} fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id} view={row.view} className="block w-full min-w-0 py-1 text-left">
           <span className={`mb-1 block text-center ${sectionLabel}`}>{row.label}</span>
@@ -1110,10 +1110,15 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
         {medians ? <><MedianLabel medians={medians} before /> · </> : null}
         <span className="max-sm:hidden">Stats are before this fight</span><span className="sm:hidden">Before this fight</span>
       </>} />
-      <div className="grid grid-cols-2 gap-x-4 px-3 pb-1 pt-1.5 @[40rem]:gap-x-8 @[40rem]:px-4 @[40rem]:pt-2">
+      <div className="grid grid-cols-2 gap-x-4 px-3 pb-2 pt-1 @[40rem]:gap-x-10 @[40rem]:px-5">
         {groups.map((group) => (
           <div key={group.key} className="min-w-0">
-            <div className={`pb-0.5 pt-1 text-center ${sectionLabel}`}>{group.label}</div>
+            {/* Each half names its corners, so a column never has to be decoded. */}
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-1 pb-1 pt-1 text-[12px]">
+              <span className="flex min-w-0 items-center gap-1.5 text-zinc-500"><span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-f1" /><span className="truncate">{lastName(fight.f1.name)}</span></span>
+              <span className="font-semibold text-zinc-800">{group.label}</span>
+              <span className="flex min-w-0 items-center justify-end gap-1.5 text-zinc-500"><span className="truncate">{lastName(fight.f2.name)}</span><span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-f2" /></span>
+            </div>
             {group.metrics.map((metric) => (
               <ProfileRow key={metric.key} fight={fight} metric={metric} careers={careers} median={medians?.values[metric.key] ?? null} />
             ))}

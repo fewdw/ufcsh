@@ -51,15 +51,15 @@ function resultBadgeLetter(outcome: HistoryRow["outcome"], upcoming: boolean): s
   }
 }
 
-/** Finishes use deep colours; decisions use light colours, all with white letters. */
+/** Finishes are solid; decisions are a tint of the same hue, so the method reads before the letter. */
 function resultBadgeClasses(outcome: HistoryRow["outcome"], upcoming: boolean, method: string | null): string {
   if (upcoming) return "bg-sky-100 text-sky-700";
   const decision = isDecision(method);
   switch (outcome) {
-    case "win": return decision ? "bg-emerald-400 text-white" : "bg-emerald-800 text-white";
-    case "loss": return decision ? "bg-rose-300 text-white" : "bg-rose-800 text-white";
-    case "draw": return decision ? "bg-amber-300 text-white" : "bg-amber-700 text-white";
-    case "nc": return "bg-zinc-400 text-white";
+    case "win": return decision ? "bg-emerald-500/10 text-emerald-700 ring-1 ring-inset ring-emerald-600/70" : "bg-emerald-600 text-white";
+    case "loss": return decision ? "bg-rose-500/10 text-rose-700 ring-1 ring-inset ring-rose-500/70" : "bg-rose-600 text-white";
+    case "draw": return decision ? "bg-amber-400/10 text-amber-700 ring-1 ring-inset ring-amber-500/70" : "bg-amber-600 text-white";
+    case "nc": return "bg-zinc-200 text-zinc-600";
     default: return "bg-zinc-200 text-zinc-500";
   }
 }
@@ -120,7 +120,7 @@ function RecordWheel({ history, scope, record }: { history: (HistoryRow | Profes
   return (
     <div className="flex min-w-0 flex-col items-center gap-2">
       <div className="text-sm font-semibold tabular-nums text-zinc-900" title={scope === "ufc" ? "Current UFC-only record" : "Current verified complete professional record"}>
-        <span className="text-[10px] font-bold text-zinc-400">{scope === "ufc" ? "UFC" : "PRO"}</span> {record}
+        <span className="mr-1 text-[12px] font-medium text-zinc-500">{scope === "ufc" ? "UFC" : "Pro"}</span><span className="text-[15px]">{record}</span>
       </div>
       {bouts.length ? <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-3">
         <div
@@ -129,29 +129,29 @@ function RecordWheel({ history, scope, record }: { history: (HistoryRow | Profes
           role="img"
           aria-label={`${bouts.length} ${scope === "ufc" ? "UFC" : "professional"} bouts by result and method`}
         >
-          <div className="grid h-10 w-10 place-items-center rounded-full bg-white text-center shadow-[0_0_0_1px_rgba(0,0,0,0.04)] sm:h-12 sm:w-12">
-            <span className="text-sm font-semibold tabular-nums text-zinc-900">{bouts.length}<span className="block text-[8px] font-bold uppercase tracking-wider text-zinc-400">{scope === "ufc" ? "UFC" : "PRO"}</span></span>
+          <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-center sm:h-[60px] sm:w-[60px]">
+            <span className="text-base font-semibold leading-5 tabular-nums text-zinc-900">{bouts.length}<span className="block text-[10px] font-medium leading-3 text-zinc-400">{bouts.length === 1 ? "bout" : "bouts"}</span></span>
           </div>
         </div>
         <div>
           <div className="grid grid-cols-2 gap-x-4">
             <div>
-              <div className="mb-1 text-[8px] font-bold uppercase tracking-wider text-emerald-700">
-                Wins ({winRows.reduce((total, segment) => total + segment.count, 0)})
+              <div className="mb-1 text-[11px] font-semibold text-emerald-700">
+                Wins {winRows.reduce((total, segment) => total + segment.count, 0)}
               </div>
               {winRows.map((segment) => (
-                <div key={segment.key} className="flex items-center gap-1.5 text-[9px] leading-4 text-zinc-500">
+                <div key={segment.key} className={`flex items-center gap-1.5 text-[11px] leading-[18px] text-zinc-500 ${segment.count ? "" : "opacity-40"}`}>
                   <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
                   <span className="whitespace-nowrap"><strong className="font-semibold text-zinc-700">{segment.count}</strong> {segment.label}</span>
                 </div>
               ))}
             </div>
             <div>
-              <div className="mb-1 text-[8px] font-bold uppercase tracking-wider text-rose-700">
-                Losses ({lossRows.reduce((total, segment) => total + segment.count, 0)})
+              <div className="mb-1 text-[11px] font-semibold text-rose-700">
+                Losses {lossRows.reduce((total, segment) => total + segment.count, 0)}
               </div>
               {lossRows.map((segment) => (
-                <div key={segment.key} className="flex items-center gap-1.5 text-[9px] leading-4 text-zinc-500">
+                <div key={segment.key} className={`flex items-center gap-1.5 text-[11px] leading-[18px] text-zinc-500 ${segment.count ? "" : "opacity-40"}`}>
                   <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
                   <span className="whitespace-nowrap"><strong className="font-semibold text-zinc-700">{segment.count}</strong> {segment.label}</span>
                 </div>
@@ -161,7 +161,7 @@ function RecordWheel({ history, scope, record }: { history: (HistoryRow | Profes
           {extras.some((segment) => segment.count > 0) ? (
             <div className="mt-1.5 flex gap-3 border-t border-zinc-100 pt-1.5">
               {extras.filter((segment) => segment.count > 0).map((segment) => (
-                <div key={segment.key} className="flex items-center gap-1.5 text-[9px] text-zinc-500">
+                <div key={segment.key} className="flex items-center gap-1.5 text-[11px] text-zinc-500">
                   <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
                   <span>{segment.count} {segment.count === 1 ? segment.one : segment.label}</span>
                 </div>
@@ -209,7 +209,7 @@ function FighterAwards({ awards }: { awards: FighterAward[] }) {
   return (
     <div className="border-t border-zinc-100 pt-3 sm:pt-4">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Awards</h2>
+        <h2 className="text-[11px] font-medium text-zinc-500">Awards</h2>
         <Link to="/awards" className="text-[11px] text-zinc-400 transition hover:text-zinc-700">All awards</Link>
       </div>
       <ul className="mt-1.5 grid gap-x-4 gap-y-1 @[40rem]:grid-cols-2">
@@ -358,9 +358,9 @@ function PromotionLabel({ row, move, short, rank }: { row: HistoryRow | Professi
 
 function RosterBand({ band }: { band: CareerBand }) {
   const content = <><span>{band.label}</span>{band.date ? <span className="font-normal opacity-75">{band.observed ? "Observed " : ""}{formatDateShortWithYear(band.date)}</span> : null}</>;
-  const className = `flex min-h-12 flex-wrap items-center justify-center gap-x-2 px-4 py-3 text-sm font-semibold leading-6 @3xl:min-h-9 @3xl:py-1.5 ${band.signing
-    ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
-    : "bg-zinc-50 text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300"}`;
+  const className = `flex min-h-11 flex-wrap items-center justify-center gap-x-2 px-4 py-2.5 text-[13px] font-semibold leading-5 @3xl:min-h-8 @3xl:py-1.5 ${band.signing
+    ? "bg-emerald-500/[0.07] text-emerald-700"
+    : "bg-zinc-50 text-zinc-600"}`;
   return <div className={className} title={band.detail}>{content}<span className="sr-only">{band.detail}</span></div>;
 }
 
@@ -540,7 +540,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
       >
         <span className="flex w-full min-w-0 items-center gap-2.5">
           <span
-            className={`grid h-7 min-w-7 shrink-0 place-items-center self-center rounded-full px-1 text-[11px] font-bold leading-none ${resultBadgeClasses(row.outcome, row.upcoming, row.method)}`}
+            className={`grid h-7 min-w-7 shrink-0 place-items-center self-center rounded-lg px-1 text-[11px] font-bold leading-none ${resultBadgeClasses(row.outcome, row.upcoming, row.method)}`}
             title={bout.result}
             aria-hidden="true"
           >
@@ -549,10 +549,10 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
           <span className="sr-only">{bout.result}</span>
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-baseline gap-1.5">
-              <span className="min-w-0 flex-1 text-[11px] font-medium leading-5 text-zinc-500 [overflow-wrap:anywhere]">{bout.method}</span>
+              <span className="min-w-0 flex-1 text-[12px] font-medium leading-5 text-zinc-800 [overflow-wrap:anywhere]">{bout.method}</span>
               {bout.fighterOdds ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title={`${fighterName} ${bout.oddsLabel}`}>{bout.fighterOdds}</span> : null}
             </span>
-            {bout.detail ? <span className="block text-[11px] leading-4 text-zinc-500 [overflow-wrap:anywhere]">{bout.detail}</span> : null}
+            {bout.detail ? <span className="block truncate text-[11px] leading-4 text-zinc-500" title={bout.detail}>{bout.detail}</span> : null}
             <EnteringRecords career={row.career_record_before} ufc={row.record_before} name={fighterName} className="mt-0.5 w-full text-[10px] font-medium leading-4 text-zinc-400" />
           </span>
         </span>
@@ -756,8 +756,8 @@ function BioGrid({ bio, className = "" }: { bio: [string, ReactNode][]; classNam
     <dl className={`grid grid-cols-3 gap-x-4 gap-y-2.5 @[56rem]:grid-cols-6 ${className}`}>
       {bio.map(([label, value]) => (
         <div key={label} className={`min-w-0 ${wide[label] ?? ""}`} title={label === "Age" ? "Current age today" : undefined}>
-          <dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{label}</dt>
-          <dd className="text-sm font-medium tabular-nums text-zinc-800">{value}</dd>
+          <dt className="text-[11px] text-zinc-500">{label}</dt>
+          <dd className="text-[15px] font-medium tabular-nums text-zinc-900">{value}</dd>
         </div>
       ))}
     </dl>
@@ -946,11 +946,11 @@ export default function FighterPage() {
         <div ref={mainScroll} className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
         <section className={`${shell} @container px-4 py-4 @[30rem]:px-6 @[30rem]:py-5`}>
           <div className="flex flex-col gap-4 @[30rem]:gap-5">
-            <div className="flex min-w-0 items-center gap-4 @[30rem]:gap-6">
+            <div className="flex min-w-0 items-end gap-4 @[30rem]:gap-6">
               <div className="flex shrink-0 flex-col items-center gap-2">
                 <FighterPortrait src={fighter.photo_full_url} headshot={fighter.photo_url} name={fighter.name} size="profile" />
               </div>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 pb-1">
                 {/* The flag is held to the last word of the name, so it never
                     wraps onto a line by itself. */}
                 <h1 className="text-balance break-words text-xl font-semibold leading-tight tracking-tight text-zinc-950 @[30rem]:text-2xl @[56rem]:text-3xl">
@@ -961,9 +961,9 @@ export default function FighterPage() {
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-sm empty:hidden">
                   {/* With a verified history the records head their wheels below;
                       until then the pro record has no wheel, so it stays here. */}
-                  {fighter.record_verified ? null : <span className="font-semibold tabular-nums text-zinc-900" title="Professional record"><span className="text-[10px] font-bold text-zinc-400">PRO</span> {fighter.record}</span>}
+                  {fighter.record_verified ? null : <span className="font-semibold tabular-nums text-zinc-900" title="Professional record"><span className="text-[12px] font-medium text-zinc-500">Pro</span> {fighter.record}</span>}
                   {fighter.ranking ? (
-                    <span title="Current ranking from the source chosen on the Rankings page" className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${fighter.ranking.rank === "C" ? "bg-amber-100 text-belt" : fighter.ranking.rank === "IC" ? "bg-slate-100 text-belt-interim" : "bg-zinc-100 text-zinc-600"}`}>
+                    <span title="Current ranking from the source chosen on the Rankings page" className={`rounded-md px-2 py-0.5 text-[12px] font-semibold ${fighter.ranking.rank === "C" ? "bg-amber-400/15 text-belt" : fighter.ranking.rank === "IC" ? "bg-slate-100 text-belt-interim" : "bg-zinc-100 text-zinc-600"}`}>
                       {fighter.ranking.rank === "C" ? "Champion" : fighter.ranking.rank === "IC" ? "Interim champion" : `#${fighter.ranking.rank}`} · {fighter.ranking.division}
                     </span>
                   ) : null}

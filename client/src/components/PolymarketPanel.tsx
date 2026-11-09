@@ -423,7 +423,7 @@ export function MarketTeaser({ fightId, eventId }: { fightId: string; eventId: s
     <Link
       to={`/fights/${fightId}?tab=odds`}
       aria-label={`Polymarket: ${row.fight.f1.name} ${marketPct(q.p)}, ${row.fight.f2.name} ${marketPct(1 - q.p)}`}
-      className="matchup-polymarket inline-flex w-fit max-w-full flex-nowrap items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-200 px-2 py-1.5 text-[11px] text-zinc-500 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+      className="matchup-polymarket inline-flex w-fit max-w-full flex-nowrap items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1 text-[12px] text-zinc-500 transition-colors hover:bg-zinc-100"
     >
       <PolymarketLogo />
       <span className="font-semibold tabular-nums text-blue-700 dark:text-blue-400">

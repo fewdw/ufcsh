@@ -5,7 +5,7 @@ import type { DivisionMedians } from "../api";
  *  The bar's own box must be `relative`. */
 export function MedianTick({ at, from = "left" }: { at: number; from?: "left" | "right" }) {
   return (
-    <span aria-hidden="true" className="pointer-events-none absolute -inset-y-0.5 w-0.5 rounded-full bg-plot-median"
+    <span aria-hidden="true" className="pointer-events-none absolute -inset-y-[3px] w-[2px] rounded-full bg-plot-median opacity-80"
       style={{ [from]: `calc(${Math.min(100, Math.max(0, at))}% - 1px)` }} />
   );
 }

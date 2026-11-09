@@ -92,6 +92,8 @@ body {
 body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  /* A data site: figures in a column line up digit for digit. */
+  font-variant-numeric: tabular-nums;
 }
 
 .search-dialog::backdrop {
@@ -176,9 +178,11 @@ select:not([multiple]):not([size]) {
   --color-f1-soft: #172554;
   --color-f2-ink: #fca5a5;
   --color-f2-soft: #450a0a;
-  --color-plot-track: #27272a;
-  --color-plot-axis: #3f3f46;
-  --color-plot-median: #f4f4f5;
+  --color-plot-track: #212328;
+  --color-plot-axis: #2e3036;
+  --color-plot-median: #d4d4d8;
+  --color-f1: #5a9af8;
+  --color-f2: #f06666;
   --color-belt: #fbbf24;
   --color-belt-interim: #cbd5e1;
   /* The ordered round ramp runs the other way on a dark surface so its steps
@@ -189,37 +193,37 @@ select:not([multiple]):not([size]) {
   --color-round-4: #60a5fa;
   --color-round-5: #93c5fd;
 }
-.dark .bg-white { background-color: #18181b !important; }
-.dark .bg-white\/95 { background-color: rgb(24 24 27 / 0.95) !important; }
-.dark .bg-zinc-50 { background-color: #27272a !important; }
-.dark .bg-zinc-100 { background-color: #09090b !important; }
-.dark .bg-zinc-100\/50 { background-color: rgb(24 24 27 / 0.65) !important; }
+.dark .bg-white { background-color: #141518 !important; }
+.dark .bg-white\/95 { background-color: rgb(20 21 24 / 0.95) !important; }
+.dark .bg-zinc-50 { background-color: #1b1d21 !important; }
+.dark .bg-zinc-100 { background-color: #0c0d0f !important; }
+.dark .bg-zinc-100\/50 { background-color: rgb(20 21 24 / 0.65) !important; }
 .dark .bg-zinc-50\/70,
-.dark .bg-zinc-50\/50 { background-color: rgb(39 39 42 / 0.7) !important; }
-.dark .bg-zinc-100\/90 { background-color: rgb(39 39 42 / 0.9) !important; }
-.dark .bg-zinc-200 { background-color: #3f3f46 !important; }
-.dark .bg-zinc-300 { background-color: #52525b !important; }
-.dark .bg-zinc-900 { background-color: #09090b !important; }
+.dark .bg-zinc-50\/50 { background-color: rgb(27 29 33 / 0.7) !important; }
+.dark .bg-zinc-100\/90 { background-color: rgb(27 29 33 / 0.9) !important; }
+.dark .bg-zinc-200 { background-color: #2a2c31 !important; }
+.dark .bg-zinc-300 { background-color: #3a3d43 !important; }
+.dark .bg-zinc-900 { background-color: #0c0d0f !important; }
 .dark .text-zinc-950,
 .dark .text-zinc-900,
-.dark .text-zinc-800 { color: #f4f4f5 !important; }
+.dark .text-zinc-800 { color: #ececee !important; }
 .dark .text-zinc-700,
-.dark .text-zinc-600 { color: #d4d4d8 !important; }
-.dark .text-zinc-500 { color: #a1a1aa !important; }
-.dark .text-zinc-400 { color: #a1a1aa !important; }
-.dark .text-zinc-300 { color: #71717a !important; }
-.dark .border-zinc-100 { border-color: #27272a !important; }
-.dark .border-zinc-200 { border-color: #3f3f46 !important; }
+.dark .text-zinc-600 { color: #c4c6cc !important; }
+.dark .text-zinc-500 { color: #9b9da5 !important; }
+.dark .text-zinc-400 { color: #8b8d95 !important; }
+.dark .text-zinc-300 { color: #62646b !important; }
+.dark .border-zinc-100 { border-color: #1e2024 !important; }
+.dark .border-zinc-200 { border-color: #24262b !important; }
 /* Breakpoint variants carry their own class names; without these a docked
    panel keeps its light-mode outline in dark mode. */
-.dark .md\:border-zinc-100 { border-color: #27272a !important; }
+.dark .md\:border-zinc-100 { border-color: #1e2024 !important; }
 .dark .md\:border-zinc-200,
-.dark .xl\:border-zinc-200 { border-color: #3f3f46 !important; }
+.dark .xl\:border-zinc-200 { border-color: #24262b !important; }
 .dark .border-zinc-300,
-.dark .border-zinc-400 { border-color: #52525b !important; }
+.dark .border-zinc-400 { border-color: #383a40 !important; }
 .dark .divide-zinc-50 > :not(:last-child),
-.dark .divide-zinc-100 > :not(:last-child) { border-color: #27272a !important; }
-.dark .ring-zinc-200 { --tw-ring-color: #52525b !important; }
+.dark .divide-zinc-100 > :not(:last-child) { border-color: #1e2024 !important; }
+.dark .ring-zinc-200 { --tw-ring-color: #383a40 !important; }
 .dark .bg-emerald-50 { background-color: #052e16 !important; }
 .dark .bg-emerald-100 { background-color: #064e3b !important; }
 /* The live bout's box: a faint green wash that deepens a touch on hover. */
@@ -270,14 +274,14 @@ select:not([multiple]):not([size]) {
 .dark .ring-amber-200,
 .dark .ring-amber-500 { --tw-ring-color: #b45309 !important; }
 .dark .ring-slate-200 { --tw-ring-color: #475569 !important; }
-.dark .ring-white { --tw-ring-color: #18181b !important; }
+.dark .ring-white { --tw-ring-color: #141518 !important; }
 .dark select,
 .dark input { color-scheme: dark; }
 /* A black button on a near-black panel disappears; on the dark theme the
    primary action inverts to a light pill instead (see ui.ts). */
 .dark .ui-primary { background-color: #f4f4f5 !important; color: #18181b !important; }
 /* A press, for the touch screens the hover rules below leave out. */
-.dark .active\:bg-zinc-100:active { background-color: #27272a !important; }
+.dark .active\:bg-zinc-100:active { background-color: #1d1f23 !important; }
 /* Like Tailwind's own hover: variant, only where a pointer can hover. A touch
    screen fires :hover on whatever a scrolling finger lands on. */
 @media (hover: hover) {
@@ -285,11 +289,11 @@ select:not([multiple]):not([size]) {
   .dark .hover\:bg-zinc-50:hover,
   .dark .hover\:bg-zinc-50\/80:hover,
   .dark .hover\:bg-zinc-50\/70:hover,
-  .dark .hover\:bg-zinc-100:hover { background-color: #27272a !important; }
+  .dark .hover\:bg-zinc-100:hover { background-color: #1d1f23 !important; }
   .dark .hover\:bg-zinc-200:hover,
-  .dark .hover\:bg-zinc-200\/60:hover { background-color: #3f3f46 !important; }
+  .dark .hover\:bg-zinc-200\/60:hover { background-color: #2a2c31 !important; }
   .dark .hover\:bg-white:hover,
-  .dark .hover\:bg-white\/70:hover { background-color: #27272a !important; }
+  .dark .hover\:bg-white\/70:hover { background-color: #1d1f23 !important; }
   .dark .hover\:bg-emerald-100:hover { background-color: #064e3b !important; }
   .dark .hover\:bg-rose-100:hover { background-color: #881337 !important; }
   .dark .hover\:bg-amber-100:hover { background-color: #78350f !important; }
@@ -305,7 +309,7 @@ select:not([multiple]):not([size]) {
   scrollbar-width: thin;
   scrollbar-color: #d4d4d8 transparent;
 }
-.dark * { scrollbar-color: #52525b transparent; }
+.dark * { scrollbar-color: #3a3d43 transparent; }
 
 /* Older Safari uses the pseudo-elements instead of the standard properties. */
 @supports not (scrollbar-width: thin) {
@@ -317,7 +321,7 @@ select:not([multiple]):not([size]) {
     border-radius: 999px;
     background: #d4d4d8;
   }
-  .dark ::-webkit-scrollbar-thumb { background: #52525b; }
+  .dark ::-webkit-scrollbar-thumb { background: #3a3d43; }
   ::-webkit-scrollbar-track,
   ::-webkit-scrollbar-corner { background: transparent; }
 }
@@ -425,6 +429,14 @@ select:not([multiple]):not([size]) {
   padding: 0;
 }
 .matchup-comparisons dl:first-of-type { border-top: 0; }
+/* With room and no pies beside it, the tape and the career rows flow into two
+   balanced columns instead of one long strip with empty space either side. */
+@container (min-width: 52rem) {
+  .matchup-comparisons.tape-split { display: block; columns: 2; column-gap: 48px; }
+  .matchup-comparisons.tape-split > div { display: contents; }
+  .matchup-comparisons.tape-split dl,
+  .matchup-comparisons.tape-split .matchup-context > :is(div, button) { break-inside: avoid; }
+}
 .matchup-comparisons dl,
 .matchup-context > :is(div, button) {
   min-height: 38px;
@@ -574,12 +586,12 @@ select:not([multiple]):not([size]) {
 }
 .odds-pair-divider { background: #e4e4e7; }
 .dark .odds-pair {
-  color: #f4f4f5;
-  border-color: #3f3f46;
-  background: linear-gradient(180deg, #27272a, #202023);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.025);
+  color: #ececee;
+  border-color: #24262b;
+  background: #181a1d;
+  box-shadow: none;
 }
-.dark .odds-pair-divider { background: #3f3f46; }
+.dark .odds-pair-divider { background: #2a2c31; }
 
 /* Rankings activity. Booked is warm (something is coming), fought lately is
    cool (it just happened); neither is win/loss red or green. Tints strong
@@ -639,6 +651,6 @@ select:not([multiple]):not([size]) {
 :root:not(.dark) .text-zinc-300:not([class*=":text-zinc"], [role="tooltip"] *, .bg-zinc-900 *) { color: #a1a1aa; }
 :root:not(.dark) .text-zinc-400:not([class*=":text-zinc"], [role="tooltip"] *, .bg-zinc-900 *) { color: #71717a; }
 :root:not(.dark) .text-zinc-500:not([class*=":text-zinc"], [role="tooltip"] *, .bg-zinc-900 *) { color: #52525b; }
-:root.dark .text-zinc-400:not([class*=":text-zinc"]),
-:root.dark .text-zinc-500:not([class*=":text-zinc"]) { color: #c4c4cc !important; }
-:root.dark .text-zinc-300:not([class*=":text-zinc"]) { color: #8b8b94 !important; }
+:root.dark .text-zinc-500:not([class*=":text-zinc"]) { color: #abadb5 !important; }
+:root.dark .text-zinc-400:not([class*=":text-zinc"]) { color: #93959e !important; }
+:root.dark .text-zinc-300:not([class*=":text-zinc"]) { color: #6b6d74 !important; }

@@ -21,7 +21,7 @@ export const BUTTON_SECONDARY = `${BUTTON} border border-zinc-200 bg-white px-3 
 export const BUTTON_DANGER = `ui-danger ${BUTTON} bg-rose-600 px-4 py-2 text-white hover:bg-rose-700`;
 
 /** The small uppercase label over a figure or a group of rows. */
-export const EYEBROW = "text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400";
+export const EYEBROW = "text-[11px] font-medium text-zinc-500";
 
 /** The ✕ that closes a dialog, sheet or panel: a bare glyph with a round
  *  hover. Pair it with `CLOSE_ICON` on the lucide X inside. */
@@ -29,7 +29,7 @@ export const CLOSE_BUTTON = "grid h-9 w-9 shrink-0 place-items-center rounded-fu
 export const CLOSE_ICON = "h-[18px] w-[18px]";
 /** How a bout ended, in a small coloured pill: "KO/TKO R1/3 3:12". */
 export const RESULT_PILL =
-  "inline-flex shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
+  "inline-flex shrink-0 rounded-md px-1.5 py-px text-[10px] font-semibold uppercase leading-4 tracking-[0.02em]";
 
 /** A dialog's or sheet's own title. */
 export const DIALOG_TITLE = "text-base font-semibold text-zinc-900";
