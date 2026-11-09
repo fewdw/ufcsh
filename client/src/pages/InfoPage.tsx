@@ -101,10 +101,9 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-11-08">November 8, 2026</time></p>
+            <p><time dateTime="2026-11-09">November 9, 2026</time></p>
             <ul>
-              <li>Event cards and matchups open right away, even while the events list is still loading.</li>
-              <li>If the events list can't load, the sidebar says so and offers a Retry button.</li>
+              <li>Behind-the-scenes improvements to how updates are released; nothing changes on the site.</li>
             </ul>
           </Section>
         </div>
