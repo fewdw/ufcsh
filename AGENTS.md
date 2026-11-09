@@ -55,14 +55,18 @@ small/large screens. Prefer the smallest maintainable solution.
 
 - `main` is production: every push deploys ufc.sh. `develop` collects finished
   features and is never deleted. Tasks branch from `develop`; PRs target it.
-- **"Merge" / "merge to develop"** (a task PR): update it against `develop`,
-  squash-merge, then clean up (below). Production is unchanged.
+- **"Merge" / "merge to develop"** (a task PR): run `./tools/merge.sh PR` in
+  the foreground (Bash timeout 600000). It updates the PR against `develop`,
+  runs CI, squash-merges, and does all the cleanup below. Production is unchanged.
 - **"Merge to main"** (a release): on `develop`, replace the entire changelog in
-  `client/src/pages/InfoPage.tsx` with the release date and a few short lines,
-  push, open a PR `develop` → `main`, get CI green, and merge it with a **merge
-  commit** (never squash). Then fast-forward `develop` to `main`. It is released
-  only when the `deploy-production` job on `main` succeeds: wait for it, and fix
-  or rerun a failure rather than reporting the merge as done.
+  `client/src/pages/InfoPage.tsx` with today's date and a few short lines, push,
+  then run `./tools/release.sh` in the foreground (Bash timeout 600000). It opens
+  the `develop` → `main` PR, runs CI, merges with a **merge commit** (never
+  squash), waits for `deploy-production`, and fast-forwards `develop` to `main`.
+  It is released only when the script reports `Done`; fix or rerun a failure
+  rather than reporting the merge as done.
+- Both scripts stop with a reason (conflict, failed check, missing changelog).
+  Don't redo their steps by hand or re-verify what they already checked.
 - A PR that already targets `main` (an urgent fix) is released the same way:
   changelog, CI, merge; then bring `develop` up to `main`.
 
@@ -76,7 +80,7 @@ small/large screens. Prefer the smallest maintainable solution.
 - Merge only when the user says so, and to `main` only when they say "merge to
   main". Production deploys after successful main checks. Never run
   `deploy/update.sh` unless asked.
-- After a merge: `./start stop`, release dev if this branch was on it
+- After a merge (`tools/merge.sh` does this): `./start stop`, release dev
   (`./deploy/dev-review.sh release BRANCH` on the VPS), remove the worktree, and
   delete the local/remote task branches (never `develop` or `main`).
 
