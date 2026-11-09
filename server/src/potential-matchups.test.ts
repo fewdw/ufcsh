@@ -111,6 +111,14 @@ test("a potential matchup's bet waits a year for the pair's booking, then is voi
     assert.equal(betContext("potential-wait-pair")?.moneyline?.f1, "-150");
     assert.equal(await open(), true);
     assert.deepEqual([potentialBooking(leg)?.id, potentialBooking(leg)?.event_complete], ["potential-wait-pair", 0]);
+    // Method props carried forward past their own read take no bets; the moneyline still does.
+    const props = (age: number) => db.prepare("UPDATE potential_matchups SET odds_json = json_set(odds_json, '$.props', json(?)) WHERE id = 'potential-wait-pair'")
+      .run(JSON.stringify({ f1: { ko: { label: "KO", prices: [{ bookmaker: "Book", line: "+300" }] } }, f2: {}, additional: [], fetched_at: Date.now() - age, final: false }));
+    props(10 * 60_000);
+    assert.ok(betContext("potential-wait-pair")?.markets);
+    props(46 * 60_000);
+    assert.equal(betContext("potential-wait-pair")?.markets, null);
+    assert.equal(betContext("potential-wait-pair")?.moneyline?.f1, "-150");
 
     // FightOdds.io goes quiet: its price stops taking bets, and the waiting leg
     // is taken back under the id BestFightOdds lists the same pair at.
@@ -126,6 +134,7 @@ test("a potential matchup's bet waits a year for the pair's booking, then is voi
     db.exec("DELETE FROM potential_matchups");
     assert.deepEqual([potentialBooking(leg)?.id, potentialBooking(leg)?.event_complete], ["potential-wait-pair", 0]);
     const after = Date.parse(`${deadline}T00:00:00Z`) + day;
+    assert.equal(potentialBooking(leg, after - 1)?.event_complete, 0, "the deadline day itself still waits");
     assert.equal(potentialBooking(leg, after), undefined);
 
     // A bout on the day it was placed or after the deadline doesn't count, nor
@@ -134,6 +143,8 @@ test("a potential matchup's bet waits a year for the pair's booking, then is voi
     event("potential-wait-late", iso(Date.parse(`${deadline}T00:00:00Z`) + day), 1); fight("potential-wait-b", "potential-wait-late", "win");
     event("potential-wait-dropped", iso(Date.now() - 20 * day), 1); fight("potential-wait-c", "potential-wait-dropped", null);
     assert.equal(potentialBooking(leg, after), undefined, "a booking after the deadline never revives the bet");
+    event("potential-wait-deadline", deadline, 1); fight("potential-wait-e", "potential-wait-deadline", "win");
+    assert.equal(potentialBooking(leg, after)?.id, "potential-wait-e", "a bout on the deadline counts");
     event("potential-wait-fought", iso(Date.now() - 10 * day), 1); fight("potential-wait-d", "potential-wait-fought", "win");
     assert.equal(potentialBooking(leg, after)?.id, "potential-wait-d");
     assert.equal(legState(leg, potentialBooking(leg, after)), "lost", "corners follow the fighters, not the card");

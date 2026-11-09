@@ -5,7 +5,7 @@ import { parseScheduledRounds } from "./fight-index.ts";
 import { predictionWindow, type PredictionContext, type PredictionFight } from "./predictions.ts";
 import { potentialDeadline, type BetContext, type BetMarkets, type StoredLeg } from "./bets.ts";
 import { fightIsComplete } from "./live-state.ts";
-import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialFight, potentialMatchups, potentialTakesBets } from "./potential-matchups.ts";
+import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, POTENTIAL_PROPS_TTL, potentialFight, potentialMatchups, potentialTakesBets } from "./potential-matchups.ts";
 
 const columns = `SELECT f.*, e.name AS event_name, e.date AS event_date, e.complete AS event_complete,
   e.early_prelims_at, e.prelims_at, e.main_card_at, o.f1_close AS f1_line, o.f2_close AS f2_line,
@@ -94,7 +94,8 @@ function potentialBetContext(id: string): BetContext | undefined {
   const fight: PredictionFight = { ...potentialFight(row), event_start: null, section_start: null, scheduled_rounds: null, f1_line: null, f2_line: null };
   let lines: any = null;
   try { lines = JSON.parse(row.odds_json); } catch { return undefined; }
-  const props = lines?.props;
+  // Props carried forward from a method read that has since failed take no bets.
+  const props = lines?.props && Date.now() - Number(lines.props.fetched_at) < POTENTIAL_PROPS_TTL ? lines.props : null;
   return { fight, bouts: [fight], moneyline: { f1: lines?.f1?.close ?? null, f2: lines?.f2?.close ?? null, final: false },
     markets: props ? { f1: props.f1 ?? {}, f2: props.f2 ?? {}, additional: Array.isArray(props.additional) ? props.additional : [], final: !!props.final } : null };
 }

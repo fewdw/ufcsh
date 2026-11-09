@@ -266,7 +266,9 @@ export class BetStore {
   /** A bet can be taken back only while every matchup on it still accepts bets. */
   private removable(legs: StoredLeg[]): boolean {
     return legs.every(leg => {
-      const context = this.context(potentialLeg(leg) ? this.booking(leg, this.now())?.id ?? leg.fightId : leg.fightId);
+      // A potential leg past its deadline unbooked is settled (void), not open.
+      const id = potentialLeg(leg) ? this.booking(leg, this.now())?.id : leg.fightId;
+      const context = id ? this.context(id) : undefined;
       return !!context && !this.open(context);
     });
   }
@@ -355,6 +357,8 @@ export class BetStore {
       if (!fight) continue;
       fights.set(key, fight);
       fights.set(fight.id, fight);
+      // A waiting leg keeps its own id, which may differ from the board's now.
+      if (!fights.has(leg.fightId)) fights.set(leg.fightId, fight);
     }
     return fights;
   }

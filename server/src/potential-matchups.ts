@@ -35,6 +35,9 @@ export function potentialMatchups(): PotentialMatchup[] {
 /** How long a board price stays good to bet on. A source that stops answering
  *  keeps its last snapshot on the page, but no longer takes bets at it. */
 export const POTENTIAL_PRICE_TTL = 30 * 60_000;
+/** Method props are read every 30 minutes, on top of the 5-minute board read
+ *  that carries them forward, so they are good for a little longer. */
+export const POTENTIAL_PROPS_TTL = 45 * 60_000;
 export const potentialTakesBets = (row: PotentialMatchup, now = Date.now()) =>
   !!row.f1_id && !!row.f2_id && row.f1_id !== row.f2_id && now - row.fetched_at < POTENTIAL_PRICE_TTL;
 
