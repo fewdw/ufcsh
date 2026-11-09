@@ -1,6 +1,8 @@
 /* oxlint-disable react/only-export-components -- moneylineLeg is a pure
    helper shared with OddsPair.tsx so both build the same leg from a click. */
 import { ArrowLeft, ArrowRight } from "lucide-react";
+import WinSplit from "./WinSplit";
+import { impliedChance, winShares } from "../winChance";
 import { oddsMovement, type OddsMovement } from "../oddsMovement";
 import { lastName } from "../format";
 import { useTooltip } from "../tooltip";
@@ -91,6 +93,17 @@ function Price({ quote, bet }: { quote: OddsQuote | undefined; bet?: Bet }) {
   );
 }
 
+/** How likely a method price says it is, as a bar growing out from the
+ *  label toward the corner's own side. Hidden where the card is narrow. */
+function ChanceBar({ quote, side }: { quote: OddsQuote | undefined; side: "f1" | "f2" }) {
+  const chance = impliedChance(bestPrice(quote)?.line);
+  return (
+    <span aria-hidden="true" className={`hidden h-1.5 rounded-full bg-plot-track @[40rem]:flex ${side === "f1" ? "justify-end" : ""}`}>
+      {chance != null ? <span className={`rounded-full ${side === "f1" ? "win-split-f1" : "win-split-f2"}`} style={{ width: `${Math.max(4, chance * 100)}%`, opacity: 0.85 }} /> : null}
+    </span>
+  );
+}
+
 /** The pre-fight method board, decision first since it is the single most
  * common way a bout ends, then the two finishes; a fourth row adds the
  * total-rounds line priced closest to even money — the real toss-up on the
@@ -127,12 +140,14 @@ function MethodMarkets({ odds, f1Name, f2Name, fightId }: { odds: MethodOdds; f1
   return (
     <div className="border-t border-zinc-100 px-1.5 py-1 @[40rem]:px-3 @[40rem]:py-2.5">
       {visible.length ? (
-        <div className="grid grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1fr)] items-center gap-x-0.5 @[40rem]:grid-cols-[minmax(0,1fr)_4.75rem_minmax(0,1fr)] @[40rem]:gap-x-1 @[40rem]:gap-y-1">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_2.5rem_minmax(0,1fr)_auto] items-center gap-x-0.5 @[40rem]:grid-cols-[3rem_minmax(0,1fr)_4.75rem_minmax(0,1fr)_3rem] @[40rem]:gap-x-1.5 @[40rem]:gap-y-1">
           {visible.map((m) => <div className="contents" key={m.label}>
             <Price quote={m.f1} bet={bet("Method", `${f1Name} by ${m.short}`, m.outcome(1))} />
+            <ChanceBar quote={m.f1} side="f1" />
             <span className="truncate text-[10px] text-zinc-500 @[40rem]:text-[11px]">
               <span className="@[40rem]:hidden">{m.short}</span><span className="hidden @[40rem]:inline">{m.label}</span>
             </span>
+            <ChanceBar quote={m.f2} side="f2" />
             <Price quote={m.f2} bet={bet("Method", `${f2Name} by ${m.short}`, m.outcome(2))} />
           </div>)}
         </div>
@@ -451,12 +466,13 @@ export default function MatchupOdds({ f1, f2, f1Open, f2Open, f1Name, f2Name, pr
   return (
     <div className="odds-pair w-full overflow-hidden rounded-xl border text-center" aria-label="Pre-fight betting odds">
       {f1 || f2 ? <div className="grid grid-cols-[minmax(0,1fr)_1rem_minmax(0,1fr)] items-center gap-y-0.5 px-1 py-1.5 @[40rem]:grid-cols-[minmax(0,1fr)_2rem_minmax(0,1fr)] @[40rem]:py-3.5">
-        <Moneyline leg={moneylineLeg(fightId, fightLabel, 1, f1Name, f1)} value={f1} name={f1Name} className="col-start-1 row-start-1 text-[12px] font-semibold leading-4 tracking-tight tabular-nums @[40rem]:text-[20px] @[40rem]:leading-7" />
-        <Moneyline leg={moneylineLeg(fightId, fightLabel, 2, f2Name, f2)} value={f2} name={f2Name} className="col-start-3 row-start-1 text-[12px] font-semibold leading-4 tracking-tight tabular-nums @[40rem]:text-[20px] @[40rem]:leading-7" />
+        <Moneyline leg={moneylineLeg(fightId, fightLabel, 1, f1Name, f1)} value={f1} name={f1Name} className="col-start-1 row-start-1 font-display text-[15px] font-semibold leading-4 tabular-nums @[40rem]:text-[30px] @[40rem]:leading-8" />
+        <Moneyline leg={moneylineLeg(fightId, fightLabel, 2, f2Name, f2)} value={f2} name={f2Name} className="col-start-3 row-start-1 font-display text-[15px] font-semibold leading-4 tabular-nums @[40rem]:text-[30px] @[40rem]:leading-8" />
         {hasOpen ? <>
           <span className="col-start-1 row-start-2 hidden whitespace-nowrap text-[10px] leading-4 tabular-nums text-zinc-400 @[40rem]:block">{f1Open ? `from ${f1Open}` : ""}</span>
           <span className="col-start-3 row-start-2 hidden whitespace-nowrap text-[10px] leading-4 tabular-nums text-zinc-400 @[40rem]:block">{f2Open ? `from ${f2Open}` : ""}</span>
         </> : null}
+        {winShares(f1, f2) ? <WinSplit f1={f1} f2={f2} size="lg" className="col-span-3 row-start-3 mt-2.5 hidden px-2 @[40rem]:block" /> : null}
         <span className="col-start-2 row-start-1 row-span-2 grid self-stretch">
           {movement ? <Movement movement={movement} name={movement.toward === "f1" ? f1Name : f2Name} /> : <span className="self-center text-[9px] text-zinc-500" aria-hidden="true">vs</span>}
         </span>

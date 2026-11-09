@@ -1,4 +1,4 @@
-import { MedianLabel, MedianTick } from "./DivisionMedian";
+import { MedianLabel } from "./DivisionMedian";
 import CareerStatDetails from "./CareerStatDetails";
 import { decidingRound } from "../decidingRound";
 import { PANEL } from "./chartTokens";
@@ -79,7 +79,7 @@ export function PanelHeading({
   return (
     <div className={`px-4 pt-3 sm:px-5 sm:pt-4 ${divider ? "pb-1.5" : "pb-0"}`}>
       <div className="flex min-h-6 items-center justify-between gap-3">
-        <h2 className="shrink-0 whitespace-nowrap text-[15px] font-semibold tracking-[-0.01em] text-zinc-900">{title}</h2>
+        <h2 className="shrink-0 whitespace-nowrap font-display text-[19px] font-semibold uppercase leading-6 tracking-[0.02em] text-zinc-900">{title}</h2>
         {subtitle || aside ? (
           <div className="flex min-w-0 items-center justify-end gap-2">
             {subtitle ? (
@@ -980,8 +980,6 @@ function ProfileRow({
     f1: careers.f1 ? metric.value(careers.f1) : null,
     f2: careers.f2 ? metric.value(careers.f2) : null,
   };
-  // The median shares the bars' scale, so a tick past both bars still fits.
-  const scale = Math.max(values.f1 ?? 0, values.f2 ?? 0, median ?? 0, 0.0001);
   const both = values.f1 != null && values.f2 != null;
   const ahead: Side | null = !both || values.f1 === values.f2
     ? null
@@ -989,47 +987,40 @@ function ProfileRow({
       ? (values.f1! > values.f2! ? "f1" : "f2")
       : (values.f1! < values.f2! ? "f1" : "f2");
 
+  // One bar split between the corners by who has the edge: the larger share
+  // is the better figure (the smaller one when lower is better), so the bar
+  // always reads "more of it is mine" without decoding direction.
+  const edge = (value: number) => metric.better === "low" ? 1 / Math.max(value, 0.01) : value;
+  const share = both ? (() => {
+    const [a, b] = [edge(values.f1!), edge(values.f2!)];
+    return a + b > 0 ? a / (a + b) : 0.5;
+  })() : null;
+  const figure = (side: Side) => (
+    <span className={`font-display text-[17px] font-semibold leading-none tabular-nums @[40rem]:text-[22px] ${side === "f1" ? "text-left" : "text-right"} ${values[side] == null ? "text-zinc-300" : ahead === side ? "text-zinc-900" : "text-zinc-400"}`}>
+      {profileText(values[side], metric.format)}
+    </span>
+  );
+
   return (
-    <CareerStatDetails fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id} view={metricView(metric)} className="block w-full rounded-lg px-1 py-1.5 text-left transition-colors hover:bg-zinc-50">
-      <span className={`mb-1 block text-center text-[11px] leading-4 text-zinc-600 @[40rem]:text-[12px]`}>
-        <span className="@[40rem]:hidden">{metric.short}</span>
-        <span className="hidden @[40rem]:inline">{metric.label}</span>
-        {metric.better === "low" ? <span className="text-zinc-400"> ↓</span> : null}
-        {median != null ? <span className="hidden text-zinc-400 @[40rem]:inline"> · median {profileText(median, metric.format)}</span> : null}
+    <CareerStatDetails fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id} view={metricView(metric)} className="grid w-full grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-end gap-x-2 rounded-lg px-1.5 py-2 text-left transition-colors hover:bg-zinc-50 @[40rem]:grid-cols-[3.75rem_minmax(0,1fr)_3.75rem] @[40rem]:gap-x-3">
+      {figure("f1")}
+      <span className="min-w-0 pb-px">
+        <span className="mb-1.5 block truncate text-center text-[11px] leading-4 text-zinc-600 @[40rem]:text-[12px]">
+          <span className="@[40rem]:hidden">{metric.short}</span>
+          <span className="hidden @[40rem]:inline">{metric.label}</span>
+          {metric.better === "low" ? <span className="text-zinc-400" title="Lower is better"> ↓</span> : null}
+          {median != null ? <span className="hidden text-zinc-400 @[48rem]:inline"> · median {profileText(median, metric.format)}</span> : null}
+        </span>
+        <span className="relative flex h-1.5 gap-[2px] @[40rem]:h-2">
+          {share == null ? <span className="flex-1 rounded-full bg-plot-track" /> : <>
+            <span className="stat-bar plot-grow win-split-f1 rounded-l-full" data-stat-side="f1" style={{ width: `${share * 100}%`, opacity: ahead === "f2" ? 0.4 : 1 }} />
+            <span className="stat-bar plot-grow win-split-f2 rounded-r-full" data-stat-side="f2" style={{ width: `${(1 - share) * 100}%`, opacity: ahead === "f1" ? 0.4 : 1 }} />
+          </>}
+          {/* Even: the middle of the bar. */}
+          <span aria-hidden="true" className="pointer-events-none absolute -inset-y-[3px] left-1/2 w-px -translate-x-1/2 bg-zinc-400/70" />
+        </span>
       </span>
-      <span className="grid grid-cols-2 items-center gap-x-[3px]">
-        {SIDES.map((side) => {
-          const value = values[side];
-          const width = value == null ? 3 : Math.max(3, (value / scale) * 100);
-          const bar = (
-            <span key={`${side}-bar`} className={`relative flex h-1.5 items-center bg-plot-track @[40rem]:h-2 ${side === "f1" ? "justify-end rounded-l-full" : "rounded-r-full"}`}>
-              <span
-                className={`stat-bar plot-grow block h-full ${side === "f1" ? "rounded-l-full" : "rounded-r-full"}`}
-                data-stat-side={side}
-                style={{
-                  width: value == null ? 3 : `${width}%`,
-                  backgroundColor: value == null ? "var(--color-zinc-300)" : SIDE[side].fill,
-                  opacity: ahead && ahead !== side ? 0.38 : 1,
-                }}
-              />
-              {median != null ? <MedianTick at={(median / scale) * 100} from={side === "f1" ? "right" : "left"} /> : null}
-            </span>
-          );
-          const figure = (
-            <span
-              key={`${side}-value`}
-              className={`text-[12px] tabular-nums @[40rem]:text-[13px] ${side === "f1" ? "text-right" : "text-left"} ${ahead === side ? "font-semibold text-zinc-900" : "font-medium text-zinc-500"}`}
-              style={{ color: value == null ? "var(--color-zinc-400)" : undefined }}
-            >
-              {profileText(value, metric.format)}
-            </span>
-          );
-          return <span key={side}
-            className={`grid w-full items-center gap-x-1.5 @[40rem]:gap-x-2.5 ${side === "f1" ? "grid-cols-[2.25rem_minmax(0,1fr)] @[40rem]:grid-cols-[3rem_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)_2.25rem] @[40rem]:grid-cols-[minmax(0,1fr)_3rem]"}`}>
-            {side === "f1" ? [figure, bar] : [bar, figure]}
-          </span>;
-        })}
-      </span>
+      {figure("f2")}
     </CareerStatDetails>
   );
 }

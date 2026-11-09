@@ -106,70 +106,50 @@ function RecordWheel({ history, scope, record }: { history: (HistoryRow | Profes
   const extras = count(extraDefinitions);
   const winRows = otherWins.count ? [...wins, otherWins] : wins;
   const lossRows = otherLosses.count ? [...losses, otherLosses] : losses;
-  // CSS conic gradients advance clockwise. Losses begin at 12 o'clock and run
-  // clockwise. Wins are placed in reverse at the end, so reading counterclockwise
-  // from 12 gives KO/TKO, SUB, DEC, then Other.
-  const segments = [...lossRows, ...extras, ...[...winRows].reverse()].filter((segment) => segment.count > 0);
-  let position = 0;
-  const gradient = segments.map((segment) => {
-    const start = position;
-    position += bouts.length ? (segment.count / bouts.length) * 100 : 0;
-    return `${segment.color} ${start}% ${position}%`;
-  }).join(", ");
+  const total = (rows: { count: number }[]) => rows.reduce((sum, row) => sum + row.count, 0);
+  const segments = [...winRows, ...lossRows, ...extras].filter((segment) => segment.count > 0);
+  const legend = (rows: typeof winRows) => rows.map((segment) => (
+    <div key={segment.key} className={`flex items-center gap-1.5 text-[11px] leading-[18px] text-zinc-500 ${segment.count ? "" : "opacity-40"}`}>
+      <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
+      <span className="whitespace-nowrap"><strong className="font-semibold text-zinc-700">{segment.count}</strong> {segment.label}</span>
+    </div>
+  ));
 
+  // The record as a scoreboard figure, and every bout behind it as one bar:
+  // wins (finishes darkest) then losses, then draws and no contests.
   return (
-    <div className="flex min-w-0 flex-col items-center gap-2">
-      <div className="text-sm font-semibold tabular-nums text-zinc-900" title={scope === "ufc" ? "Current UFC-only record" : "Current verified complete professional record"}>
-        <span className="mr-1 text-[12px] font-medium text-zinc-500">{scope === "ufc" ? "UFC" : "Pro"}</span><span className="text-[15px]">{record}</span>
+    <div className="min-w-0 flex-1" title={scope === "ufc" ? "Current UFC-only record" : "Current verified complete professional record"}>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[12px] font-medium text-zinc-500">{scope === "ufc" ? "UFC record" : "Pro record"}</span>
+        {bouts.length ? <span className="text-[11px] tabular-nums text-zinc-400">{bouts.length} {bouts.length === 1 ? "bout" : "bouts"}</span> : null}
       </div>
-      {bouts.length ? <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-2.5">
-        <div
-          className="grid h-16 w-16 shrink-0 place-items-center rounded-full sm:h-20 sm:w-20"
-          style={{ background: `conic-gradient(from 0deg, ${gradient})` }}
-          role="img"
-          aria-label={`${bouts.length} ${scope === "ufc" ? "UFC" : "professional"} bouts by result and method`}
-        >
-          <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-center sm:h-[60px] sm:w-[60px]">
-            <span className="text-base font-semibold leading-5 tabular-nums text-zinc-900">{bouts.length}<span className="block text-[10px] font-medium leading-3 text-zinc-400">{bouts.length === 1 ? "bout" : "bouts"}</span></span>
+      <div className="mt-0.5 font-display text-[40px] font-bold leading-none tabular-nums tracking-[0.01em] text-zinc-900">{record}</div>
+      {bouts.length ? <>
+        <div className="mt-3 flex h-2 gap-[2px] overflow-hidden rounded-full" role="img"
+          aria-label={`${bouts.length} ${scope === "ufc" ? "UFC" : "professional"} bouts: ${segments.map((segment) => `${segment.count} ${segment.key.replace("-", " ")}`).join(", ")}`}>
+          {segments.map((segment) => <span key={segment.key} title={`${segment.count} ${segment.key.startsWith("loss") ? "losses" : segment.key.startsWith("win") ? "wins" : ""} by ${segment.label}`.replace(" by Draws", " draws").replace(" by No contests", " no contests")} style={{ flex: segment.count, backgroundColor: segment.color }} />)}
+        </div>
+        <div className="mt-2.5 grid grid-cols-2 gap-x-3">
+          <div>
+            <div className="mb-0.5 text-[11px] font-semibold text-emerald-700">Wins {total(winRows)}</div>
+            {legend(winRows)}
+          </div>
+          <div>
+            <div className="mb-0.5 text-[11px] font-semibold text-rose-700">Losses {total(lossRows)}</div>
+            {legend(lossRows)}
           </div>
         </div>
-        <div>
-          <div className="grid grid-cols-2 gap-x-3">
-            <div>
-              <div className="mb-1 text-[11px] font-semibold text-emerald-700">
-                Wins {winRows.reduce((total, segment) => total + segment.count, 0)}
+        {extras.some((segment) => segment.count > 0) ? (
+          <div className="mt-1.5 flex gap-3 border-t border-zinc-100 pt-1.5">
+            {extras.filter((segment) => segment.count > 0).map((segment) => (
+              <div key={segment.key} className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
+                <span>{segment.count} {segment.count === 1 ? segment.one : segment.label}</span>
               </div>
-              {winRows.map((segment) => (
-                <div key={segment.key} className={`flex items-center gap-1.5 text-[11px] leading-[18px] text-zinc-500 ${segment.count ? "" : "opacity-40"}`}>
-                  <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
-                  <span className="whitespace-nowrap"><strong className="font-semibold text-zinc-700">{segment.count}</strong> {segment.label}</span>
-                </div>
-              ))}
-            </div>
-            <div>
-              <div className="mb-1 text-[11px] font-semibold text-rose-700">
-                Losses {lossRows.reduce((total, segment) => total + segment.count, 0)}
-              </div>
-              {lossRows.map((segment) => (
-                <div key={segment.key} className={`flex items-center gap-1.5 text-[11px] leading-[18px] text-zinc-500 ${segment.count ? "" : "opacity-40"}`}>
-                  <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
-                  <span className="whitespace-nowrap"><strong className="font-semibold text-zinc-700">{segment.count}</strong> {segment.label}</span>
-                </div>
-              ))}
-            </div>
+            ))}
           </div>
-          {extras.some((segment) => segment.count > 0) ? (
-            <div className="mt-1.5 flex gap-3 border-t border-zinc-100 pt-1.5">
-              {extras.filter((segment) => segment.count > 0).map((segment) => (
-                <div key={segment.key} className="flex items-center gap-1.5 text-[11px] text-zinc-500">
-                  <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
-                  <span>{segment.count} {segment.count === 1 ? segment.one : segment.label}</span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </div> : null}
+        ) : null}
+      </> : null}
     </div>
   );
 }
@@ -953,7 +933,7 @@ export default function FighterPage() {
               <div className="min-w-0 flex-1 pb-1">
                 {/* The flag is held to the last word of the name, so it never
                     wraps onto a line by itself. */}
-                <h1 className="text-balance break-words text-xl font-semibold leading-tight tracking-tight text-zinc-950 @[30rem]:text-2xl @[56rem]:text-3xl">
+                <h1 className="text-balance break-words font-display text-[28px] font-bold uppercase leading-[0.95] tracking-[0.01em] text-zinc-950 @[30rem]:text-[36px] @[56rem]:text-[44px]">
                   {fighter.name}
                   {fighter.country_code || fighter.country ? <>{"\u00a0"}<Flag code={fighter.country_code} name={fighter.country} className="text-[0.8em]" /></> : null}
                 </h1>
@@ -977,7 +957,7 @@ export default function FighterPage() {
             {/* Both records at once, side by side while the card is wide
                 enough and stacked when it is not. The professional wheel
                 waits until that history is verified. */}
-            <div className="hidden items-start justify-center gap-x-6 gap-y-5 border-t border-zinc-100 pt-3 empty:hidden sm:flex-wrap sm:gap-x-6 sm:pt-4 lg:flex">
+            <div className="hidden items-start gap-x-8 gap-y-5 border-t border-zinc-100 pt-4 empty:hidden lg:flex">
               {wheels}
             </div>
           </div>
@@ -985,7 +965,7 @@ export default function FighterPage() {
 
         {/* On a narrow window the wheels leave the header for a panel of
             their own under it, above the tabs, whichever tab is open. */}
-        <section className={`${shell} flex items-start justify-center gap-x-6 gap-y-5 px-4 py-4 sm:flex-wrap sm:gap-x-10 lg:hidden`}>
+        <section className={`${shell} flex items-start gap-x-6 gap-y-5 px-4 py-4 sm:gap-x-10 lg:hidden`}>
           {wheels}
         </section>
 

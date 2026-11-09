@@ -12,6 +12,7 @@ import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
 import BonusIcons from "../components/BonusIcons";
 import OddsPair from "../components/OddsPair";
+import WinSplit from "../components/WinSplit";
 import { Moneyline, moneylineLeg, OddsFormatTabs, OddsMarkets, type FightResult } from "../components/MatchupOdds";
 import { hasOddsMarkets } from "../oddsLayout";
 import FightView from "./FightPage";
@@ -439,7 +440,7 @@ function FighterBlock({
           overlapping it. */}
       <div className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
         {rankingBadge}
-        <span className={`min-w-0 break-words text-sm leading-5 font-semibold ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
+        <span className={`min-w-0 break-words font-display text-[20px] font-semibold uppercase leading-5 tracking-[0.01em] ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
           {profileLink && side.profile_eligible && side.id ? <Link to={`/fighters/${side.id}`} className="hover:underline">{side.name}</Link> : side.name}
         </span>
         <span className={`flex shrink-0 items-center gap-2 empty:hidden ${align === "right" ? "flex-row-reverse" : ""}`}>
@@ -515,6 +516,8 @@ function CenterBlock({ fight, past, cancellation }: { fight: EventFight; past: b
       <OddsPair f1={f1Odds} f2={f2Odds}
         f1Name={fight.f1.name} f2Name={fight.f2.name}
         fightId={betFightId(fight, past)} />
+      {/* The same prices as one blue-against-red split: who the market favours, at a glance. */}
+      {cancellation ? null : <WinSplit f1={f1Odds} f2={f2Odds} className="mt-1.5 px-0.5" />}
       {/* The result wraps rather than truncating: the round and the clock are
           the point of the line, and the centre column is narrow enough that
           "KO/TKO · R1 · 2:54" would lose its tail to an ellipsis. */}
@@ -679,6 +682,7 @@ function CompactFightRow({ fight, done, live, cancellation }: { fight: EventFigh
         <CompactSide side={fight.f1} other={fight.f2} fight={fight} done={done} profileLink={Boolean(cancellation)} />
         <CompactSide side={fight.f2} other={fight.f1} fight={fight} done={done} profileLink={Boolean(cancellation)} />
       </div>
+      {cancellation ? null : <WinSplit f1={fight.odds?.f1.close} f2={fight.odds?.f2.close} className="mt-0.5" />}
       {cancellation?.reason ? <p className="text-[10px] leading-4 text-red-700 dark:text-red-300">{cancellation.reason}</p> : null}
     </div>
   );
@@ -837,7 +841,7 @@ function SegmentBreak({ segment, at, unplaced = false }: { segment: CardSegment 
   return (
     // The containing row supplies a matching top rule at segment boundaries.
     <div className="flex items-center justify-between gap-3 border-b border-zinc-200 bg-white px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
-      <h2 className="min-w-0 text-sm font-semibold leading-5 tracking-tight text-zinc-900">{segment ? SEGMENT_LABEL[segment] : unplaced ? "Unplaced bouts" : "Fight card"}</h2>
+      <h2 className="min-w-0 font-display text-[19px] font-semibold uppercase leading-6 tracking-[0.02em] text-zinc-900">{segment ? SEGMENT_LABEL[segment] : unplaced ? "Unplaced bouts" : "Fight card"}</h2>
       {clock ? (
         <span className="shrink-0 rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium leading-4 tabular-nums text-zinc-600 @[34rem]:py-1" title="Announced start, in your time zone">
           {clock}
@@ -1038,7 +1042,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
             the right, centred against it, one per line at every width. */}
         <div className="flex items-center justify-between gap-3 px-3 py-2.5 @[34rem]:gap-5 @[34rem]:px-5 @[34rem]:py-3.5">
           <div className="min-w-0">
-            <h1 className="text-balance text-base font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-xl @[64rem]:text-2xl">{event.name}</h1>
+            <h1 className="text-balance font-display text-xl font-bold uppercase leading-none tracking-[0.01em] text-zinc-950 @[34rem]:text-[28px] @[64rem]:text-[34px]">{event.name}</h1>
             <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[34rem]:gap-x-2 @[34rem]:text-xs">
               {event.date ? (
                 <span className="whitespace-nowrap font-medium text-zinc-600">

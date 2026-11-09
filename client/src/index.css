@@ -1,4 +1,8 @@
 @import "tailwindcss";
+/* Display face: names, big figures and section titles, like a fight poster.
+   Latin only, two weights (~22 KB each); body text stays the system face. */
+@import "@fontsource/barlow-condensed/latin-600.css";
+@import "@fontsource/barlow-condensed/latin-700.css";
 
 /* Follow the app setting, including inside browsers with a dark device theme. */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -11,6 +15,7 @@
    its legend. `deep` is the darker shade a bar fills with to mark the part of
    a total that was significant. */
 @theme {
+  --font-display: "Barlow Condensed", ui-sans-serif, system-ui, sans-serif;
   --color-f1: #3b82f6;
   --color-f1-ink: #1e40af;
   --color-f1-soft: #dbeafe;
@@ -654,3 +659,30 @@ select:not([multiple]):not([size]) {
 :root.dark .text-zinc-500:not([class*=":text-zinc"]) { color: #abadb5 !important; }
 :root.dark .text-zinc-400:not([class*=":text-zinc"]) { color: #93959e !important; }
 :root.dark .text-zinc-300:not([class*=":text-zinc"]) { color: #6b6d74 !important; }
+
+/* ---------------------------------------------------------------------------
+   Fight-night layer. One signature mark — the blue-against-red split — reads
+   the market's view of every bout the same way on the card and the matchup;
+   the matchup's poster glows in each corner's colour behind its fighter. */
+.win-split-f1 { background-color: var(--color-f1); }
+.win-split-f2 { background-color: var(--color-f2); }
+.matchup-top-card {
+  background-image:
+    radial-gradient(ellipse 38% 70% at 12% 45%, color-mix(in srgb, var(--color-f1) 13%, transparent), transparent 70%),
+    radial-gradient(ellipse 38% 70% at 88% 45%, color-mix(in srgb, var(--color-f2) 13%, transparent), transparent 70%);
+}
+.dark .matchup-top-card {
+  background-image:
+    radial-gradient(ellipse 38% 70% at 12% 45%, color-mix(in srgb, var(--color-f1) 20%, transparent), transparent 72%),
+    radial-gradient(ellipse 38% 70% at 88% 45%, color-mix(in srgb, var(--color-f2) 18%, transparent), transparent 72%);
+}
+.matchup-top-card .matchup-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+@container (min-width: 58rem) {
+  .matchup-top-card .matchup-name { font-size: clamp(24px, 2.6cqi, 34px); }
+}

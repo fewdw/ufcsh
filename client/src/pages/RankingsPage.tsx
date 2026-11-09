@@ -199,12 +199,12 @@ function RankRow({
   const inner = (
     <>
       <span
-        className={`flex h-5 w-7 shrink-0 items-center justify-center text-[12px] tabular-nums ${
+        className={`flex h-6 w-7 shrink-0 items-center justify-center font-display tabular-nums ${
           isChamp
-            ? "font-bold text-amber-500"
+            ? "rounded-md bg-amber-400/15 text-[15px] font-bold text-belt"
             : isInterimChamp
-              ? "rounded-md bg-slate-100 font-bold text-belt-interim ring-1 ring-inset ring-slate-200"
-              : "font-semibold text-zinc-800"
+              ? "rounded-md bg-slate-100 text-[13px] font-bold text-belt-interim"
+              : "text-[17px] font-semibold text-zinc-400"
         }`}
         title={isChamp ? "Undisputed champion" : isInterimChamp ? "Interim champion" : undefined}
       >
@@ -367,8 +367,8 @@ function DivisionCard({
   const borrowed = division.source !== source;
   return (
     <section data-division={division.division} className={`${shell} overflow-hidden ${targeted ? "division-target" : ""}`}>
-      <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-3.5 py-2.5">
-        <h3 className="truncate text-sm font-semibold text-zinc-900">{division.division}</h3>
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-100 px-3.5 py-2.5">
+        <h3 className="truncate font-display text-[19px] font-semibold uppercase leading-6 tracking-[0.02em] text-zinc-900">{division.division}</h3>
         {borrowed ? (
           <span
             className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200"

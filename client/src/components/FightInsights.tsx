@@ -38,19 +38,25 @@ function columnsOf(rounds: NonNullable<FightInsights["rounds"]>, length: number)
 const RESULT = { win: { letter: "W", tone: "text-emerald-400" }, loss: { letter: "L", tone: "text-rose-400" }, draw: { letter: "D", tone: "text-amber-400" } };
 const methodOf = (bout: RoundBout) => (resultDot(bout).shortMethod ?? "").replace("KO/TKO", "KO");
 
-/** Bottom to top: wins, losses, then the bouts that went on (or draws). */
-function Bar({ fighter, column, max, dense, active, tipId, onFocus, onBlur }: {
-  fighter: Insightful; column: Column; max: number; dense: boolean; active: boolean; tipId: string; onFocus: (event: React.FocusEvent<HTMLElement>) => void; onBlur: () => void;
+/** A faint column of the bouts that reached the round, with a dot for each
+ *  that ended in it: wins, losses (and draws on the cards). */
+function Bar({ fighter, column, max, active, tipId, onFocus, onBlur }: {
+  fighter: Insightful; column: Column; max: number; active: boolean; tipId: string; onFocus: (event: React.FocusEvent<HTMLElement>) => void; onBlur: () => void;
 }) {
   const height = (count: number) => count ? Math.max(2, Math.round(count / max * CHART_PX)) : 0;
-  const segments = ([[column.other, column.otherTone], [column.lost, LOST], [column.won, WON]] as [number, string][]).filter(([count]) => count);
+  // One dot per bout that ended here, wins first, two abreast from the
+  // bottom, inside a faint column as tall as the bouts that reached it.
+  const reached = column.won + column.lost + column.other;
+  const dots = [...Array<string>(column.won).fill(WON), ...Array<string>(column.lost).fill(LOST), ...(column.key === "dec" ? Array<string>(column.other).fill(DRAWN) : [])];
+  const columnHeight = reached ? Math.max(height(reached), Math.ceil(dots.length / 2) * 10 + 2) : 0;
   const spoken = column.bouts.map(bout => `${RESULT[bout.outcome].letter} ${methodOf(bout)} ${bout.opponent}`).join(", ");
   return <button type="button" aria-label={`${fighter.name}, ${column.title}: ${spoken || "no result in it"}`} aria-describedby={active ? tipId : undefined}
     onFocus={onFocus} onBlur={onBlur} onKeyDown={event => event.key === "Escape" && onBlur()}
     className={`flex h-full min-w-0 flex-1 cursor-default flex-col items-center justify-end rounded-t-md focus-visible:outline-2 focus-visible:outline-zinc-900 ${active ? "bg-zinc-50" : ""}`}>
-    <span aria-hidden="true" className={`mb-1 ${CHART_TEXT} tabular-nums leading-3 text-zinc-400`}>{column.won + column.lost + column.other || ""}</span>
-    <span aria-hidden="true" className={`flex flex-col gap-[2px] ${dense ? "w-3 @[40rem]:w-4" : "w-4"}`}>
-      {segments.map(([count, tone], segment) => <span key={segment} className={`${tone} ${segment === 0 ? "rounded-t-[4px]" : ""}`} style={{ height: height(count) }} />)}
+    <span aria-hidden="true" className={`mb-1 font-display text-[13px] font-semibold tabular-nums leading-3 text-zinc-400`}>{reached || ""}</span>
+    <span aria-hidden="true" className="relative flex w-[20px] flex-wrap-reverse content-start justify-center gap-[2px] p-[1px]" style={{ height: columnHeight }}>
+      <span className={`absolute inset-0 rounded-t-[6px] ${ON} opacity-60`} />
+      {dots.map((tone, index) => <span key={index} className={`relative h-2 w-2 rounded-full ${tone}`} />)}
     </span>
   </button>;
 }
@@ -94,7 +100,7 @@ function RoundChart({ fighter, rounds, length, max, dense }: { fighter: Insightf
     className={`w-full min-w-0 ${dense ? "max-w-[calc(var(--columns)*1.5rem)] @[44rem]:max-w-[calc(var(--columns)*1.75rem)] @[56rem]:max-w-[calc(var(--columns)*2rem)]" : "max-w-[calc(var(--columns)*1.75rem)] @[30rem]:max-w-[calc(var(--columns)*2rem)]"}`}>
     <div ref={plot} className="flex touch-pan-y select-none items-end border-b border-plot-axis [-webkit-touch-callout:none]" style={{ height: CHART_PX + 18 }}
       onPointerDown={down} onPointerMove={move} onPointerLeave={event => { if (event.pointerType === "mouse") close(); }}>
-      {columns.map((column, index) => <Bar key={column.key} fighter={fighter} column={column} max={max} dense={dense} active={shown === index} tipId={id}
+      {columns.map((column, index) => <Bar key={column.key} fighter={fighter} column={column} max={max} active={shown === index} tipId={id}
         onFocus={event => { if (event.currentTarget.matches(":focus-visible")) open(index); }} onBlur={close} />)}
     </div>
     <div aria-hidden="true" className="flex pt-1.5">
@@ -130,18 +136,18 @@ function RoundKey({ rounds, className, compact }: { rounds: NonNullable<FightIns
   ];
   if (compact) return <dl className={`${className} flex-wrap items-center justify-center gap-x-2.5 gap-y-0.5 pt-2 ${CHART_TEXT}`}>
     {rows.map(row => <div key={row.label} className="inline-flex items-center gap-1 whitespace-nowrap">
-      {row.tone ? <span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${row.tone}`} /> : null}
+      {row.tone ? <span aria-hidden="true" className={`h-2 w-2 rounded-full ${row.tone}`} /> : null}
       <dt className="text-zinc-500"><span aria-hidden="true">{row.short}</span><span className="sr-only">{row.label}</span></dt>
       <dd className="font-semibold tabular-nums text-zinc-900">{row.value}</dd>
     </div>)}
     {/* The grey is context, not a result: the bouts that went past the round. */}
     <div className="inline-flex items-center gap-1 whitespace-nowrap text-zinc-500">
-      <span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${ON}`} />Went on
+      <span aria-hidden="true" className={`h-2.5 w-2 rounded-t-[3px] ${ON} opacity-60`} />Reached
     </div>
   </dl>;
   return <dl className={`${className} shrink-0 grid-cols-[auto_auto_auto] items-center gap-x-2 gap-y-1.5 ${CHART_TEXT}`}>
     {rows.map(row => <Fragment key={row.label}>
-      <span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${row.tone}`} />
+      <span aria-hidden="true" className={`h-2 w-2 rounded-full ${row.tone}`} />
       <dt className="whitespace-nowrap text-zinc-500">{row.label}</dt>
       <dd className="text-right font-semibold tabular-nums text-zinc-900">{row.value}</dd>
     </Fragment>)}
@@ -162,9 +168,9 @@ export function RoundsPanel({ fighters }: { fighters: Insightful[] }) {
   const two = fighters.length > 1;
   return <section className={`${PANEL_SHELL} @container min-w-0`}>
     <PanelHeading title="By round" aside={<span className={`hidden flex-wrap items-center justify-end gap-x-3 gap-y-1 @[34rem]:flex ${CHART_TEXT} text-zinc-500`}>
-      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${WON}`} />Stoppage win</span>
-      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${LOST}`} />Stoppage loss</span>
-      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${ON}`} />Went on</span>
+      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-full ${WON}`} />Stoppage win</span>
+      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-full ${LOST}`} />Stoppage loss</span>
+      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2.5 w-2 rounded-t-[3px] ${ON} opacity-60`} />Bouts that reached it</span>
     </span>} />
     <div className={`grid px-3 pb-2 pt-1.5 @[40rem]:px-4 @[40rem]:pt-2 ${two ? "grid-cols-2 gap-x-4 @[40rem]:gap-x-8" : ""}`}>
       {fighters.map(fighter => <div key={fighter.name} className={`min-w-0 pb-1 ${two ? "" : "pt-2"}`}>
@@ -190,28 +196,32 @@ export function StrikesPanel({ fighters }: { fighters: Insightful[] }) {
   const all = fighters.flatMap(fighter => fighter.insights?.strikes ?? []);
   const max = Math.max(1, ...all.flatMap(round => [round.landed, round.absorbed]));
   const length = Math.max(...all.map(round => round.round));
-  const bar = (value: number, tone: string, strong: boolean) => <span className="grid grid-cols-[minmax(0,1fr)_2rem] items-center gap-1.5">
-    <span className="flex h-1.5 overflow-hidden rounded-full bg-plot-track @[40rem]:h-2"><span className={`rounded-full ${tone}`} style={{ width: `${Math.max(1, value / max * 100)}%` }} /></span>
-    <span className={`text-right tabular-nums leading-none ${strong ? "font-semibold text-zinc-900" : "text-zinc-500"}`}>{value.toFixed(1)}</span>
+  // A butterfly round by round: absorbed grows left of the spine, landed
+  // right, so a round they won the exchange in leans right at a glance.
+  // Each figure rides the tip of its own bar.
+  const wing = (value: number, tone: string, side: "left" | "right") => <span className={`flex min-w-0 items-center gap-1.5 ${side === "left" ? "flex-row-reverse" : ""}`}>
+    <span className={`h-2.5 min-w-[3px] ${tone} ${side === "left" ? "rounded-l-full" : "rounded-r-full"}`} style={{ flex: `0 1 ${Math.max(2, value / max * 100)}%` }} />
+    <span className={`shrink-0 font-display text-[15px] font-semibold tabular-nums leading-none ${side === "left" ? "text-zinc-500" : "text-zinc-900"}`}>{value.toFixed(1)}</span>
   </span>;
   return <section className={`${PANEL_SHELL} @container min-w-0`}>
     <PanelHeading title="Average strikes by round" aside={<span className={`flex items-center gap-3 ${CHART_TEXT} text-zinc-500`}>
-      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${LANDED}`} />Landed</span>
-      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${ABSORBED}`} />Absorbed</span>
+      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${ABSORBED}`} />← Absorbed</span>
+      <span className="flex items-center gap-1.5">Landed →<span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${LANDED}`} /></span>
     </span>} />
     <div className={`grid px-3 pb-3 pt-1.5 @[40rem]:px-5 @[40rem]:pt-2 ${two ? "grid-cols-2 gap-x-4 @[40rem]:gap-x-10" : ""}`}>
       {fighters.map(fighter => {
         const strikes = fighter.insights?.strikes;
         return <div key={fighter.name} className={`min-w-0 ${two ? "" : "pt-2"}`}>
           {two ? columnHead(fighter) : null}
-          {strikes?.length ? <div role="img" className={`mx-auto grid max-w-xs gap-y-2.5 ${CHART_TEXT}`}
+          {strikes?.length ? <div role="img" className={`mx-auto grid max-w-md gap-y-2 ${CHART_TEXT}`}
             aria-label={`${fighter.name}, average significant strikes by round: ${strikes.map(round => `round ${round.round}, ${round.landed.toFixed(1)} landed and ${round.absorbed.toFixed(1)} absorbed over ${round.fights} ${round.fights === 1 ? "fight" : "fights"}`).join("; ")}`}>
-            {Array.from({ length }, (_, index) => strikes[index]).map((round, index) => <div key={index} aria-hidden="true" className={`grid grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-x-2 ${round ? "" : "opacity-50"}`}>
-              <span className="leading-tight">
-                <span className="block font-medium text-zinc-700">R{index + 1}</span>
-                <span className={`block whitespace-nowrap ${metaText}`}>{round ? `${round.fights} ${round.fights === 1 ? "fight" : "fights"}` : "none"}</span>
+            {Array.from({ length }, (_, index) => strikes[index]).map((round, index) => <div key={index} aria-hidden="true" className={`grid grid-cols-[minmax(0,1fr)_2.75rem_minmax(0,1fr)] items-center gap-x-1.5 ${round ? "" : "opacity-40"}`}>
+              {round ? wing(round.absorbed, ABSORBED, "left") : <span className="h-px bg-plot-track" />}
+              <span className="text-center leading-tight">
+                <span className="block font-semibold text-zinc-800">R{index + 1}</span>
+                <span className={`block whitespace-nowrap ${metaText}`}>{round ? `${round.fights} ${round.fights === 1 ? "bout" : "bouts"}` : "none"}</span>
               </span>
-              {round ? <span className="grid gap-1">{bar(round.landed, LANDED, true)}{bar(round.absorbed, ABSORBED, false)}</span> : <span />}
+              {round ? wing(round.landed, LANDED, "right") : <span className="h-px bg-plot-track" />}
             </div>)}
           </div> : <p className={`py-3 text-center ${CHART_TEXT} text-zinc-500`}>No round-by-round stats yet.</p>}
         </div>;
