@@ -63,9 +63,13 @@ if ! systemctl --user is-active --quiet "$unit"; then
   if [[ ! -d $state/data ]]; then
     seed="${TS_SEED_DIR:-$HOME/.local/share/ufcsh/dev-seed}"
     if [[ -d $seed ]]; then
+      if [[ -n $(find "$seed" -maxdepth 0 -mmin +2880) ]]; then
+        echo "Seed is over two days old; check: systemctl --user status ufcsh-seed-refresh" >&2
+      fi
       rm -rf "$state/data.tmp"
       mkdir "$state/data.tmp"
-      # Databases are copied; images are hard-linked (the server only adds or renames them).
+      # Databases are copied; images are hard-linked. The server adds images by new
+      # file or rename, so previews do not change the seed's copies in practice.
       find "$seed" -mindepth 1 -maxdepth 1 ! -name images -exec cp -a --reflink=auto -t "$state/data.tmp" {} +
       [[ ! -d $seed/images ]] || cp -al "$seed/images" "$state/data.tmp/images"
       mv "$state/data.tmp" "$state/data"
