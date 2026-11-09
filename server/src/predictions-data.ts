@@ -3,9 +3,9 @@ import { cardOrder } from "./card-schedule.ts";
 import { cachedPhotoUrl } from "./fighter-identity.ts";
 import { parseScheduledRounds } from "./fight-index.ts";
 import { predictionWindow, type PredictionContext, type PredictionFight } from "./predictions.ts";
-import type { BetContext, BetMarkets, StoredLeg } from "./bets.ts";
+import { potentialDeadline, type BetContext, type BetMarkets, type StoredLeg } from "./bets.ts";
 import { fightIsComplete } from "./live-state.ts";
-import { potentialFight, potentialMatchups } from "./potential-matchups.ts";
+import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, POTENTIAL_PROPS_TTL, potentialFight, potentialMatchups, potentialTakesBets } from "./potential-matchups.ts";
 
 const columns = `SELECT f.*, e.name AS event_name, e.date AS event_date, e.complete AS event_complete,
   e.early_prelims_at, e.prelims_at, e.main_card_at, o.f1_close AS f1_line, o.f2_close AS f2_line,
@@ -86,26 +86,40 @@ export function betContext(id: string): BetContext | undefined {
 }
 
 /** A potential matchup on the board takes bets at its board prices once both
- *  fighters are known, so the bet can follow them onto whatever card books it. */
+ *  fighters are known and the price is fresh, so the bet can follow them onto
+ *  whatever card books it. */
 function potentialBetContext(id: string): BetContext | undefined {
   const row = potentialMatchups().find(entry => entry.id === id);
-  if (!row?.f1_id || !row.f2_id || row.f1_id === row.f2_id) return undefined;
+  if (!row || !potentialTakesBets(row)) return undefined;
   const fight: PredictionFight = { ...potentialFight(row), event_start: null, section_start: null, scheduled_rounds: null, f1_line: null, f2_line: null };
   let lines: any = null;
   try { lines = JSON.parse(row.odds_json); } catch { return undefined; }
-  const props = lines?.props;
+  // Props carried forward from a method read that has since failed take no bets.
+  const props = lines?.props && Date.now() - Number(lines.props.fetched_at) < POTENTIAL_PROPS_TTL ? lines.props : null;
   return { fight, bouts: [fight], moneyline: { f1: lines?.f1?.close ?? null, f2: lines?.f2?.close ?? null, final: false },
     markets: props ? { f1: props.f1 ?? {}, f2: props.f2 ?? {}, additional: Array.isArray(props.additional) ? props.additional : [], final: !!props.final } : null };
 }
 
-/** The pair's first bout on a card dated after the leg was placed that was
- *  fought or is still to come (a bout left off a finished card is skipped); else
- *  the board's entry while it still prices the pairing unbooked. */
-const pairBouts = prepared(`${columns} WHERE ((f.f1_id = ? AND f.f2_id = ?) OR (f.f1_id = ? AND f.f2_id = ?)) AND e.date > ? ORDER BY e.date, e.id`);
-export function potentialBooking(leg: StoredLeg): PredictionFight | undefined {
-  const booked = pairBouts.all(leg.f1Id, leg.f2Id, leg.f2Id, leg.f1Id, leg.eventDate).map(read)
+/** A potential matchup's leg settles on the pair's first bout on a card dated
+ *  after the day it was placed and by its deadline, that was fought or is
+ *  still to come (a bout left off a finished card is skipped). Until the
+ *  deadline it waits, on or off the board; after it, with no bout, it is void
+ *  for good, so a later booking never brings it back. */
+const pairBouts = prepared(`${columns} WHERE ((f.f1_id = ? AND f.f2_id = ?) OR (f.f1_id = ? AND f.f2_id = ?)) AND e.date > ? AND e.date <= ? ORDER BY e.date, e.id`);
+export function potentialBooking(leg: StoredLeg, now = Date.now()): PredictionFight | undefined {
+  const deadline = potentialDeadline(leg.eventDate);
+  const booked = pairBouts.all(leg.f1Id, leg.f2Id, leg.f2Id, leg.f1Id, leg.eventDate, deadline).map(read)
     .find(fight => !fight.event_complete || fightIsComplete(fight));
-  return booked ?? potentialBetContext(leg.fightId)?.fight;
+  if (booked) return booked;
+  if (new Date(now).toISOString().slice(0, 10) > deadline) return undefined;
+  // Waiting: under the id the board prices the pair at now, from either source,
+  // so the bet can still be taken back while the pairing takes bets.
+  const pair = [leg.f1Id, leg.f2Id].sort().join(":");
+  const listed = potentialMatchups().find(row => potentialTakesBets(row, now) && [row.f1_id, row.f2_id].sort().join(":") === pair);
+  return { id: listed?.id ?? leg.fightId, event_id: POTENTIAL_EVENT_ID, event_name: POTENTIAL_EVENT_NAME, event_date: leg.eventDate,
+    event_complete: 0, event_start: null, section_start: null, ord: 0, scheduled_rounds: null,
+    f1_id: leg.f1Id, f2_id: leg.f2Id, f1_name: leg.f1Name, f2_name: leg.f2Name, f1_outcome: null, f2_outcome: null,
+    method: null, round: null, detail_json: null, f1_line: null, f2_line: null };
 }
 
 /** Which bouts take bets now, for the pages to offer their prices: the same

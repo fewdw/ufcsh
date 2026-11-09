@@ -11,7 +11,7 @@ import { organizeAdditionalOdds } from "../oddsLayout";
 import { CHART_TEXT } from "./FightStats";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
 import type { OddsFormat } from "../settings";
-import { outcomeId, useParlay, type Outcome, type ParlayLeg } from "../parlay";
+import { bettable, outcomeId, useParlay, type Outcome, type ParlayLeg } from "../parlay";
 
 const ODDS_FORMATS: { id: OddsFormat; label: string }[] = [
   { id: "american", label: "American" },
@@ -74,7 +74,7 @@ function Price({ quote, bet }: { quote: OddsQuote | undefined; bet?: Bet }) {
   const { toggle, isSelected } = useParlay();
   const best = bestPrice(quote);
   if (!best) return <span className="self-center text-xs text-zinc-300 dark:text-zinc-600">—</span>;
-  if (!bet) return <span className="text-[11px] font-semibold tabular-nums text-zinc-900 @[40rem]:text-xs dark:text-zinc-100">{best.line}</span>;
+  if (!bet || !bettable(bet.outcome)) return <span className="text-[11px] font-semibold tabular-nums text-zinc-900 @[40rem]:text-xs dark:text-zinc-100">{best.line}</span>;
   const leg: ParlayLeg = { id: outcomeId(bet.outcome), fightId: bet.fightId, fightLabel: bet.fightLabel, market: bet.market, selection: bet.selection, price: best.line, outcome: bet.outcome };
   const selected = isSelected(leg.id);
   return (
@@ -193,7 +193,7 @@ function OddsCell({ quote, hit, favorite, live, format, bet, dense }: { quote: O
   if (!price) return <span className="text-zinc-300 dark:text-zinc-600" aria-label="No price">—</span>;
   const probability = impliedProbability(price.line);
   const move = price.move;
-  const leg: ParlayLeg | null = live && bet?.fightId ? { id: outcomeId(bet.outcome), fightId: bet.fightId, fightLabel: bet.fightLabel, market: bet.market, selection: bet.selection, price: price.line, outcome: bet.outcome } : null;
+  const leg: ParlayLeg | null = live && bet?.fightId && bettable(bet.outcome) ? { id: outcomeId(bet.outcome), fightId: bet.fightId, fightLabel: bet.fightLabel, market: bet.market, selection: bet.selection, price: price.line, outcome: bet.outcome } : null;
   const selected = leg ? isSelected(leg.id) : false;
 
   // The ring sits on the price itself, not the button around it — a row with

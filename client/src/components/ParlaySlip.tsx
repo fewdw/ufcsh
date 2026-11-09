@@ -30,6 +30,7 @@ function AddToProfile() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const tooSmall = stake < MIN_STAKE;
+  const potential = legs.some((leg) => leg.fightId.startsWith("potential-"));
   const submit = async () => {
     if (!user) { signIn(); return; }
     setBusy(true); setError("");
@@ -50,7 +51,8 @@ function AddToProfile() {
         {busy ? "Adding…" : user ? "Add to profile" : "Sign in to add to profile"}
       </button>
       {error ? <p role="alert" className="text-[11px] leading-snug text-rose-600">{error}</p>
-        : <p className="text-[10px] leading-snug text-zinc-400">{tooSmall ? `Minimum stake $${MIN_STAKE}.` : "You can remove a bet until a matchup on it closes."}</p>}
+        : <p className="text-[10px] leading-snug text-zinc-400">{tooSmall ? `Minimum stake $${MIN_STAKE}.` : "You can remove a bet until a matchup on it closes."}
+          {!tooSmall && potential ? " A potential matchup's pick stands if they fight within a year; otherwise it's void." : null}</p>}
     </div>
   );
 }
