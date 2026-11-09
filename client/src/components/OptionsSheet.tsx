@@ -135,7 +135,7 @@ export default function OptionsSheet({
             role="dialog"
             aria-label={label}
             data-sheet-scroll
-            className="fixed inset-x-0 bottom-0 z-[70] max-h-[80vh] overflow-y-auto overscroll-y-none transition-transform duration-200 motion-reduce:transition-none rounded-t-2xl border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-50 sm:mt-2 sm:max-h-[32rem] sm:w-80 sm:rounded-2xl sm:border sm:pb-0 sm:shadow-xl"
+            className="fixed inset-x-0 bottom-0 z-[70] max-h-[80vh] overflow-y-auto overscroll-y-none transition-transform duration-200 motion-reduce:transition-none rounded-t-2xl border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-50 sm:mt-2 sm:max-h-[min(42rem,calc(100vh-7rem))] sm:w-80 sm:rounded-2xl sm:border sm:pb-0 sm:shadow-xl"
           >
             <div
               className="sticky top-0 z-10 bg-white px-4 pb-1 pt-3"

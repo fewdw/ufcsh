@@ -212,7 +212,7 @@ function RankRow({
       </span>
       <Avatar src={entry.photo_url} name={entry.name} size="xs" />
       <span className="min-w-0 flex-1">
-        <span className={`block leading-4 text-zinc-900 [overflow-wrap:anywhere] ${isChamp || isInterimChamp ? "font-display text-[18px] font-semibold uppercase tracking-[0.01em]" : "text-[13px] font-medium"}`}>
+        <span className={`block leading-4 text-zinc-900 [overflow-wrap:anywhere] ${isChamp || isInterimChamp ? "font-display text-[18px] font-semibold uppercase tracking-[0.01em]" : "font-display text-[16px] font-semibold tracking-[0.01em]"}`}>
           {entry.name}
           {ufcRecord ? (
             <span

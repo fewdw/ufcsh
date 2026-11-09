@@ -1008,7 +1008,7 @@ function ProfileRow({
         <span className="mb-1.5 block truncate text-center text-[11px] leading-4 text-zinc-600 @[40rem]:text-[12px]">
           <span className="@[40rem]:hidden">{metric.short}</span>
           <span className="hidden @[40rem]:inline">{metric.label}</span>
-          {metric.better === "low" ? <span className="text-zinc-400" title="Lower is better"> ↓</span> : null}
+          {metric.better === "low" ? <span className="font-semibold text-zinc-700" title="Lower is better"> ↓</span> : null}
           {median != null ? <span className="hidden text-zinc-400 @[48rem]:inline"> · median {profileText(median, metric.format)}</span> : null}
         </span>
         <span className="relative flex h-1.5 gap-[2px] @[40rem]:h-2">

@@ -690,7 +690,8 @@ select:not([multiple]):not([size]) {
 /* Sections under the matchup tabs flow as one editorial sheet: no card
    around each, a hairline and air between them instead. */
 .matchup-flow > section[class],
-.matchup-flow > div > section[class] {
+.matchup-flow > div > section[class],
+.profile-flow > section[class]:not(:first-child) {
   border-color: transparent !important;
   background-color: transparent !important;
   box-shadow: none !important;

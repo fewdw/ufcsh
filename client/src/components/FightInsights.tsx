@@ -130,8 +130,8 @@ function RoundKey({ rounds, className, compact }: { rounds: NonNullable<FightIns
   const sum = (side: "won" | "lost") => rounds.rounds.reduce((total, round) => total + round[side], 0);
   const { won, lost, drawn } = rounds.decision;
   const rows = [
-    { tone: WON, label: "Stoppage wins", short: "Won", value: sum("won") },
-    { tone: LOST, label: "Stoppage losses", short: "Lost", value: sum("lost") },
+    { tone: WON, label: "Stoppage wins", short: "Stoppage wins", value: sum("won") },
+    { tone: LOST, label: "Stoppage losses", short: "Stoppage losses", value: sum("lost") },
     { tone: "", label: "Decisions", short: "Dec", value: `${won}–${lost}${drawn ? `–${drawn}` : ""}` },
   ];
   if (compact) return <dl className={`${className} flex-wrap items-center justify-center gap-x-2.5 gap-y-0.5 pt-2 ${CHART_TEXT}`}>
@@ -200,9 +200,11 @@ export function StrikesPanel({ fighters }: { fighters: Insightful[] }) {
   // A butterfly round by round: absorbed grows left of the spine, landed
   // right, so a round they won the exchange in leans right at a glance.
   // Each figure rides the tip of its own bar.
-  const wing = (value: number, tone: string, side: "left" | "right") => <span className={`flex min-w-0 items-center gap-1.5 ${side === "left" ? "flex-row-reverse" : ""}`}>
-    <span className={`h-2.5 min-w-[3px] ${tone} ${side === "left" ? "rounded-l-full" : "rounded-r-full"}`} style={{ flex: `0 1 ${Math.max(2, value / max * 100)}%` }} />
-    <span className={`shrink-0 font-display text-[15px] font-semibold tabular-nums leading-none ${side === "left" ? "text-zinc-500" : "text-zinc-900"}`}>{value.toFixed(1)}</span>
+  // One linear scale for every bar: room is kept beyond the longest for its
+  // figure, which then sits just past the tip of its own bar.
+  const wing = (value: number, tone: string, side: "left" | "right") => <span className={`relative flex h-4 min-w-0 items-center ${side === "left" ? "ml-9 justify-end" : "mr-9"}`}>
+    <span className={`h-2.5 min-w-[3px] ${tone} ${side === "left" ? "rounded-l-full" : "rounded-r-full"}`} style={{ width: `${Math.max(2, value / max * 100)}%` }} />
+    <span style={{ [side === "left" ? "right" : "left"]: `calc(${Math.max(2, value / max * 100)}% + 5px)` }} className={`absolute whitespace-nowrap font-display text-[15px] font-semibold tabular-nums leading-none ${side === "left" ? "text-zinc-500" : "text-zinc-900"}`}>{value.toFixed(1)}</span>
   </span>;
   return <section className={`${PANEL_SHELL} @container min-w-0`}>
     <PanelHeading title="Average strikes by round" aside={<span className={`flex items-center gap-3 ${CHART_TEXT} text-zinc-500`}>

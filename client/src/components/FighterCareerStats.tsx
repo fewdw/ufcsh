@@ -20,6 +20,8 @@ function MedianBar({ metric, value, median }: { metric: ProfileMetric; value: nu
     <span className="col-span-2 mt-1.5 flex items-center gap-2.5">
       <span className="relative block h-1.5 flex-1 rounded-full bg-plot-track">
         {offset ? <span className={`absolute inset-y-0 ${offset > 0 ? "left-1/2 rounded-r-full bg-[#1f9d74]" : "right-1/2 rounded-l-full bg-zinc-400"}`} style={{ width: `${Math.abs(offset) * 50}%` }} /> : null}
+        {/* Off the scale (past double or half the median): an axis break near the end. */}
+        {Math.abs(offset) >= 1 ? <span aria-hidden="true" title="Beyond the scale" className={`absolute -inset-y-px w-[2px] -skew-x-[20deg] bg-zinc-100 ${offset > 0 ? "right-[7px]" : "left-[7px]"}`} /> : null}
         <span aria-hidden="true" className="absolute -inset-y-[3px] left-1/2 w-[2px] -translate-x-1/2 rounded-full bg-plot-median opacity-80" />
       </span>
       <span className="w-14 text-right text-[10px] leading-3 tabular-nums text-zinc-400" title="Weight class median">med. {profileText(median, metric.format)}</span>
@@ -38,7 +40,7 @@ export default function FighterCareerStats({ fighterId, name, totals, medians }:
           const value = metric.value(totals);
           const median = medians?.values[metric.key] ?? null;
           return <CareerStatDetails key={metric.key} fighters={[{ id: fighterId, name }]} available={[metric.sample(totals).total > 0]} view={metricView(metric)} className="grid min-h-7 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-zinc-50">
-            <span className="text-[12px] leading-4 text-zinc-600">{metric.short}</span>
+            <span className="text-[12px] leading-4 text-zinc-600">{metric.short}{metric.better === "low" ? <span className="font-semibold text-zinc-700" title="Lower is better"> ↓</span> : null}</span>
             <span className="text-[15px] font-semibold tabular-nums text-zinc-900">{profileText(value, metric.format)}</span>
             {median != null ? <MedianBar metric={metric} value={value} median={median} /> : null}
           </CareerStatDetails>;

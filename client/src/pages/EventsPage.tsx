@@ -13,6 +13,7 @@ import ResultDots from "../components/ResultDots";
 import BonusIcons from "../components/BonusIcons";
 import OddsPair from "../components/OddsPair";
 import WinSplit from "../components/WinSplit";
+import { winShares } from "../winChance";
 import { Moneyline, moneylineLeg, OddsFormatTabs, OddsMarkets, type FightResult } from "../components/MatchupOdds";
 import { hasOddsMarkets } from "../oddsLayout";
 import FightView from "./FightPage";
@@ -543,6 +544,9 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
   // pressing the row is enough notice to have it loaded by the time it opens.
   const warm = () => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource));
   const open = () => navigate(`/fights/${fight.id}`, { state: { eventId, eventReturnDepth: 1 } });
+  // A priced upcoming bout closes on its win-chance strip; room above it keeps
+  // the strip reading as this bout's edge, not the next one's.
+  const taped = !cancellation && !done && winShares(fight.odds?.f1.close, fight.odds?.f2.close) != null;
   // Beside the price in the face-off layout; the compact layout writes its own.
   const weightClassRow = (
     // Live adds a label the column has no room for: one line, overflowing the
@@ -581,7 +585,7 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
         event.preventDefault();
         open();
       }}
-      className={`group relative block w-full px-3 text-left transition-colors @3xl:px-4 ${cancellation ? "bg-red-50 py-2 @3xl:py-1.5 dark:bg-red-950/40" : live ? "cursor-pointer py-2.5 hover:bg-emerald-50/60 @3xl:py-3" : "cursor-pointer py-2 hover:bg-zinc-50 @3xl:py-1.5"}`}
+      className={`group relative block w-full px-3 text-left transition-colors @3xl:px-4 ${taped ? "!pb-3.5" : ""} ${cancellation ? "bg-red-50 py-2 @3xl:py-1.5 dark:bg-red-950/40" : live ? "cursor-pointer py-2.5 hover:bg-emerald-50/60 @3xl:py-3" : "cursor-pointer py-2 hover:bg-zinc-50 @3xl:py-1.5"}`}
     >
       <div className="@3xl:hidden"><CompactFightRow fight={fight} done={done} live={live} cancellation={cancellation} /></div>
       <div className="hidden grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1 @3xl:grid">
@@ -605,7 +609,7 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
       ) : null}
       </div>
       {/* The market's split as the bout's bottom edge, the card's signature. */}
-      {cancellation || done ? null : <WinSplit f1={fight.odds?.f1.close} f2={fight.odds?.f2.close} size="tape" className="absolute inset-x-0 bottom-0 opacity-80" />}
+      {taped ? <WinSplit f1={fight.odds?.f1.close} f2={fight.odds?.f2.close} size="tape" className="absolute inset-x-3 bottom-1.5 overflow-hidden rounded-full opacity-90 @3xl:inset-x-4" /> : null}
     </div>
   );
 }
@@ -619,6 +623,8 @@ function CompactSide({ side, fight, done, other, profileLink = false }: { side: 
   const price = side === fight.f1 ? fight.odds?.f1.close ?? null : fight.odds?.f2.close ?? null;
   const fightLabel = `${fight.f1.name} vs ${fight.f2.name}`;
   const corner = side === fight.f1 ? 1 : 2;
+  const shares = done ? null : winShares(fight.odds?.f1.close, fight.odds?.f2.close);
+  const share = shares ? (corner === 1 ? shares.f1 : shares.f2) : null;
   return (
     <div className="flex min-w-0 items-center gap-2.5">
       {/* The corner's colour, matching its half of the win-chance strip. */}
@@ -647,12 +653,12 @@ function CompactSide({ side, fight, done, other, profileLink = false }: { side: 
       </div>
       {/* One side priced: the other keeps its box with a dash so the pair
           lines up. Neither priced: no empty boxes, the name gets the width. */}
-      {fight.odds?.f1.close || fight.odds?.f2.close ? <Moneyline
+      {fight.odds?.f1.close || fight.odds?.f2.close ? <span className="flex shrink-0 flex-col items-center gap-0.5"><Moneyline
         leg={moneylineLeg(betFightId(fight, done), fightLabel, corner, side.name, price)}
         value={price || "-"}
         name={side.name}
         className={`odds-pair w-14 shrink-0 rounded-md border py-0.5 text-center text-[12px] font-semibold tabular-nums ${price ? "" : "text-zinc-300"} ${other.outcome === "win" ? "opacity-60" : ""}`}
-      /> : null}
+      />{share != null ? <span className={`text-[10px] font-medium tabular-nums ${corner === 1 ? "text-f1-ink" : "text-f2-ink"}`} title="Win chance from the odds, margin removed">{Math.round(share * 100)}%</span> : null}</span> : null}
     </div>
   );
 }

@@ -82,13 +82,13 @@ function RecordWheel({ history, scope, record }: { history: (HistoryRow | Profes
   };
   const winDefinitions = [
     { key: "win-KO/TKO", label: "KO/TKO", color: "#047857", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "win" && methodGroup(fight.method) === "KO/TKO" },
-    { key: "win-SUB", label: "SUB", color: "#34d399", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "win" && methodGroup(fight.method) === "SUB" },
-    { key: "win-DEC", label: "DEC", color: "#a7f3d0", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "win" && methodGroup(fight.method) === "DEC" },
+    { key: "win-SUB", label: "SUB", color: "#10b981", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "win" && methodGroup(fight.method) === "SUB" },
+    { key: "win-DEC", label: "DEC", color: "#4ade80", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "win" && methodGroup(fight.method) === "DEC" },
   ];
   const lossDefinitions = [
     { key: "loss-KO/TKO", label: "KO/TKO", color: "#be123c", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "loss" && methodGroup(fight.method) === "KO/TKO" },
     { key: "loss-SUB", label: "SUB", color: "#fb7185", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "loss" && methodGroup(fight.method) === "SUB" },
-    { key: "loss-DEC", label: "DEC", color: "#fecdd3", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "loss" && methodGroup(fight.method) === "DEC" },
+    { key: "loss-DEC", label: "DEC", color: "#f9a8b4", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "loss" && methodGroup(fight.method) === "DEC" },
   ];
   const otherDefinitions = [
     { key: "loss-OTHER", label: "Other", color: "#fda4af", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "loss" && methodGroup(fight.method) === "OTHER" },
@@ -348,10 +348,10 @@ function FightLength({ row }: { row: HistoryRow | ProfessionalHistoryRow }) {
   const into = Math.min(300, Number(clock[1]) * 60 + Number(clock[2]));
   const tone = row.outcome === "win" ? "bg-emerald-500" : row.outcome === "loss" ? "bg-rose-500" : "bg-zinc-400";
   return (
-    <span className="mt-1.5 flex w-full max-w-40 gap-[2px]" role="img" aria-label={`Ended in round ${round} of ${scheduled} at ${row.time}`} title={`Round ${round} of ${scheduled}, ${row.time}`}>
+    <span className="mb-1 mt-1 flex w-full max-w-40 gap-[3px]" role="img" aria-label={`Ended in round ${round} of ${scheduled} at ${row.time}`} title={`Fight length: round ${round} of ${scheduled}, ${row.time}`}>
       {Array.from({ length: scheduled }, (_, index) => {
         const fill = index + 1 < round ? 1 : index + 1 === round ? into / 300 : 0;
-        return <span key={index} className="relative h-1 flex-1 overflow-hidden rounded-full bg-plot-track">
+        return <span key={index} className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-plot-track">
           {fill ? <span className={`absolute inset-y-0 left-0 ${tone}`} style={{ width: `${fill * 100}%` }} /> : null}
         </span>;
       })}
@@ -556,8 +556,8 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
               {bout.fighterOdds ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title={`${fighterName} ${bout.oddsLabel}`}>{bout.fighterOdds}</span> : null}
             </span>
             {bout.detail ? <span className="line-clamp-2 block text-[11px] leading-4 text-zinc-500" title={bout.detail}>{bout.detail}</span> : null}
-            <EnteringRecords career={row.career_record_before} ufc={row.record_before} name={fighterName} className="mt-0.5 w-full text-[10px] font-medium leading-4 text-zinc-400" />
             <FightLength row={row} />
+            <EnteringRecords career={row.career_record_before} ufc={row.record_before} name={fighterName} className="mt-0.5 w-full text-[10px] font-medium leading-4 text-zinc-400" />
           </span>
         </span>
       </BoutLink>
@@ -947,7 +947,7 @@ export default function FighterPage() {
         {/* On a wide window the page itself never scrolls: each column is its
             own scroller, so reading one leaves the other exactly where it was. */}
         <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(24rem,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
-        <div ref={mainScroll} className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
+        <div ref={mainScroll} className="profile-flow flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
         <section className={`${shell} @container px-4 py-4 @[30rem]:px-6 @[30rem]:py-5`}>
           <div className="flex flex-col gap-4 @[30rem]:gap-5">
             <div className="flex min-w-0 items-end gap-4 @[30rem]:gap-6">
