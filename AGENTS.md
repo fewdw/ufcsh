@@ -59,7 +59,7 @@ small/large screens. Prefer the smallest maintainable solution.
   the foreground (Bash timeout 600000). It updates the PR against `develop`,
   runs CI, squash-merges, and does all the cleanup below. Production is unchanged.
 - **"Merge to main"** (a release): on `develop`, replace the entire changelog in
-  `client/src/pages/InfoPage.tsx` with today's date and a few short lines, push,
+  `client/src/pages/InfoPage.tsx` with the release date and a few short lines, push,
   then run `./tools/release.sh` in the foreground (Bash timeout 600000). It opens
   the `develop` → `main` PR, runs CI, merges with a **merge commit** (never
   squash), waits for `deploy-production`, and fast-forwards `develop` to `main`.
