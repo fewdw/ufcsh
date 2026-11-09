@@ -31,6 +31,7 @@ import { enqueueRefresh } from "./refresh-queue.ts";
 import { QueryPool } from "./query-pool.ts";
 import { ResponseCache, representation, acceptsEncoding, acceptsGzip, matchesEtag, OverloadedError, type Representation } from "./response-cache.ts";
 import { HttpObservability, UNCOUNTED_ROUTES, pageRouteGroup, routeGroup } from "./observability.ts";
+import { failureMessage, reportFailure } from "./request-failures.ts";
 import { agentOf, isAutomated, sourceOf } from "./visitors.ts";
 import { TrafficHistory } from "./traffic-history.ts";
 import { createRepairRunner } from "./repair-guard.ts";
@@ -2645,8 +2646,6 @@ export function startApi(port: number): http.Server {
   };
   let requests = 0;
   let failures = 0;
-  /** What a request that failed logged, for Admin → Errors. */
-  const failureMessages = new WeakMap<http.ServerResponse, string>();
   /** How long a public API answer took to come from the cache or a query
    *  worker, for Admin → Slow. */
   const answerTimes = new WeakMap<http.ServerResponse, number>();
@@ -2680,7 +2679,7 @@ export function startApi(port: number): http.Server {
       if ((res.statusCode >= 500 || res.statusCode === 404) && pathname !== "/readyz") {
         const referer = req.headers.referer;
         trafficHistory.errors.record({
-          status: res.statusCode, method: req.method ?? "OTHER", path: req.url ?? "/", message: failureMessages.get(res),
+          status: res.statusCode, method: req.method ?? "OTHER", path: req.url ?? "/", message: failureMessage(res),
           fromSite: typeof referer === "string" && referer.startsWith(`${SITE_URL}/`),
         });
       }
@@ -2896,8 +2895,7 @@ export function startApi(port: number): http.Server {
 
       await serveStatic(req, res, p === "/" ? "/index.html" : p, cache);
     } catch (err) {
-      log("API ERROR:", String(err));
-      failureMessages.set(res, String(err));
+      reportFailure(res, "request", err);
       if (!res.headersSent && !res.destroyed) {
         const overloaded = err instanceof OverloadedError;
         if (overloaded) res.setHeader("Retry-After", "5");

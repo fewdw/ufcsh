@@ -10,6 +10,7 @@ import { AdminStore } from "./admins.ts";
 import { createAdminHandler, type AdminLiveFight } from "./admin-http.ts";
 import { ScoringError, ScoringStore, type ScoringFight } from "./scoring.ts";
 import { ReportStore } from "./reports.ts";
+import { failureMessage } from "./request-failures.ts";
 
 const OWNER = "frederic.alefebvre@gmail.com";
 const FIGHT = "aaaaaaaaaaaaaaaa";
@@ -24,7 +25,7 @@ const liveFight = (): AdminLiveFight => ({
   f1_id: "f1", f2_id: "f2", f1_photo: null, f2_photo: null,
 });
 
-async function fixture(t: any, options: { user?: string; email?: string | null } = {}) {
+async function fixture(t: any, options: { user?: string; email?: string | null; report?: () => Promise<unknown> } = {}) {
   const previous = process.env.DEFAULT_ADMIN;
   process.env.DEFAULT_ADMIN = OWNER;
   const dir = mkdtempSync(path.join(tmpdir(), "ufc-admin-"));
@@ -34,10 +35,12 @@ async function fixture(t: any, options: { user?: string; email?: string | null }
   let identity = { user: options.user ?? "user_owner", email: options.email === undefined ? OWNER : options.email };
   const actions: string[] = [];
   const cleared: unknown[] = [];
+  /** What each failed request kept for Admin → Errors, as the server reads it. */
+  const failures: string[] = [];
   let aiOn = true;
   const handler = createAdminHandler({
     admins, scores, reports,
-    report: async () => ({ checks: [], generated_at: 1, sync: { last_tick_at: null, last_sync_error: null } }),
+    report: options.report ?? (async () => ({ checks: [], generated_at: 1, sync: { last_tick_at: null, last_sync_error: null } })),
     runAction: async (action, target) => { actions.push(`${action}:${target}`); return { ok: true, message: "done" }; },
     canAct: () => true,
     liveFights: () => [liveFight()],
@@ -54,6 +57,7 @@ async function fixture(t: any, options: { user?: string; email?: string | null }
   });
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
+    res.on("finish", () => { const message = failureMessage(res); if (message) failures.push(message); });
     if (!await handler(req, res, url)) { res.statusCode = 404; res.end("{}"); }
   });
   server.listen(0);
@@ -71,7 +75,7 @@ async function fixture(t: any, options: { user?: string; email?: string | null }
       ...init,
       headers: { ...(init.anonymous ? {} : { Authorization: "Bearer token" }), ...(init.headers ?? {}) },
     });
-  return { request, admins, scores, reports, actions, cleared, as: (email: string | null) => { identity = { user: "user_other", email }; } };
+  return { request, admins, scores, reports, actions, cleared, failures, as: (email: string | null) => { identity = { user: "user_other", email }; } };
 }
 
 test("every admin route is closed to accounts that are not administrators", async (t) => {
@@ -249,4 +253,21 @@ test("administrators can switch news AI off and on, with boolean values only", a
     assert.deepEqual(await (await request("news-ai")).json(), { on: true });
   }
   assert.equal((await request("news-ai", { anonymous: true })).status, 401);
+});
+
+test("an unexpected failure is logged and kept for Admin → Errors; a worded refusal is not", async (t) => {
+  const { request, failures } = await fixture(t, { report: async () => { throw new TypeError("checks is not iterable"); } });
+  const logged = t.mock.method(console, "log", () => {});
+  const failed = await request("bugs");
+  assert.equal(failed.status, 500);
+  // The reader is told nothing about the inside of the server.
+  assert.deepEqual(await failed.json(), { error: "Something went wrong. Please retry." });
+  assert.deepEqual(failures, ["TypeError: checks is not iterable"]);
+  assert.equal(logged.mock.callCount(), 1);
+  assert.match(logged.mock.calls[0].arguments.join(" "), /admin failed: TypeError: checks is not iterable\n\s+at /);
+
+  assert.equal((await request("no-such-route")).status, 404);
+  assert.equal((await request("bugs", { anonymous: true })).status, 401);
+  assert.equal(failures.length, 1);
+  assert.equal(logged.mock.callCount(), 1);
 });
