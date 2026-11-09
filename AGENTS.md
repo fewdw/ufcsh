@@ -21,9 +21,11 @@ small/large screens. Prefer the smallest maintainable solution.
 
 ## Showing the work
 
-- **"Give me a Tailscale URL" (default):** run `./start` in the task worktree and
-  reply with the URL it prints. Edits hot reload; leave it running for review.
-  `./start stop` when the task is merged or dropped; `./start logs` if it fails.
+- **"Give me a Tailscale URL" / "send ts url" (default):** run `./start` in the task
+  worktree and reply with the URL it prints. Edits hot reload; leave it running for
+  review. `./start stop` when the task is merged or dropped; `./start logs` if it
+  fails. Previews copy a nightly snapshot of dev.ufc.sh's data
+  (`tools/refresh-seed.sh`); `./start reseed` gives an older preview a fresh copy.
 - **"Put X in dev" (only when asked):** push, then
   `ssh ufcsh-vps 'cd /home/ubuntu/ufcsh-dev && ./deploy/dev-review.sh priority BRANCH FULL_PUSHED_SHA'`.
   Report the branch and ask to reload dev. Other commands (`status`, `next`,
