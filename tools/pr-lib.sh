@@ -21,26 +21,33 @@ wait_head() {
   die "PR #$pr head is not $sha"
 }
 
+# Check runs on SHA as "name status conclusion url" lines (`gh pr checks
+# --json` needs a newer gh than the home server has).
+checks_on() {
+  gh api "repos/$gh_repo/commits/$1/check-runs?per_page=100" \
+    --jq '.check_runs[] | "\(.name) \(.status) \(.conclusion) \(.html_url)"'
+}
+
 # CI runs only when a draft is marked ready (see AGENTS.md). Starts it for the
-# PR's current head if it hasn't run, then waits for every check to finish.
+# PR's head SHA if it hasn't run there, then waits for every check to finish.
 ensure_ci() {
-  local pr=$1 checks start=$SECONDS
-  checks="$(gh pr checks "$pr" --json name,bucket,link 2>/dev/null || true)"
+  local pr=$1 sha=$2 checks start=$SECONDS
+  checks="$(checks_on "$sha")"
   if [[ "$(gh pr view "$pr" --json isDraft --jq .isDraft)" == true ]]; then
     gh pr ready "$pr" >/dev/null
     say "Marked #$pr ready; CI started"
-  elif [[ -z "$checks" || "$checks" == "[]" ]]; then
+  elif [[ -z "$checks" ]]; then
     gh pr ready --undo "$pr" >/dev/null && gh pr ready "$pr" >/dev/null
     say "Restarted CI on #$pr"
   fi
   while :; do
-    checks="$(gh pr checks "$pr" --json name,bucket,link 2>/dev/null || true)"
-    if [[ -n "$checks" && "$checks" != "[]" ]]; then
-      if jq -e 'any(.bucket == "fail" or .bucket == "cancel")' <<<"$checks" >/dev/null; then
-        jq -r '.[] | "  \(.name): \(.bucket) \(.link)"' <<<"$checks" >&2
+    checks="$(checks_on "$sha")"
+    if [[ -n "$checks" ]]; then
+      if awk '$2 == "completed" && $3 !~ /^(success|skipped|neutral)$/ { bad = 1 } END { exit !bad }' <<<"$checks"; then
+        printf '  %s\n' "$checks" >&2
         die "CI failed on #$pr; fix it, push, and run this again"
       fi
-      jq -e 'all(.bucket != "pending")' <<<"$checks" >/dev/null && { say "CI passed on #$pr"; return 0; }
+      awk '$2 != "completed" { busy = 1 } END { exit busy }' <<<"$checks" && { say "CI passed on #$pr"; return 0; }
     elif (( SECONDS - start > 120 )); then
       die "no CI run appeared on #$pr after 2 minutes"
     fi

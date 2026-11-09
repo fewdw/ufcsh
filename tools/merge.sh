@@ -36,7 +36,7 @@ else
 fi
 
 wait_head "$pr" "$head"
-ensure_ci "$pr"
+ensure_ci "$pr" "$head"
 gh api -X PUT "repos/$gh_repo/pulls/$pr/merge" -f merge_method=squash -f sha="$head" \
   -f commit_title="$title (#$pr)" >/dev/null || die "GitHub refused the merge"
 say "Squash-merged #$pr into develop"

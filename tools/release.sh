@@ -27,7 +27,7 @@ else
 fi
 
 wait_head "$pr" "$head"
-ensure_ci "$pr"
+ensure_ci "$pr" "$head"
 merged="$(gh api -X PUT "repos/$gh_repo/pulls/$pr/merge" -f merge_method=merge -f sha="$head" --jq .sha)" ||
   die "GitHub refused the merge"
 say "Merged #$pr into main ($merged); waiting for deploy-production"
