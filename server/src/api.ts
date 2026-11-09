@@ -2694,7 +2694,10 @@ export function startApi(port: number): http.Server {
     });
     try {
       if ((req.url?.length ?? 0) > 16_384) return await sendJson(req, res, { error: "URL too long" }, 414);
-      const url = new URL(req.url ?? "/", "http://localhost");
+      // A request names a path, never a host: "//example.com/api/events" is not
+      // /api/events. A target that reads as no address at all is refused.
+      const url = URL.parse((req.url ?? "/").replace(/^\/{2,}/, "/"), "http://localhost");
+      if (!url) return await sendJson(req, res, { error: "bad request" }, 400);
       const p = url.pathname;
       // Page views, and how the first page of each visit loaded (page-timing.ts).
       if (p === "/api/pageview" || p === "/api/timing") {

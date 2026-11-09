@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { connect } from "node:net";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -104,6 +105,26 @@ test("HTTP security holds across alternate page paths and arbitrary resource URL
     assert.equal(denied.status, 401);
     assert.equal(denied.headers.get("X-Frame-Options"), "DENY");
     await denied.arrayBuffer();
+  });
+
+  await t.test("an address that names a host or cannot be read is refused, never served or failed", async () => {
+    // A request names a path. "//example.com/api/events" once read as
+    // /api/events on another host, and "//[" as a server error.
+    assert.equal((await request("/api/events")).status, 200);
+    for (const pathname of ["//example.com/api/events", "//[", "/fights/100%", "/fighters/%E0%A4%A"]) {
+      const response = await request(pathname);
+      assert.equal(response.status, 404, pathname);
+      assert.equal(response.headers.get("X-Frame-Options"), "DENY", pathname);
+      await response.arrayBuffer();
+    }
+    // Only a raw client can send a target that is no address at all.
+    const answer = await new Promise<string>((resolve, reject) => {
+      const socket = connect(address.port, "127.0.0.1", () => socket.write("GET http://[ HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"));
+      let text = "";
+      socket.setEncoding("utf8").on("data", chunk => { text += chunk; }).on("end", () => resolve(text)).on("error", reject);
+      socket.setTimeout(10_000, () => socket.destroy(new Error("no answer")));
+    });
+    assert.match(answer, /^HTTP\/1\.1 400 /);
   });
 
   await t.test("unknown IDs and slugs cannot create permanent per-URL metrics entries", async () => {

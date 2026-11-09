@@ -11,6 +11,14 @@ test("unknown routes and unknown records answer 404 and ask not to be indexed", 
   }
 });
 
+test("an address with a stray percent sign is not found rather than a failure", () => {
+  for (const path of ["/fights/100%", "/fighters/%E0%A4%A", "/profiles/%", "/judges/%zz"]) {
+    const seo = pageSeo(path);
+    assert.equal(seo.status, 404, path);
+    assert.equal(seo.noindex, true, path);
+  }
+});
+
 test("known routes answer 200 with a canonical address and share image", () => {
   const fight = db.prepare("SELECT id FROM fights LIMIT 1").get() as { id: string } | undefined;
   for (const path of ["/", "/rankings", "/stats", "/officials", "/venues", "/info", ...(fight ? [`/fights/${fight.id}`] : [])]) {

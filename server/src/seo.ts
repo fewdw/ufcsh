@@ -134,7 +134,9 @@ function pageSeoFor(pathname: string): PageSeo {
   // Stream overlays are for a streaming tool's browser, not for search.
   if (pathname === "/overlay" || /^\/overlay\/[a-f0-9]{16}$/.test(pathname)) return { ...home, title: "Live fan scorecard overlay | ufc.sh", noindex: true };
   const parts = pathname.split("/");
-  const id = decodeURIComponent(parts[2] ?? "");
+  // A stray "%" ("/fights/100%") is an address no page has, not a server error.
+  let id = "";
+  try { id = decodeURIComponent(parts[2] ?? ""); } catch { return notFound(); }
   if (parts.length !== 3 || !id) return notFound();
   if (parts[1] === "profiles") return { ...home, canonical: `${SITE_URL}${pathname}`, title: "Fan profile | ufc.sh", description: "A fan's UFC scorecards, predictions and how often their cards matched the judges." };
 
