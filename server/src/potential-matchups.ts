@@ -32,6 +32,12 @@ export function potentialMatchups(): PotentialMatchup[] {
   }).sort((a, b) => a.f1_name.localeCompare(b.f1_name) || a.f2_name.localeCompare(b.f2_name));
 }
 
+/** How long a board price stays good to bet on. A source that stops answering
+ *  keeps its last snapshot on the page, but no longer takes bets at it. */
+export const POTENTIAL_PRICE_TTL = 30 * 60_000;
+export const potentialTakesBets = (row: PotentialMatchup, now = Date.now()) =>
+  !!row.f1_id && !!row.f2_id && row.f1_id !== row.f2_id && now - row.fetched_at < POTENTIAL_PRICE_TTL;
+
 export function potentialFight(row: PotentialMatchup, ord = Number.MAX_SAFE_INTEGER) {
   return {
     ...row, ord, event_id: POTENTIAL_EVENT_ID, event_name: POTENTIAL_EVENT_NAME,

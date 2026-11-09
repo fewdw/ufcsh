@@ -1,6 +1,6 @@
 import { fightPay } from "./fight-pay.ts";
 import { eventCrew } from "./event-crew.ts";
-import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight } from "./potential-matchups.ts";
+import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight, potentialTakesBets } from "./potential-matchups.ts";
 import { careerStatistics } from "./career-statistics.ts";
 import { cachedDivisionMedians, currentDivision } from "./division-medians.ts";
 import { decisionScores, roundOutcomes, roundStrikes } from "./fight-insights.ts";
@@ -542,8 +542,8 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
       live: false, card_stats: summarizeCard(fights),
       odds_freshness: { updated_at: rows.length ? Math.min(...rows.map(row => row.fetched_at)) : null,
         final: false, priced: rows.length, sources: [...new Set(rows.map(row => JSON.parse(row.odds_json).source_url.startsWith("https://fightodds.io/") ? "FightOdds.io" : "BestFightOdds"))] },
-      fights: fights.map(f => ({ ...fightRowToJson(f, false, f.event_date, rankingType), potential: true, scheduled_rounds: null,
-        bets_open: !!(f.f1_id && f.f2_id && f.f1_id !== f.f2_id) })),
+      fights: fights.map((f, index) => ({ ...fightRowToJson(f, false, f.event_date, rankingType), potential: true, scheduled_rounds: null,
+        bets_open: potentialTakesBets(rows[index]) })),
     };
   }
   const e = prepared("SELECT * FROM events WHERE id = ?").get(id) as EventRow | undefined;

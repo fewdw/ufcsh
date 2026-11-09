@@ -40,6 +40,14 @@ const POTENTIAL = "potential-";
  *  was placed, so the same board id placed on different days is read apart. */
 const potentialLeg = (leg: StoredLeg) => leg.fightId.startsWith(POTENTIAL);
 export const legKey = (leg: StoredLeg) => potentialLeg(leg) ? `${leg.fightId}@${leg.eventDate}` : leg.fightId;
+/** The last day a potential matchup's leg can be fought on: a year after the
+ *  day it was placed (UTC). Not fought by then, it is void for good. */
+export const potentialDeadline = (placed: string) => `${Number(placed.slice(0, 4)) + 1}${placed.slice(4)}`;
+/** Markets whose meaning depends on how many rounds are scheduled, which a
+ *  potential matchup doesn't know until it is booked: total rounds, a round,
+ *  and whether it goes the distance. The moneyline and the method stand. */
+export const lengthBound = (outcome: Outcome) =>
+  !!outcome.totalRounds || outcome.round != null || (outcome.decision !== undefined && !outcome.method);
 
 export function decimalOdds(line: string): number {
   const n = Number(line);
@@ -226,12 +234,12 @@ export class BetStore {
   /** `places` also reads each bout's place on its card, for a profile's order. */
   private readFights: (ids: string[], places?: boolean) => PredictionFight[];
   private now: () => number;
-  /** The bout a potential matchup's leg became, or the board's entry while it
-   *  is still unbooked; undefined once it has left the board unbooked. */
-  private booking: (leg: StoredLeg) => PredictionFight | undefined;
+  /** The bout a potential matchup's leg became, or the matchup still waiting
+   *  for a booking until its deadline; undefined once that has passed. */
+  private booking: (leg: StoredLeg, now: number) => PredictionFight | undefined;
   constructor(scores: ScoringStore, context: (id: string) => BetContext | undefined,
     readFights: (ids: string[], places?: boolean) => PredictionFight[], now = Date.now,
-    booking: (leg: StoredLeg) => PredictionFight | undefined = () => undefined) {
+    booking: (leg: StoredLeg, now: number) => PredictionFight | undefined = () => undefined) {
     this.db = scores.db;
     this.scores = scores;
     this.context = context;
@@ -250,7 +258,7 @@ export class BetStore {
   }
   /** Bets close on the same clock as predictions, so no one bets on a bout
    *  already walking out. A potential matchup has no card or clock: it takes
-   *  bets for as long as the board prices it. */
+   *  bets for as long as the board prices it (`betContext` drops a stale one). */
   private open(context: BetContext): string | null {
     if (context.fight.id.startsWith(POTENTIAL)) return null;
     return fightLock(this.db, context, this.now()).open ? null : fightIsComplete(context.fight) ? "has finished" : "is closed for betting";
@@ -258,7 +266,7 @@ export class BetStore {
   /** A bet can be taken back only while every matchup on it still accepts bets. */
   private removable(legs: StoredLeg[]): boolean {
     return legs.every(leg => {
-      const context = this.context(potentialLeg(leg) ? this.booking(leg)?.id ?? leg.fightId : leg.fightId);
+      const context = this.context(potentialLeg(leg) ? this.booking(leg, this.now())?.id ?? leg.fightId : leg.fightId);
       return !!context && !this.open(context);
     });
   }
@@ -284,14 +292,21 @@ export class BetStore {
       if (!outcome) throw new ScoringError(400, "One of the picks is not a market on the board.");
       if (legs.some(leg => outcomeKey(leg.outcome) === outcomeKey(outcome))) throw new ScoringError(400, "The same pick is on the slip twice.");
       const clash = legs.find(leg => outcomesConflict(leg.outcome, outcome));
+      const potential = outcome.fightId.startsWith(POTENTIAL);
       const context = this.context(outcome.fightId);
-      if (!context) throw new ScoringError(404, "Fight not found.");
+      if (!context) {
+        if (potential) throw new ScoringError(409, "A potential matchup on your slip isn't taking bets right now. Remove it from your slip.");
+        throw new ScoringError(404, "Fight not found.");
+      }
       const { fight } = context;
       const label = `${fight.f1_name} vs ${fight.f2_name}`;
       if (clash) throw new ScoringError(400, `Two picks in ${label} can't both happen.`);
       const closed = this.open(context);
       if (closed) throw new ScoringError(409, `${label} ${closed}. Remove it from your slip.`);
       const priced = priceOutcome(outcome, context);
+      if (potential && lengthBound(outcome)) {
+        throw new ScoringError(409, `${priced.selection} in ${label} depends on the scheduled rounds, so it isn't offered before the fight is booked. Remove it from your slip.`);
+      }
       const final = outcome.winner && outcome.decision === undefined ? context.moneyline?.final : context.markets?.final;
       if (!priced.price || final) throw new ScoringError(409, `${priced.selection} in ${label} is no longer offered. Remove it from your slip.`);
       const quoted = (raw as Record<string, unknown>).price;
@@ -336,7 +351,7 @@ export class BetStore {
     for (const leg of legs) {
       const key = legKey(leg);
       if (!potentialLeg(leg) || fights.has(key)) continue;
-      const fight = this.booking(leg);
+      const fight = this.booking(leg, this.now());
       if (!fight) continue;
       fights.set(key, fight);
       fights.set(fight.id, fight);
