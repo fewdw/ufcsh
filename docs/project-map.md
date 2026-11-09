@@ -80,7 +80,8 @@ copy of the local archive (`DATA_DIR`).
 ## Development and deployment
 
 `AGENTS.md` owns agent rules. `start` owns local previews, `tools/new-task.sh`
-task worktrees, `tools/heavy.sh` heavy-command limits. `deploy/dev-review.sh` +
+task worktrees, `tools/heavy.sh` heavy-command limits, `tools/merge.sh` and
+`tools/release.sh` (helpers in `tools/pr-lib.sh`) one-step merges and releases. `deploy/dev-review.sh` +
 `dev-review.ts` own the shared dev queue, `deploy/build.sh` the bounded Docker
 builder. `deploy/update.sh` releases production without downtime by handing over
 between `app-blue` and `app-green` (`deploy/live-app.sh`, `deploy/Caddyfile`). `.github/workflows/ci.yml` owns PR checks and production releases;
