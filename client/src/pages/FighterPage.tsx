@@ -122,7 +122,7 @@ function RecordWheel({ history, scope, record }: { history: (HistoryRow | Profes
       <div className="text-sm font-semibold tabular-nums text-zinc-900" title={scope === "ufc" ? "Current UFC-only record" : "Current verified complete professional record"}>
         <span className="mr-1 text-[12px] font-medium text-zinc-500">{scope === "ufc" ? "UFC" : "Pro"}</span><span className="text-[15px]">{record}</span>
       </div>
-      {bouts.length ? <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-3">
+      {bouts.length ? <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-2.5">
         <div
           className="grid h-16 w-16 shrink-0 place-items-center rounded-full sm:h-20 sm:w-20"
           style={{ background: `conic-gradient(from 0deg, ${gradient})` }}
@@ -134,7 +134,7 @@ function RecordWheel({ history, scope, record }: { history: (HistoryRow | Profes
           </div>
         </div>
         <div>
-          <div className="grid grid-cols-2 gap-x-4">
+          <div className="grid grid-cols-2 gap-x-3">
             <div>
               <div className="mb-1 text-[11px] font-semibold text-emerald-700">
                 Wins {winRows.reduce((total, segment) => total + segment.count, 0)}
@@ -552,7 +552,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
               <span className="min-w-0 flex-1 text-[12px] font-medium leading-5 text-zinc-800 [overflow-wrap:anywhere]">{bout.method}</span>
               {bout.fighterOdds ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title={`${fighterName} ${bout.oddsLabel}`}>{bout.fighterOdds}</span> : null}
             </span>
-            {bout.detail ? <span className="block truncate text-[11px] leading-4 text-zinc-500" title={bout.detail}>{bout.detail}</span> : null}
+            {bout.detail ? <span className="line-clamp-2 block text-[11px] leading-4 text-zinc-500" title={bout.detail}>{bout.detail}</span> : null}
             <EnteringRecords career={row.career_record_before} ufc={row.record_before} name={fighterName} className="mt-0.5 w-full text-[10px] font-medium leading-4 text-zinc-400" />
           </span>
         </span>
@@ -977,7 +977,7 @@ export default function FighterPage() {
             {/* Both records at once, side by side while the card is wide
                 enough and stacked when it is not. The professional wheel
                 waits until that history is verified. */}
-            <div className="hidden items-start justify-center gap-x-6 gap-y-5 border-t border-zinc-100 pt-3 empty:hidden sm:flex-wrap sm:gap-x-10 sm:pt-4 lg:flex">
+            <div className="hidden items-start justify-center gap-x-6 gap-y-5 border-t border-zinc-100 pt-3 empty:hidden sm:flex-wrap sm:gap-x-6 sm:pt-4 lg:flex">
               {wheels}
             </div>
           </div>

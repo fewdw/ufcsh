@@ -27,7 +27,7 @@ function MedianBar({ metric, value, median }: { metric: ProfileMetric; value: nu
 export default function FighterCareerStats({ fighterId, name, totals, medians }: { fighterId: string; name: string; totals?: CareerTotals; medians?: DivisionMedians | null }) {
   if (!totals) return null;
   return <section className={`${PANEL_SHELL} @container overflow-hidden`}>
-    <PanelHeading title="Career stats" subtitle={medians ? <><MedianLabel medians={medians} before={false} /> · Current</> : "UFC · Current"} />
+    <PanelHeading title="Career stats" subtitle={medians ? <><MedianLabel medians={medians} before={false} /> · <span className="whitespace-nowrap"><span aria-hidden="true" className="mr-1 inline-block h-2 w-2 rounded-[2px] bg-[#1f9d74]" />Better</span> · Current</> : "UFC · Current"} />
     <div className="grid grid-cols-2 gap-x-2 px-2 py-2 @[36rem]:gap-x-4 @[36rem]:px-4">
       {GROUPS.map(group => <div key={group.label} className="min-w-0">
         <h3 className="px-2 pb-1 pt-1 text-[12px] font-semibold text-zinc-800">{group.label}</h3>

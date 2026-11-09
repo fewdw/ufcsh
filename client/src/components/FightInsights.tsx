@@ -14,7 +14,7 @@ type Insightful = { name: string; insights: FightInsights | null | undefined };
 const WON = "bg-[#059669] dark:bg-[#1f9d74]";
 const LOST = "bg-[#fb7185] dark:bg-[#ec5a6e]";
 // The bouts that went on are the column's track: context behind the finishes.
-const ON = "bg-[#dcdce1] dark:bg-[#2a2c31]";
+const ON = "bg-[#dcdce1] dark:bg-[#43464d]";
 // Strikes wear the same pair: landed is the fighter's good, absorbed their bad.
 const LANDED = WON;
 const ABSORBED = LOST;
@@ -128,12 +128,16 @@ function RoundKey({ rounds, className, compact }: { rounds: NonNullable<FightIns
     { tone: LOST, label: "Stoppage losses", short: "Lost", value: sum("lost") },
     { tone: "", label: "Decisions", short: "Dec", value: `${won}–${lost}${drawn ? `–${drawn}` : ""}` },
   ];
-  if (compact) return <dl className={`${className} items-center justify-center gap-x-2.5 pt-2 ${CHART_TEXT}`}>
-    {rows.map(row => <div key={row.label} className="flex items-center gap-1">
+  if (compact) return <dl className={`${className} flex-wrap items-center justify-center gap-x-2.5 gap-y-0.5 pt-2 ${CHART_TEXT}`}>
+    {rows.map(row => <div key={row.label} className="inline-flex items-center gap-1 whitespace-nowrap">
       {row.tone ? <span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${row.tone}`} /> : null}
       <dt className="text-zinc-500"><span aria-hidden="true">{row.short}</span><span className="sr-only">{row.label}</span></dt>
       <dd className="font-semibold tabular-nums text-zinc-900">{row.value}</dd>
     </div>)}
+    {/* The grey is context, not a result: the bouts that went past the round. */}
+    <div className="inline-flex items-center gap-1 whitespace-nowrap text-zinc-500">
+      <span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${ON}`} />Went on
+    </div>
   </dl>;
   return <dl className={`${className} shrink-0 grid-cols-[auto_auto_auto] items-center gap-x-2 gap-y-1.5 ${CHART_TEXT}`}>
     {rows.map(row => <Fragment key={row.label}>
@@ -157,9 +161,9 @@ export function RoundsPanel({ fighters }: { fighters: Insightful[] }) {
   const length = Math.max(...fighters.map(fighter => fighter.insights?.rounds?.rounds.length ?? 0));
   const two = fighters.length > 1;
   return <section className={`${PANEL_SHELL} @container min-w-0`}>
-    <PanelHeading title="By round" aside={<span className={`flex flex-wrap items-center justify-end gap-x-3 gap-y-1 ${CHART_TEXT} text-zinc-500`}>
-      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${WON}`} />Won</span>
-      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${LOST}`} />Lost</span>
+    <PanelHeading title="By round" aside={<span className={`hidden flex-wrap items-center justify-end gap-x-3 gap-y-1 @[34rem]:flex ${CHART_TEXT} text-zinc-500`}>
+      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${WON}`} />Stoppage win</span>
+      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${LOST}`} />Stoppage loss</span>
       <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-[2px] ${ON}`} />Went on</span>
     </span>} />
     <div className={`grid px-3 pb-2 pt-1.5 @[40rem]:px-4 @[40rem]:pt-2 ${two ? "grid-cols-2 gap-x-4 @[40rem]:gap-x-8" : ""}`}>
@@ -200,7 +204,7 @@ export function StrikesPanel({ fighters }: { fighters: Insightful[] }) {
         const strikes = fighter.insights?.strikes;
         return <div key={fighter.name} className={`min-w-0 ${two ? "" : "pt-2"}`}>
           {two ? columnHead(fighter) : null}
-          {strikes?.length ? <div role="img" className={`mx-auto grid max-w-sm gap-y-2.5 ${CHART_TEXT}`}
+          {strikes?.length ? <div role="img" className={`mx-auto grid max-w-xs gap-y-2.5 ${CHART_TEXT}`}
             aria-label={`${fighter.name}, average significant strikes by round: ${strikes.map(round => `round ${round.round}, ${round.landed.toFixed(1)} landed and ${round.absorbed.toFixed(1)} absorbed over ${round.fights} ${round.fights === 1 ? "fight" : "fights"}`).join("; ")}`}>
             {Array.from({ length }, (_, index) => strikes[index]).map((round, index) => <div key={index} aria-hidden="true" className={`grid grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-x-2 ${round ? "" : "opacity-50"}`}>
               <span className="leading-tight">
@@ -230,7 +234,7 @@ export function DecisionsPanel({ fighters, before }: { fighters: Insightful[]; b
   const sides = fighters.map(fighter => ({ name: fighter.name, decisions: fighter.insights?.decisions ?? [] }));
   return <section className={`${PANEL_SHELL} @container flex min-w-0 flex-col`}>
     <PanelHeading title="Average scorecards" />
-    <DecisionDetails sides={sides} before={before}>{open => <div className={`grid flex-1 px-3 pb-3 pt-1.5 @[40rem]:px-5 @[40rem]:pt-2 ${two ? "grid-cols-2 gap-x-4 @[40rem]:gap-x-10" : "content-center"}`}>
+    <DecisionDetails sides={sides} before={before}>{open => <div className={`grid flex-1 px-3 pb-3 pt-1.5 @[40rem]:px-5 @[40rem]:pt-2 ${two ? "grid-cols-2 gap-x-4 @[40rem]:gap-x-10" : "content-start pt-3"}`}>
       {scored ? fighters.map((fighter, index) => <div key={fighter.name} className={`relative min-w-0 ${two ? "" : "pt-2"}`}>
         {/* The whole side opens its decisions; the figures sit over the button. */}
         {sides[index].decisions.length ? <button type="button" aria-haspopup="dialog" onClick={() => open(index)} aria-label={`${fighter.name}: every decision`}
