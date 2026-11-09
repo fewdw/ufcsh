@@ -101,11 +101,10 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-11-03">November 3, 2026</time></p>
+            <p><time dateTime="2026-11-08">November 8, 2026</time></p>
             <ul>
-              <li>More fighter anti-doping history and replacement details now match their published sources.</li>
-              <li>Recovered bonus awards and verified point deductions; corrected historical judge statistics.</li>
-              <li>Pay data stays available when a source cannot be reached.</li>
+              <li>Event cards and matchups open right away, even while the events list is still loading.</li>
+              <li>If the events list can't load, the sidebar says so and offers a Retry button.</li>
             </ul>
           </Section>
         </div>
