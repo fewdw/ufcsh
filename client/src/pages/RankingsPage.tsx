@@ -199,12 +199,12 @@ function RankRow({
   const inner = (
     <>
       <span
-        className={`flex h-6 w-7 shrink-0 items-center justify-center font-display tabular-nums ${
+        className={`flex h-7 w-9 shrink-0 items-center justify-center font-display tabular-nums ${
           isChamp
-            ? "rounded-md bg-amber-400/15 text-[15px] font-bold text-belt"
+            ? "rounded-md bg-amber-400/15 text-[18px] font-bold text-belt"
             : isInterimChamp
               ? "rounded-md bg-slate-100 text-[13px] font-bold text-belt-interim"
-              : "text-[17px] font-semibold text-zinc-400"
+              : "text-[24px] font-semibold leading-none text-zinc-400"
         }`}
         title={isChamp ? "Undisputed champion" : isInterimChamp ? "Interim champion" : undefined}
       >
@@ -212,7 +212,7 @@ function RankRow({
       </span>
       <Avatar src={entry.photo_url} name={entry.name} size="xs" />
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] font-medium leading-4 text-zinc-900 [overflow-wrap:anywhere]">
+        <span className={`block leading-4 text-zinc-900 [overflow-wrap:anywhere] ${isChamp || isInterimChamp ? "font-display text-[18px] font-semibold uppercase tracking-[0.01em]" : "text-[13px] font-medium"}`}>
           {entry.name}
           {ufcRecord ? (
             <span
@@ -277,7 +277,8 @@ function RankRow({
     }).join(", ")})`,
   } : undefined;
   const selected = tapResults && highlightedFighter?.fighter_id === entry.fighter_id;
-  const className = `flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${!highlightedFighter && features.activityColors ? meta.row : ""} ${selected ? "opponent-selected" : ""} ${
+  // The champion heads the list as a strip of its own: taller, gold-washed.
+  const className = `flex w-full items-center gap-2 px-2.5 text-left transition-colors ${isChamp || isInterimChamp ? "champion-row py-2.5" : "py-1.5"} ${!highlightedFighter && features.activityColors ? meta.row : ""} ${selected ? "opponent-selected" : ""} ${
     entry.fighter_id ? "hover:bg-zinc-100" : ""
   }`;
 

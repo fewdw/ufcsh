@@ -336,6 +336,29 @@ function PromotionLabel({ row, move, short, rank }: { row: HistoryRow | Professi
     : <DivisionLabel division={divisionName(row.weight_class, row.catch_weight)} move={move} short={short} rank={rank} />;
 }
 
+/** How long the bout lasted against how long it could have: one cell per
+ *  scheduled round, filled to the finish, green for a win and red for a
+ *  loss. A decision fills every round. Nothing without a round and time. */
+function FightLength({ row }: { row: HistoryRow | ProfessionalHistoryRow }) {
+  if (row.upcoming || !row.round || !row.time) return null;
+  const round = Number.parseInt(row.round, 10);
+  const clock = row.time.match(/^(\d+):(\d{2})$/);
+  if (!Number.isFinite(round) || round < 1 || !clock) return null;
+  const scheduled = ("scheduled_rounds" in row && row.scheduled_rounds) || (round > 3 ? 5 : 3);
+  const into = Math.min(300, Number(clock[1]) * 60 + Number(clock[2]));
+  const tone = row.outcome === "win" ? "bg-emerald-500" : row.outcome === "loss" ? "bg-rose-500" : "bg-zinc-400";
+  return (
+    <span className="mt-1.5 flex w-full max-w-40 gap-[2px]" role="img" aria-label={`Ended in round ${round} of ${scheduled} at ${row.time}`} title={`Round ${round} of ${scheduled}, ${row.time}`}>
+      {Array.from({ length: scheduled }, (_, index) => {
+        const fill = index + 1 < round ? 1 : index + 1 === round ? into / 300 : 0;
+        return <span key={index} className="relative h-1 flex-1 overflow-hidden rounded-full bg-plot-track">
+          {fill ? <span className={`absolute inset-y-0 left-0 ${tone}`} style={{ width: `${fill * 100}%` }} /> : null}
+        </span>;
+      })}
+    </span>
+  );
+}
+
 function RosterBand({ band }: { band: CareerBand }) {
   const content = <><span>{band.label}</span>{band.date ? <span className="font-normal opacity-75">{band.observed ? "Observed " : ""}{formatDateShortWithYear(band.date)}</span> : null}</>;
   const className = `flex min-h-11 flex-wrap items-center justify-center gap-x-2 px-4 py-2.5 text-[13px] font-semibold leading-5 @3xl:min-h-8 @3xl:py-1.5 ${band.signing
@@ -534,6 +557,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
             </span>
             {bout.detail ? <span className="line-clamp-2 block text-[11px] leading-4 text-zinc-500" title={bout.detail}>{bout.detail}</span> : null}
             <EnteringRecords career={row.career_record_before} ufc={row.record_before} name={fighterName} className="mt-0.5 w-full text-[10px] font-medium leading-4 text-zinc-400" />
+            <FightLength row={row} />
           </span>
         </span>
       </BoutLink>

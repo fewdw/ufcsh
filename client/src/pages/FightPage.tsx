@@ -200,8 +200,10 @@ function FighterHero({
             name never pushes the badge onto a line of its own. */}
         <div className={`flex items-center justify-center gap-1.5 ${rankingBadge ? "mb-1.5" : ""}`}>{rankingBadge}</div>
         <div className={`matchup-name text-balance font-semibold transition-[filter] ${side.outcome === "loss" ? "text-zinc-400" : align === "left" ? "text-f1 group-hover:brightness-90" : "text-f2 group-hover:brightness-90"}`}>
-          {side.name}
-          {side.country_code || side.country ? <Flag code={side.country_code} name={side.country} className="ml-1.5 inline-block align-[-0.05em] text-[0.85em]" /> : null}
+          {/* Poster billing: the given name small over the surname. */}
+          {side.name.includes(" ") ? <span className="matchup-given block font-sans text-[12px] font-medium normal-case tracking-normal text-zinc-500 @[58rem]:text-[14px]">{side.name.slice(0, side.name.indexOf(" "))}</span> : null}
+          {side.name.includes(" ") ? side.name.slice(side.name.indexOf(" ") + 1) : side.name}
+          {side.country_code || side.country ? <Flag code={side.country_code} name={side.country} className="ml-1.5 inline-block align-[0.1em] text-[0.5em]" /> : null}
         </div>
         <div className="min-w-0">
           {side.nickname ? <div className="mt-0.5 text-xs text-zinc-400">“{side.nickname}”</div> : null}
@@ -1010,7 +1012,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
               </div>
             ) : null}
 
-            <div id="matchup-tabpanel" role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `matchup-tab-${tab}` : undefined} className="flex flex-col gap-2 sm:gap-3">
+            <div id="matchup-tabpanel" role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `matchup-tab-${tab}` : undefined} className="matchup-flow flex flex-col gap-3 sm:gap-5">
               {tab === "fight" ? <>
                 {live ? market : null}
                 <Scorecards fight={fight} />

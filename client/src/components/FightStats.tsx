@@ -78,8 +78,8 @@ export function PanelHeading({
 }) {
   return (
     <div className={`px-4 pt-3 sm:px-5 sm:pt-4 ${divider ? "pb-1.5" : "pb-0"}`}>
-      <div className="flex min-h-6 items-center justify-between gap-3">
-        <h2 className="shrink-0 whitespace-nowrap font-display text-[19px] font-semibold uppercase leading-6 tracking-[0.02em] text-zinc-900">{title}</h2>
+      <div className="flex min-h-6 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <h2 className="shrink-0 whitespace-nowrap font-display text-[16px] font-semibold uppercase leading-6 tracking-[0.1em] text-zinc-500">{title}</h2>
         {subtitle || aside ? (
           <div className="flex min-w-0 items-center justify-end gap-2">
             {subtitle ? (
@@ -1101,6 +1101,7 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
         {medians ? <><MedianLabel medians={medians} before /> · </> : null}
         <span className="max-sm:hidden">Stats are before this fight</span><span className="sm:hidden">Before this fight</span>
       </>} />
+      <p className="px-4 text-[11px] leading-4 text-zinc-400 sm:px-5">Each bar is the relative edge: the bigger share has the better figure (lower is better where marked ↓). The centre line is even.</p>
       <div className="grid grid-cols-2 gap-x-4 px-3 pb-2 pt-1 @[40rem]:gap-x-10 @[40rem]:px-5">
         {groups.map((group) => (
           <div key={group.key} className="min-w-0">

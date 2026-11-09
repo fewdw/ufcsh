@@ -168,9 +168,10 @@ export function RoundsPanel({ fighters }: { fighters: Insightful[] }) {
   const two = fighters.length > 1;
   return <section className={`${PANEL_SHELL} @container min-w-0`}>
     <PanelHeading title="By round" aside={<span className={`hidden flex-wrap items-center justify-end gap-x-3 gap-y-1 @[34rem]:flex ${CHART_TEXT} text-zinc-500`}>
-      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-full ${WON}`} />Stoppage win</span>
-      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-full ${LOST}`} />Stoppage loss</span>
+      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-full ${WON}`} />Win</span>
+      <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2 w-2 rounded-full ${LOST}`} />Loss</span>
       <span className="flex items-center gap-1.5"><span aria-hidden="true" className={`h-2.5 w-2 rounded-t-[3px] ${ON} opacity-60`} />Bouts that reached it</span>
+      <span className="text-zinc-400">1 dot = 1 bout</span>
     </span>} />
     <div className={`grid px-3 pb-2 pt-1.5 @[40rem]:px-4 @[40rem]:pt-2 ${two ? "grid-cols-2 gap-x-4 @[40rem]:gap-x-8" : ""}`}>
       {fighters.map(fighter => <div key={fighter.name} className={`min-w-0 pb-1 ${two ? "" : "pt-2"}`}>

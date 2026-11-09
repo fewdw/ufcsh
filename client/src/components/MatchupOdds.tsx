@@ -58,7 +58,7 @@ function Movement({ movement, name }: { movement: OddsMovement; name: string }) 
       }}
     >
       <Arrow className="h-3.5 w-3.5 @[40rem]:h-4 @[40rem]:w-4" strokeWidth={1.5} aria-hidden="true" />
-      <span className="text-[9px] font-medium leading-3 tabular-nums">{movement.points}</span>
+      <span className="whitespace-nowrap text-[9px] font-medium leading-3 tabular-nums">{movement.points} pts</span>
       <Tooltip id={id} at={at}>{label}</Tooltip>
     </span>
   );
@@ -466,8 +466,8 @@ export default function MatchupOdds({ f1, f2, f1Open, f2Open, f1Name, f2Name, pr
   return (
     <div className="odds-pair w-full overflow-hidden rounded-xl border text-center" aria-label="Pre-fight betting odds">
       {f1 || f2 ? <div className="grid grid-cols-[minmax(0,1fr)_1rem_minmax(0,1fr)] items-center gap-y-0.5 px-1 py-1.5 @[40rem]:grid-cols-[minmax(0,1fr)_2rem_minmax(0,1fr)] @[40rem]:py-3.5">
-        <Moneyline leg={moneylineLeg(fightId, fightLabel, 1, f1Name, f1)} value={f1} name={f1Name} className="col-start-1 row-start-1 font-display text-[15px] font-semibold leading-4 tabular-nums @[40rem]:text-[30px] @[40rem]:leading-8" />
-        <Moneyline leg={moneylineLeg(fightId, fightLabel, 2, f2Name, f2)} value={f2} name={f2Name} className="col-start-3 row-start-1 font-display text-[15px] font-semibold leading-4 tabular-nums @[40rem]:text-[30px] @[40rem]:leading-8" />
+        <Moneyline leg={moneylineLeg(fightId, fightLabel, 1, f1Name, f1)} value={f1} name={f1Name} className="col-start-1 row-start-1 font-display text-[15px] font-semibold leading-4 tabular-nums @[40rem]:text-[22px] @[40rem]:leading-7" />
+        <Moneyline leg={moneylineLeg(fightId, fightLabel, 2, f2Name, f2)} value={f2} name={f2Name} className="col-start-3 row-start-1 font-display text-[15px] font-semibold leading-4 tabular-nums @[40rem]:text-[22px] @[40rem]:leading-7" />
         {hasOpen ? <>
           <span className="col-start-1 row-start-2 hidden whitespace-nowrap text-[10px] leading-4 tabular-nums text-zinc-400 @[40rem]:block">{f1Open ? `from ${f1Open}` : ""}</span>
           <span className="col-start-3 row-start-2 hidden whitespace-nowrap text-[10px] leading-4 tabular-nums text-zinc-400 @[40rem]:block">{f2Open ? `from ${f2Open}` : ""}</span>

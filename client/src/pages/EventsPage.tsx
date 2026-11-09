@@ -517,7 +517,7 @@ function CenterBlock({ fight, past, cancellation }: { fight: EventFight; past: b
         f1Name={fight.f1.name} f2Name={fight.f2.name}
         fightId={betFightId(fight, past)} />
       {/* The same prices as one blue-against-red split: who the market favours, at a glance. */}
-      {cancellation ? null : <WinSplit f1={f1Odds} f2={f2Odds} className="mt-1.5 px-0.5" />}
+      {cancellation ? null : <WinSplit f1={f1Odds} f2={f2Odds} size="labels" className="-mt-0.5 w-full" />}
       {/* The result wraps rather than truncating: the round and the clock are
           the point of the line, and the centre column is narrow enough that
           "KO/TKO · R1 · 2:54" would lose its tail to an ellipsis. */}
@@ -581,7 +581,7 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
         event.preventDefault();
         open();
       }}
-      className={`group block w-full px-3 text-left transition-colors @3xl:px-4 ${cancellation ? "bg-red-50 py-2 @3xl:py-1.5 dark:bg-red-950/40" : live ? "cursor-pointer py-2.5 hover:bg-emerald-50/60 @3xl:py-3" : "cursor-pointer py-2 hover:bg-zinc-50 @3xl:py-1.5"}`}
+      className={`group relative block w-full px-3 text-left transition-colors @3xl:px-4 ${cancellation ? "bg-red-50 py-2 @3xl:py-1.5 dark:bg-red-950/40" : live ? "cursor-pointer py-2.5 hover:bg-emerald-50/60 @3xl:py-3" : "cursor-pointer py-2 hover:bg-zinc-50 @3xl:py-1.5"}`}
     >
       <div className="@3xl:hidden"><CompactFightRow fight={fight} done={done} live={live} cancellation={cancellation} /></div>
       <div className="hidden grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1 @3xl:grid">
@@ -604,6 +604,8 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
         </p>
       ) : null}
       </div>
+      {/* The market's split as the bout's bottom edge, the card's signature. */}
+      {cancellation || done ? null : <WinSplit f1={fight.odds?.f1.close} f2={fight.odds?.f2.close} size="tape" className="absolute inset-x-0 bottom-0 opacity-80" />}
     </div>
   );
 }
@@ -619,11 +621,13 @@ function CompactSide({ side, fight, done, other, profileLink = false }: { side: 
   const corner = side === fight.f1 ? 1 : 2;
   return (
     <div className="flex min-w-0 items-center gap-2.5">
+      {/* The corner's colour, matching its half of the win-chance strip. */}
+      <span aria-hidden="true" className={`-ml-1.5 h-7 w-[3px] shrink-0 rounded-full ${corner === 1 ? "bg-f1" : "bg-f2"}`} />
       <Avatar src={side.photo_url} name={side.name} size="sm" outcome={side.outcome} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
           {rank ? <span className={`text-[10px] font-semibold tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-400"}`} title={rankingTitle(side.ranking, done)}>{rank}</span> : null}
-          <span className={`text-[14px] font-semibold leading-5 ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>{profileLink && side.profile_eligible && side.id ? <Link to={`/fighters/${side.id}`} className="hover:underline">{side.name}</Link> : side.name}</span>
+          <span className={`font-display text-[19px] font-semibold uppercase leading-5 tracking-[0.01em] ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>{profileLink && side.profile_eligible && side.id ? <Link to={`/fighters/${side.id}`} className="hover:underline">{side.name}</Link> : side.name}</span>
           {tag ? (
             <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>
               {tag.label}
@@ -682,7 +686,6 @@ function CompactFightRow({ fight, done, live, cancellation }: { fight: EventFigh
         <CompactSide side={fight.f1} other={fight.f2} fight={fight} done={done} profileLink={Boolean(cancellation)} />
         <CompactSide side={fight.f2} other={fight.f1} fight={fight} done={done} profileLink={Boolean(cancellation)} />
       </div>
-      {cancellation ? null : <WinSplit f1={fight.odds?.f1.close} f2={fight.odds?.f2.close} className="mt-0.5" />}
       {cancellation?.reason ? <p className="text-[10px] leading-4 text-red-700 dark:text-red-300">{cancellation.reason}</p> : null}
     </div>
   );

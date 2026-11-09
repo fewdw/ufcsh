@@ -426,6 +426,7 @@ export function MarketTeaser({ fightId, eventId }: { fightId: string; eventId: s
       className="matchup-polymarket inline-flex w-fit max-w-full flex-nowrap items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1 text-[12px] text-zinc-500 transition-colors hover:bg-zinc-100"
     >
       <PolymarketLogo />
+      <span className="text-[11px] text-zinc-400">Polymarket</span>
       <span className="font-semibold tabular-nums text-blue-700 dark:text-blue-400">
         {marketPct(q.p)}
       </span>
