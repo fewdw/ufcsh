@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# "Merge to main" in one step, after the changelog for today is pushed to
+# "Merge to main" in one step, after the release changelog is pushed to
 # develop: opens (or reuses) the develop → main PR, runs CI, merges it with a
 # merge commit, waits for deploy-production, and fast-forwards develop to main.
 # Usage: ./tools/release.sh
@@ -10,9 +10,8 @@ fetch
 [[ "$(git -C "$repo" rev-list --count origin/main..origin/develop)" != 0 ]] || { say "develop has nothing new for main"; exit 0; }
 git -C "$repo" merge-base --is-ancestor origin/main origin/develop ||
   die "main has commits develop lacks; bring develop up to main first"
-today="$(date +%F)"
-git -C "$repo" show origin/develop:client/src/pages/InfoPage.tsx | grep -q "dateTime=\"$today\"" ||
-  die "the changelog on develop isn't dated $today; replace it in client/src/pages/InfoPage.tsx, push, rerun"
+git -C "$repo" diff --quiet origin/main origin/develop -- client/src/pages/InfoPage.tsx &&
+  die "the changelog on develop is main's; replace it in client/src/pages/InfoPage.tsx, push, rerun"
 
 head="$(git -C "$repo" rev-parse origin/develop)"
 pr="$(gh pr list --base main --head develop --state open --json number --jq '.[0].number // empty')"
@@ -44,6 +43,7 @@ deploy="$(gh run view "${run%% *}" --json jobs --jq '.jobs[] | select(.name == "
 [[ $deploy == success ]] || die "deploy-production: ${deploy:-did not run}; ${run##* } (rerun or fix it)"
 say "deploy-production succeeded; ufc.sh is on $merged"
 
+fetch
 git -C "$repo" push -q origin "$merged:refs/heads/develop" || die "could not fast-forward develop to main"
 fetch; refresh_clone
 say "Done: develop and main are both at $merged"
