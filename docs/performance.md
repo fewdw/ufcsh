@@ -911,6 +911,6 @@ detail response determines selection, with the navigation hint as a fallback.
 Home still selects its opening card from the list.
 
 These are controlled loopback regression timings, with no Clerk key or real
-network latency; they do not establish a production LCP gain. Run after a
-production build with `CHROME_BIN=/path/to/chrome npm run test:browser --prefix
-client`. The browser tests include cold fight entry as well as card entry.
+network latency; they do not establish a production LCP gain. The one-off
+Playwright script covered cold fight entry as well as card entry; it was not
+kept, since CI does not run browser tests.
