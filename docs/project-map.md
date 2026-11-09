@@ -79,7 +79,8 @@ copy of the local archive (`DATA_DIR`).
 
 ## Development and deployment
 
-`AGENTS.md` owns agent rules. `start` owns local previews, `tools/new-task.sh`
+`AGENTS.md` owns agent rules. `start` owns local previews (`tools/refresh-seed.sh`
+their nightly data seed from dev), `tools/new-task.sh`
 task worktrees, `tools/heavy.sh` heavy-command limits, `tools/merge.sh` and
 `tools/release.sh` (helpers in `tools/pr-lib.sh`) one-step merges and releases. `deploy/dev-review.sh` +
 `dev-review.ts` own the shared dev queue, `deploy/build.sh` the bounded Docker

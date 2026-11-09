@@ -3,6 +3,7 @@
 #   ./start        start (or reuse) the preview and print its URL
 #   ./start stop   stop it, keeping its data
 #   ./start logs   show recent output
+#   ./start reseed replace this preview's data with a fresh copy of the seed
 # Each worktree gets its own port and data copy, so several can run at once.
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
@@ -35,8 +36,11 @@ case "${1:-ts}" in
     [[ -z $host ]] || tailscale serve --https="$port" off >/dev/null 2>&1 || true
     echo "Stopped $unit."; exit ;;
   logs) exec journalctl --user -u "$unit" -n "${2:-50}" --no-pager ;;
+  reseed)
+    systemctl --user stop "$unit" 2>/dev/null || true
+    rm -rf "$state/data" ;;
   ts) ;;
-  *) echo 'Usage: ./start [stop|logs]' >&2; exit 2 ;;
+  *) echo 'Usage: ./start [stop|logs|reseed]' >&2; exit 2 ;;
 esac
 
 if ! systemctl --user is-active --quiet "$unit"; then
@@ -59,11 +63,18 @@ if ! systemctl --user is-active --quiet "$unit"; then
   if [[ ! -d $state/data ]]; then
     seed="${TS_SEED_DIR:-$HOME/.local/share/ufcsh/dev-seed}"
     if [[ -d $seed ]]; then
+      if [[ -n $(find "$seed" -maxdepth 0 -mmin +2880) ]]; then
+        echo "Seed is over two days old; check: systemctl --user status ufcsh-seed-refresh" >&2
+      fi
       rm -rf "$state/data.tmp"
-      cp -a --reflink=auto "$seed" "$state/data.tmp"
+      mkdir "$state/data.tmp"
+      # Databases are copied; images are hard-linked. The server adds images by new
+      # file or rename, so previews do not change the seed's copies in practice.
+      find "$seed" -mindepth 1 -maxdepth 1 ! -name images -exec cp -a --reflink=auto -t "$state/data.tmp" {} +
+      [[ ! -d $seed/images ]] || cp -al "$seed/images" "$state/data.tmp/images"
       mv "$state/data.tmp" "$state/data"
     else
-      echo "No seed at $seed; starting with an empty database." >&2
+      echo "No seed at $seed; run ./tools/refresh-seed.sh. Starting with an empty database." >&2
       mkdir "$state/data"
     fi
   fi
