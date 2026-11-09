@@ -80,7 +80,9 @@ const outages = new Map<string, { since: number; reportedAt: number | null }>();
  *  `answered`: the job's source responded (success, or a page still filling in). */
 export function outageReport(name: string, err: unknown, now = Date.now(), answered = false): boolean {
   if (answered) { outages.delete(name); return false; }
-  const transient = isTransientUpstream(err) || /database is locked|SQLITE_BUSY/i.test(String(err));
+  // ufc.com lists a new card's bouts on its event page minutes before its live
+  // feed carries them: a lag to wait out, not a fault, unless it lasts.
+  const transient = isTransientUpstream(err) || /database is locked|SQLITE_BUSY|carried no fight card/i.test(String(err));
   const outage = outages.get(name) ?? { since: now, reportedAt: null };
   if (outages.size > 2000) outages.clear();
   outages.set(name, outage);

@@ -78,6 +78,30 @@ test("a live Verdict card names the bout on and each round's status, from its ow
   assert.deepEqual(parseVerdictLiveCard("<html></html>", 1936), []);
 });
 
+test("a split card's other half is listed by its rows, which a model with rounds replaces", () => {
+  const flat: unknown[] = [];
+  const at = (value: unknown) => flat.push(value) - 1;
+  const row = (link: string, f1: string, f2: string, status: number) => at({
+    type: at("fighterVersus"), fighter1Name: at(f1), fighter2Name: at(f2), fightStatus: at(status),
+    action: at({ title: at("Score"), link: at(link) }),
+  });
+  row("/event/1965/fight/10", "Francis Marshall", "Dakota Hope", 1);
+  row("/event/1965/fight/9", "Zach Reese", "Mickey Gall", 3);
+  row("/event/1969/fight/2", "Renato Moicano", "Tom Nolan", 0); // the main card's half
+  row("/rate/fights", "Not", "A Bout", 1);
+  at({
+    eventID: at(1965), fightNumber: at(9), fightStatus: at(3),
+    fighter1: at({ fighterFirstName: at("Zach"), fighterLastName: at("Reese") }),
+    fighter2: at({ fighterFirstName: at("Mickey"), fighterLastName: at("Gall") }),
+    rounds: at([at({ roundNumber: at(1), roundStatus: at(3) })]),
+  });
+  const html = `<script type="application/json" id="__NUXT_DATA__">${JSON.stringify(flat)}</script>`;
+  assert.deepEqual(parseVerdictLiveCard(html, 1965), [
+    { eventId: 1965, fightNumber: 10, f1Name: "Francis Marshall", f2Name: "Dakota Hope", status: 1, rounds: [] },
+    { eventId: 1965, fightNumber: 9, f1Name: "Zach Reese", f2Name: "Mickey Gall", status: 3, rounds: [{ round: 1, status: 3 }] },
+  ]);
+});
+
 test("a Verdict bout's penalties come from its round models, and only when every copy reads the same", () => {
   const page = (copies: number[][]) => {
     const flat: unknown[] = [];

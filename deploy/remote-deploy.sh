@@ -14,7 +14,24 @@ if [[ "$request" =~ ^prod[[:space:]]([0-9a-f]{40})$ ]]; then
     echo "Skipping superseded push $requested_sha; current main is $current_sha."
     exit 0
   fi
-  "$repo_dir/deploy/update.sh"
+  # A busy card can leave too little memory for tools/heavy.sh with dev running,
+  # and the release then fails after ten minutes. Production outranks dev, which
+  # gives its memory back for the release. The memory check itself stays as it is.
+  dev_app=ufcsh-app-dev-1
+  dev_stopped=0
+  available_kb="$(awk '/^MemAvailable:/ { print $2 }' /proc/meminfo)"
+  if (( available_kb < ${UFC_HEAVY_MIN_AVAILABLE_KB:-2621440} )) &&
+    [[ -n "$(docker ps -q --filter "name=^$dev_app\$")" ]]; then
+    echo "Only $((available_kb / 1024)) MiB available; stopping dev for this release."
+    docker stop "$dev_app" >/dev/null
+    dev_stopped=1
+  fi
+  update_status=0
+  "$repo_dir/deploy/update.sh" || update_status=$?
+  if (( dev_stopped )); then
+    docker start "$dev_app" >/dev/null || echo 'Dev did not restart after the release.' >&2
+  fi
+  if (( update_status )); then exit "$update_status"; fi
   # Only the merged owner advances the review queue; other releases leave dev alone.
   if ! "$repo_dir/deploy/dev-review.sh" merged "$requested_sha"; then
     echo 'Production deployment completed; queued dev deployment needs attention. Check dev-review.sh status.' >&2

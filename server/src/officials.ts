@@ -1,6 +1,6 @@
 import { completedScorecardRounds, communityScorecard } from "./community-scorecards.ts";
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
-import { mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
+import { panelCards, type JudgeCard } from "./judge-scorecards.ts";
 import { verifiedDeductions, type PointDeduction } from "./point-deduction-rules.ts";
 import { searchList } from "./fuzzy.ts";
 import { givenName, normName } from "./util.ts";
@@ -123,7 +123,7 @@ function officiatedOf(fight: IndexedFight): Officiated {
   const imported = parseJson(fight.row.judge_rounds_json);
   const official: JudgeCard[] = Array.isArray(detail?.judges) ? detail.judges : [];
   const importedCards: JudgeCard[] = Array.isArray(imported?.judges) ? imported.judges : [];
-  const merged = official.length ? mergeJudgeRounds(official, importedCards) : importedCards;
+  const merged = panelCards(official, importedCards);
   const cards: Card[] = merged
     .filter((card) => Number.isFinite(Number(card.f1Score)) && Number.isFinite(Number(card.f2Score)))
     .map((card) => ({

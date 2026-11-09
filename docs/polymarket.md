@@ -8,7 +8,10 @@ UFC.sh reads public market data only. It does not connect a wallet or place orde
 - A matchup's Odds tab (`?tab=odds`): sportsbook moneylines/props and a Polymarket
   panel with the probability chart first, followed by source comparisons and
   source-listed props. The chart and comparison stay stacked at every screen size.
-- During a live fight, the Result and Score tabs also include the compact chart.
+- A bout's first tab reads Live until it has a result, then Result. It carries the
+  compact chart, above the scores while live and below the stats once finished,
+  for cards since the feed began (October 28, 2026); older bouts would each start
+  an outside lookup just by opening.
 - A finished bout keeps its Odds tab only when it has sportsbook prices, and shows
   the Polymarket panel only when a market was matched or prices were captured, so
   the archive before Polymarket's UFC markets shows no empty panels. A finished
@@ -16,6 +19,9 @@ UFC.sh reads public market data only. It does not connect a wallet or place orde
 - The hero badge is one line: the official Polymarket symbol and both percentages.
   It appears only while a fresh quote is available and the fight has no result.
   A result from the matchup feed hides it even if the price feed has not caught up.
+- While a bout is live, the comparison's Sportsbooks row reads Closed (books stop
+  taking bets at the start), and a Polymarket price that changes in the comparison
+  or More markets gets a brief wash (`LivePct`).
 
 There is no standalone Markets page, watchlist, follow UI, or replay slider.
 Hover over the chart or focus it and use arrow/Home/End keys to inspect points.
@@ -44,8 +50,11 @@ token IDs and Protocol V2 position IDs are accepted. The existing live header
 keeps its established price/result-hold behavior.
 
 Current quotes come from CLOB order books. A single upstream market WebSocket
-tracks the bout with confirmed live evidence (feed, Verdict or admin), including
-sized order-book deltas, heartbeats and reconnects. Shared REST reads provide
+tracks the live bout, including sized order-book deltas, heartbeats and
+reconnects. A bout is live as soon as the site calls it Live (`boutIsLive`: the
+previous result landed, or the opener's start passed) or has evidence (feed,
+Verdict or admin). Evidence alone arrives rounds late, after the price has
+moved, and an admin hold still keeps a bout at Next. Shared REST reads provide
 initial books and repair gaps. Additional data/history reads have a concurrency
 limit of four; clients poll the shared server answer. Quotes expire after 15
 seconds live and 90 seconds pre-fight and bypass persisted client page snapshots.
@@ -55,6 +64,15 @@ captures are limited to one per ten seconds live, one per ten minutes before the
 card's first start (matching source history buckets) and one per minute between
 that start and the bout. A Gamma discovery outage keeps the last good mapping, so
 current quotes and the live stream continue.
+
+More markets come from Gamma, re-read every 10 minutes and every minute for the
+live bout (props close as rounds pass). Gamma's prices ran minutes behind a live
+bout when sampled (moneyline 72.5% against a 90/91 book), so the live bout's props
+are priced from their CLOB books on the shared 8-second cadence: no reader waits,
+resolved markets have no book, and a read older than 30 seconds falls back to
+Gamma's price. They use `midpointPrices`, Gamma's own formula (the plain midpoint,
+an empty side counting as 0 or 1), not `displayPrices`: last trades on these thin
+books are old and read a market bid at 99¢ as 89%.
 
 The archive contains three new tables:
 
@@ -71,7 +89,10 @@ History uses the Data API v2 price-history endpoint and cursor pagination,
 bounded to eight pages per read. Partial and failed reads stay visible. Source
 history with unconfirmed live timing remains in the historical view; a bucket is
 pre-fight only if its whole interval precedes the current card cutoff. Samples retain
-their identity after a replacement and are excluded from the changed matchup.
+their identity after a replacement and are excluded from the changed matchup. A
+result that swaps the corners (UFCStats lists a winner first) is the same matchup:
+captures, rounds and the frozen snapshot under the swapped identity are read with
+their prices flipped, and source history is read again under the new one.
 History is retained for analysis; it is not reconstructed from results.
 
 The matchup response carries every live capture and at most 1,500 other points,
@@ -80,12 +101,16 @@ market keeps its full span (the newest point is always kept). It is recomputed
 when a capture or history read lands, or after five seconds.
 
 The chart uses `client/src/market-chart.ts` to validate, sort and deduplicate
-observations. A confirmed live bout automatically switches to captured live
-observations and follows the last ten captured minutes. It waits if none exist;
-it never guesses a fight start from the card cutoff. A completed fight with live
-captures shows the whole captured fight, excluding source settlement history;
-without captures it retains the full historical view. Missing live minutes stay
-disconnected. Round markers use the first observed round timestamps.
+observations. A live bout automatically switches to captured live observations
+and shows all of them, so the window runs from walkout to the latest price. It
+waits if none exist; it never guesses a fight start from the card cutoff. A
+completed fight with live captures shows the whole captured fight, excluding
+source settlement history; without captures it retains the full historical view.
+Its range opens 30 seconds before round 1 when round 2 was first seen a full round
+(5+ minutes) later; round evidence can land late or together, so otherwise it opens
+on every capture. The navigator still reaches back to the walkout.
+Missing live minutes stay disconnected. Round markers use the first observed
+round timestamps.
 
 Manual ranges use absolute epoch milliseconds, so appending or backfilling history
 does not shift the selected period. Handles cannot cross, extend outside the data,
@@ -147,7 +172,7 @@ Run `./start` and append the paths below to the printed Tailscale URL.
 | Upcoming matchup | `/fights/FIGHT_ID?tab=odds` | One-line logo/percentage badge, sportsbook comparison, draggable window, grouped props and hover/keyboard interaction |
 | Completed matchup | `/fights/FIGHT_ID?tab=odds` | No hero badge; retained chart; full captured fight when available |
 | Card | `/events/EVENT_ID?markets=1` | Expanded probabilities, hide/show and links into Odds |
-| Live bout | `/fights/FIGHT_ID?tab=odds` | Automatic last-ten-minute focus, confirmed captures only, Follow live after manual zoom |
+| Live bout | `/fights/FIGHT_ID?tab=odds` | Whole capture since the bout went Live, captures only, Follow live after manual zoom |
 | Return to Odds | Switch to Matchup and back | Same chart/range, no loading flash; hidden panels pause requests |
 
 Test phone and desktop widths in both themes. The follow/open-market controls,

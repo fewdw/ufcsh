@@ -104,11 +104,13 @@ export function parseExtra(m: any, eventSlug: string): ExtraMarket[] {
   if (!m || typeof m.question !== "string" || !m.question.trim() || (!m.id && !m.slug)) return [];
   const outcomes = list(m.outcomes), prices = list(m.outcomePrices);
   if (outcomes.length < 2 || outcomes.length > 40 || outcomes.some(o => typeof o !== "string" || !o.trim())) return [];
+  const tokens = list(m.version === "v2" ? m.positionIds : m.clobTokenIds).map(String);
   return [{ id: String(m.id ?? m.slug), question: m.question,
     url: `https://polymarket.com/event/${encodeURIComponent(eventSlug)}/${encodeURIComponent(m.slug ?? "")}`,
     type: String(m.sportsMarketType ?? "Other"),
     outcomes: outcomes.map((name, i) => ({ name: String(name), p: price(prices[i]) })),
-    volume: nonnegative(m.volumeNum ?? m.volume), liquidity: nonnegative(m.liquidityNum ?? m.liquidity), closed: Boolean(m.closed) }];
+    volume: nonnegative(m.volumeNum ?? m.volume), liquidity: nonnegative(m.liquidityNum ?? m.liquidity), closed: Boolean(m.closed),
+    ...(outcomes.length === 2 && tokens.length === 2 && tokens.every((t) => /^\d+$/.test(t)) ? { tokens: [tokens[0], tokens[1]] as [string, string] } : {}) }];
 }
 
 /** Generational suffixes and Central Asian patronymics ("Akylbek Uulu") are not the name. */
@@ -164,27 +166,44 @@ export function matchMarket(markets: Market[], f1: string[], f2: string[]): { ma
   return found.length === 1 ? found[0] : null;
 }
 
-/** What Polymarket itself shows for a market's two outcomes: the midpoint
- *  of the best bid and ask, or the last trade when they are more than 10¢
- *  apart. An order for one outcome is an order for the other at 1 − price,
- *  so the two books are read as one and the pair always adds up to 1. The
- *  CLOB writes one last trade for the whole market on both tokens, in either
- *  outcome's terms, so it goes to the outcome whose prices it sits nearer:
- *  a one-sided book once showed 99% for both fighters. */
-export function displayPrices(first: Book | undefined, second: Book | undefined): Pair | null {
+/** The first outcome's best bid and ask. An order for one outcome is an order
+ *  for the other at 1 − price, so the two books are read as one. */
+function bestPrices(first: Book | undefined, second: Book | undefined): { bid: number | null; ask: number | null } {
   const best = (orders: { price: string }[] | undefined, pick: (...values: number[]) => number) => {
     const prices = (orders ?? []).map((o) => price(o?.price)).filter((p): p is number => p != null);
     return prices.length ? pick(...prices) : null;
   };
   const flip = (p: number | null) => (p == null ? null : 1 - p);
   const either = (a: number | null, b: number | null, pick: (...values: number[]) => number) => (a == null ? b : b == null ? a : pick(a, b));
-  const bid = either(best(first?.bids, Math.max), flip(best(second?.asks, Math.min)), Math.max);
-  const ask = either(best(first?.asks, Math.min), flip(best(second?.bids, Math.max)), Math.min);
+  return {
+    bid: either(best(first?.bids, Math.max), flip(best(second?.asks, Math.min)), Math.max),
+    ask: either(best(first?.asks, Math.min), flip(best(second?.bids, Math.max)), Math.min),
+  };
+}
+
+/** What Polymarket itself shows for a market's two outcomes: the midpoint
+ *  of the best bid and ask, or the last trade when they are more than 10¢
+ *  apart, so the pair always adds up to 1. The CLOB writes one last trade for
+ *  the whole market on both tokens, in either outcome's terms, so it goes to
+ *  the outcome whose prices it sits nearer: a one-sided book once showed 99%
+ *  for both fighters. */
+export function displayPrices(first: Book | undefined, second: Book | undefined): Pair | null {
+  const { bid, ask } = bestPrices(first, second);
   if (bid != null && ask != null && ask >= bid && ask - bid <= 0.1 + 1e-9) return [(bid + ask) / 2, 1 - (bid + ask) / 2];
   const last = price(first?.last_trade_price) ?? price(second?.last_trade_price);
   if (last == null) return null;
   const off = (p: number) => Math.max(bid == null ? 0 : bid - p, ask == null ? 0 : p - ask, 0);
   return off(1 - last) < off(last) ? [1 - last, last] : [last, 1 - last];
+}
+
+/** What Gamma publishes for a prop, read straight from its books: the plain
+ *  midpoint, an empty side counting as 0 or 1. A prop's book is thin and its
+ *  last trade old: displayPrices read a market bid at 99¢ mid-fight as 89%. */
+export function midpointPrices(first: Book | undefined, second: Book | undefined): Pair | null {
+  const { bid, ask } = bestPrices(first, second);
+  if ((bid == null && ask == null) || (bid ?? 0) > (ask ?? 1)) return null;
+  const mid = ((bid ?? 0) + (ask ?? 1)) / 2;
+  return [mid, 1 - mid];
 }
 
 async function getJson(url: string, init: RequestInit = {}, timeoutMs = 5_000): Promise<unknown> {
@@ -245,8 +264,8 @@ export async function marketsFor(date: string, maxAgeMs = MARKETS_TTL_MS, now = 
 export type BoutNames = { id: string; date: string; f1: string[]; f2: string[] };
 
 /** The bout's market, looking again soon when there is none yet. */
-export async function findMarket(bout: BoutNames, now = Date.now()): Promise<{ market: Market; reversed: boolean } | null> {
-  const found = matchMarket(await marketsFor(bout.date, MARKETS_TTL_MS, now), bout.f1, bout.f2);
+export async function findMarket(bout: BoutNames, now = Date.now(), maxAgeMs = MARKETS_TTL_MS): Promise<{ market: Market; reversed: boolean } | null> {
+  const found = matchMarket(await marketsFor(bout.date, maxAgeMs, now), bout.f1, bout.f2);
   if (found) return found;
   return matchMarket(await marketsFor(bout.date, MISSING_RETRY_MS, now), bout.f1, bout.f2);
 }

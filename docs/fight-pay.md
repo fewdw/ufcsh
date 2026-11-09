@@ -9,7 +9,8 @@ evidence in the shared mobile bottom sheet / desktop dialog. All four
 categories are available as tabs, including categories without an amount.
 
 `server/src/fight-pay.ts` assembles each card. Wikipedia's event payout section
-is read first, then reviewed historical reports, then MMA Payout salary posts.
+is read first, then reviewed historical reports, then all matching MMA Payout
+salary posts.
 The first supported figure stays when sources disagree; the alternative and
 both source links are retained, and Admin → Bugs lists the conflict. Never add
 an ambiguous winner's base salary to an assumed win bonus. Show/win parts are
@@ -18,8 +19,8 @@ total. A disclosed purse is not the fighter's total earnings.
 
 ## Reviewed historical disclosures
 
-`server/src/purse-reports-data.ts` contains public facts from 25 cards,
-2006–2009: 459 supported fighter purses in 235 bouts. It supplements event
+`server/src/purse-reports-data.ts` contains public facts from 28 cards,
+2006–2009: 511 supported fighter purses in 261 bouts. It supplements event
 articles; it does not require Wayback access during background sync. Every row
 must match the date, UFCStats bout ID and both names, in corner order. A row
 that stops matching goes to **Pay rows not read**. The usual per-card re-read
@@ -37,8 +38,33 @@ read; related stories, captions and ads were excluded. Quoted nicknames and
 salary rows split before “def.” are handled. Weight-fine footnotes are kept,
 including a trailing `+` mark. The bundle contains facts, not article bodies.
 
-The research covered 243 archived salary URLs. Only missing disclosures with
-supported amounts were added. Important exclusions and independent checks:
+The October 30 expansion adds 52 purses in 26 bouts from UFC 63, 64 and 65.
+Ivan Trembow's own copies of his MMA Weekly reports explicitly attribute the
+figures to the commissions and say win bonuses are included:
+
+- [UFC 63 and 64](http://www.ivansblog.com/2006/10/mixed-martial-arts-ufc-63-and-ufc-64.html):
+  California and Nevada disclosures, totaling $332,000 and $209,000 respectively.
+- [UFC 65](http://www.ivansblog.com/2006/11/mixed-martial-arts-ufc-65-fighter.html):
+  California disclosure totaling $457,000. Independently checked against
+  [MMA Mania's commission report](https://www.mmamania.com/2006/11/22/200576/ufc-65-payouts),
+  including St-Pierre's $58,000 instead of an earlier $80,000 claim.
+
+All three cards had no purses when their current Wikipedia articles were
+replayed through `cardPay` without these reports. The bundle fills all 52
+corners; every full-card sum agrees with the reporter's published payroll.
+The reports do not state show/win splits, so those components remain unknown.
+The reporter's site serves these articles over HTTP; its HTTPS endpoint was
+unavailable during research. Earlier 2005 lists on that site are research
+leads only: the inspected articles did not explicitly identify a commission
+as their source, so they have not been imported as commission disclosures.
+
+A fingerprint of the reviewed bundle queues its completed cards for another
+read whenever the bundled facts change. The queue update preserves stored pay;
+a failed Wikipedia request leaves the card queued. This also applies the older
+bundle to cards already marked as checked before the bundle was added.
+
+The earlier research covered 243 archived salary URLs. Only missing disclosures
+with supported amounts were added. Important exclusions and independent checks:
 
 - The [UFC 70 report](https://mmajunkie.usatoday.com/2007/04/ufcjunkiecom-quick-hits-ufc-70-salaries-ufc-on-the-boob-tube-fishman-lawsuit-and-more)
   says its figures could not be confirmed. They are not bundled.
@@ -81,3 +107,37 @@ read**, with per-card re-read actions. Unsupported or absent historical
 disclosures stay listed, even when their age makes them an expected gap. CSAC
 and CombatReg are research leads for commission results, not purse evidence
 by themselves.
+
+The unknown-pay check retains historical cards under **OK**; that severity
+means an expected research gap, not complete data. Recent cards and partial
+disclosures are **Not bad**. Each item counts missing purses by fighter, so
+partial repairs are visible even while the card has another gap. The top-level
+board counts cards, not individual missing amounts. A card leaves this check
+only when its missing purse, bonus and applicable fight-week fields are filled.
+Reported bonuses without an amount are included even without a UFCStats award
+flag, as are vacant-title bouts whose fight-week estimate is withheld.
+
+## Finding more reliable records
+
+Completed cards are read once and revisited daily for 180 days, rather than
+60. Matching MMA Payout reports use the same publication window. Every
+matching post contributes supported missing corners; a newer, partial post
+cannot hide an older full list. Disagreements still retain the first amount
+and appear in Bugs with the alternative and source links.
+
+Prioritize original commission disclosures and reports that obtained the
+records directly, then preserved copies from the original reporter. Recent
+California, Washington, Georgia and Kentucky disclosures inspected in this
+audit already had full coverage in their Wikipedia payout sections. For
+jurisdictions that release records, public-records requests can uncover more:
+[MMA Junkie's 2026 Seattle report](https://sports.yahoo.com/articles/ufc-seattle-salaries-israel-adesanya-193030673.html)
+describes receiving the March 28 figures on May 19 after a records request.
+No requests have been sent on the user's behalf.
+
+Fighter statements and unsealed court documents are additional research
+sources, but may describe total compensation rather than the commission purse.
+They must not be inserted into the purse field without establishing exactly
+which bout, amount and payment component they support. Public estimates,
+previous-fight contracts, career earnings, and a fine percentage alone do
+not establish a disclosed purse. Private PPV shares, side agreements and
+discretionary bonuses can remain unknowable even when a purse is disclosed.

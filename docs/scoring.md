@@ -49,7 +49,8 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
 - One card per Clerk user and fight, enforced by a database unique constraint.
   Updating it replaces its contribution rather than adding another vote. A
   decision's **Result** tab carries the fan average beside the judges' cards,
-  which opens the Score tab.
+  which opens the Score tab. The **Live** tab shows the community card as the
+  rounds close; scoring stays on the Score tab.
 - Choose 10–10, 10–9 or 10–8 in either direction **before referee deductions**;
   choosing the selected score takes that round back off the card. The API also
   accepts 10–7. Base scores and a user's provisional deductions remain stored
@@ -116,7 +117,10 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   still has the bout on: its stoppage round also reads as ended). Its fans'
   average — thousands of cards — joins ours for those rounds, and the total
   once it covers every closed round; the finished tally from
-  `verdict-import.ts` replaces it after the result.
+  `verdict-import.ts` replaces it after the result. Verdict splits a card over
+  two ids and serves the main card's fight models for both, so the prelims are
+  found from the `fighterVersus` rows and read from their own bout pages. A
+  bout past its first round with no live read is in Admin → Bugs.
 - A bout is called **Live** (the header's pill, its row on the card, the
   admin panel) once the bout before it has a result: the header shows that
   result (**Final**) for three minutes, then the next bout as Live with its place

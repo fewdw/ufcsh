@@ -3,6 +3,12 @@
 export type BroadcastRole = "play_by_play" | "color_commentary" | "announcer" | "reporter" | "desk_host" | "desk_analysts" | "weigh_in_host" | "weigh_in_analysts";
 export type Broadcast = { language: string; feed: string; source_url: string; reported_at: string; roles: Partial<Record<BroadcastRole, string[]>> };
 export const EVENT_BROADCASTS: Record<string, Broadcast> = {
+  "UFC Fight Night: Cortes Acosta vs. Walker": {
+    language: "English", feed: "US / English-language broadcast", reported_at: "2026-11-03",
+    source_url: "https://sports.yahoo.com/articles/ufc-fight-night-293-broadcast-135029065.html",
+    // The report literally names the host as "XX". Keep that role unknown.
+    roles: { play_by_play: ["Brendan Fitzgerald"], color_commentary: ["Daniel Cormier", "Dominick Cruz"], announcer: ["Bruce Buffer"], reporter: ["McKenzie Pavacich"], desk_analysts: ["Chris Weidman", "Rashad Evans", "Michael Chiesa"] },
+  },
   "UFC 332": {
     language: "English", feed: "US / English-language broadcast", reported_at: "2026-09-29",
     source_url: "https://www.aol.com/articles/ufc-332-broadcast-team-set-134021000.html",

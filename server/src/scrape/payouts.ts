@@ -98,20 +98,25 @@ export function placeName(name: string, bouts: PayBout[]): { bout: PayBout; corn
     aliases: (bout[`${corner}Aliases`] ?? []).map(nameTokens).filter((tokens) => tokens.length >= 2),
   })));
   const surnames = people.map((person) => surnameOf(person.tokens));
-  const sorted = (tokens: string[]) => [...tokens].sort().join(" ");
+  // Korean given names may be joined, spaced, or hyphenated, with the family
+  // name first or last: "Choi Doo-ho" and "Dooho Choi".
+  const nameOrders = (tokens: string[]) => [
+    `${tokens[0]}:${tokens.slice(1).join("")}`,
+    `${tokens.at(-1)}:${tokens.slice(0, -1).join("")}`,
+  ];
   const writtenText = written.join(" ");
   const score = (person: (typeof people)[number]) => {
-    const full = person.tokens.join(" ");
     // In full, first and last, in either order ("Choi Doo-ho"), or a name they fought under.
     if ([person.tokens, ...person.aliases].some((tokens) => tokens.join(" ") === writtenText
-      || firstLastName(tokens.join(" ")) === firstLastName(writtenText) || sorted(tokens) === sorted(written))) return 4;
+      || firstLastName(tokens.join(" ")) === firstLastName(writtenText) || [...tokens].sort().join(" ") === [...written].sort().join(" ")
+      || nameOrders(tokens).some((ordered) => nameOrders(written).includes(ordered)))) return 4;
     const surname = surnameOf(person.tokens);
     const unique = surname.length >= 3 && surnames.filter((other) => other === surname).length === 1;
     // "Carlos Diego Ferreira" is UFCStats' "Diego Ferreira".
     if (person.tokens.length >= 2 && writtenText.endsWith(` ${person.tokens.slice(-2).join(" ")}`)) return 3;
     // A surname alone, only when the given names could be one person's: "Zachary" for "Zach", never "Michael" for "Charles".
     if (unique && surnameOf(written) === surname && sameGiven(written[0], person.tokens[0])) return 2;
-    if (writtenText.length >= 8 && editDistance(writtenText, full) <= 2) return 1;
+    if (writtenText.length >= 8 && [person.tokens, ...person.aliases].some((tokens) => editDistance(writtenText, tokens.join(" ")) <= 2)) return 1;
     return 0;
   };
   const ranked = people.map((person) => ({ person, score: score(person) })).filter((entry) => entry.score > 0)
@@ -395,7 +400,7 @@ export function wikipediaBonuses(article: string): BonusSection | null {
     if (!kind) continue;
     const [label, ...restParts] = text.split(":");
     let rest = restParts.join(":").trim();
-    if (!rest || /^(?:no bonus|not awarded|none awarded|no award|n\/a)/i.test(rest)) continue;
+    if (!rest || /^(?:no bonus|not awarded|none(?: awarded)?\b|no award|n\/a)/i.test(rest)) continue;
     let lineAmount = amountsIn(label)[0] ?? null;
     const lineNotes: string[] = [];
     rest = rest.replace(/\(([^()]*)\)/g, (_, inside: string) => {
@@ -425,6 +430,8 @@ function mentions(note: string, name: string): boolean {
 // MMA Payout
 
 const MMA_PAYOUT = "https://mmapayout.com/wp-json/wp/v2/posts";
+/** Leave room for disclosures obtained through delayed public-records requests. */
+export const PAY_REPORT_DAYS = 180;
 export type PayoutPost = { date: string; link: string; title: string; text: string };
 
 /** MMA Payout's salary posts published between two dates: purses a
@@ -472,13 +479,13 @@ export function payoutPost(date: string, link: string, titleHtml: string, html: 
   return { date: date.slice(0, 10), link, title, text };
 }
 
-/** The post about this card: published from three days before it to sixty
+/** Posts about this card: published from three days before it to 180 days
  *  after, and naming at least half of its fighters. */
-export function postForCard(posts: PayoutPost[], date: string, bouts: PayBout[]): PayoutPost | null {
+export function postsForCard(posts: PayoutPost[], date: string, bouts: PayBout[]): PayoutPost[] {
   const day = Date.parse(date);
   const fighters = bouts.flatMap((bout) => [bout.f1, bout.f2]);
-  return posts.find((post) => (Date.parse(post.date) - day) / 86_400_000 >= -3 && (Date.parse(post.date) - day) / 86_400_000 <= 60
-    && namesCard(post.text, fighters)) ?? null;
+  return posts.filter((post) => (Date.parse(post.date) - day) / 86_400_000 >= -3 && (Date.parse(post.date) - day) / 86_400_000 <= PAY_REPORT_DAYS
+    && namesCard(post.text, fighters));
 }
 
 export function postCommission(text: string): string | null {

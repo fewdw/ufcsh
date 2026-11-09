@@ -101,11 +101,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-30">October 30, 2026</time></p>
+            <p><time dateTime="2026-11-03">November 3, 2026</time></p>
             <ul>
-              <li>Cards that UFC hasn't split into main card and prelims yet keep their rounds, venue and referees up to date.</li>
-              <li>A past opponent without a profile here now links to their Sherdog page instead of a missing page.</li>
-              <li>Old share links show the site image again.</li>
+              <li>More fighter anti-doping history and replacement details now match their published sources.</li>
+              <li>Recovered bonus awards and verified point deductions; corrected historical judge statistics.</li>
+              <li>Pay data stays available when a source cannot be reached.</li>
             </ul>
           </Section>
         </div>

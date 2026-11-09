@@ -3,6 +3,23 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## MCP tool calls (2026-10-30)
+
+POSTs miss the edge cache, so each call reaches the origin. Tools read the same
+cached answers as the site and shape them on the main thread. Measured on dev-pc
+with live-sized answers, gunzip and parse included, 300 calls each:
+
+| Tool | Per call | Source | Output |
+| --- | --- | --- | --- |
+| `get_fighter` | 1.03 ms | 110 KB | 6 KB |
+| `get_fight` | 0.82 ms | 49 KB | 7 KB |
+| `get_rankings` (one division) | 1.81 ms | 205 KB | 3 KB |
+| `get_events` | 0.75 ms | 128 KB | 1 KB |
+
+At the per-address limit (5 calls a second) that is about 1% of one core, so
+shaping stays on the main thread. Cold answers are built by the query workers as
+for any reader, and 16 tool calls at most run at once.
+
 ## Matchup Odds tab revisits (2026-10-28)
 
 Measured in the local Vite preview with Chromium, using a 400 ms delay on the
