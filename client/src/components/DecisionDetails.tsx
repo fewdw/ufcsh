@@ -38,8 +38,8 @@ function Bout({ bout, close }: { bout: DecisionBout; close: () => void }) {
   </li>;
 }
 
-function DecisionsDialog({ id, sides, selected, select, before, close }: {
-  id: string; sides: Side[]; selected: number; select: (side: number) => void; before?: boolean; close: () => void;
+function DecisionsDialog({ id, sides, selected, select, close }: {
+  id: string; sides: Side[]; selected: number; select: (side: number) => void; close: () => void;
 }) {
   const side = sides[selected] ?? sides[0];
   return <EvidenceDialog id={id} close={close}>
@@ -70,19 +70,19 @@ function DecisionsDialog({ id, sides, selected, select, before, close }: {
         </h3>
         <ul className="divide-y divide-zinc-100">{group.bouts.map(bout => <Bout key={bout.fight_id} bout={bout} close={close} />)}</ul>
       </section>;
-      }) : <p className="py-4 text-xs text-zinc-500">No scored UFC decisions{before ? " before this fight" : ""}.</p>}
+      }) : <p className="py-4 text-xs text-zinc-500">No scored UFC decisions.</p>}
     </div>
   </EvidenceDialog>;
 }
 
 /** Every decision behind the average scorecards, one fighter at a time,
  *  opened on a side by whatever `children` renders. */
-export function DecisionDetails({ sides, before, children }: { sides: Side[]; before?: boolean; children: (open: (side: number) => void) => ReactNode }) {
+export function DecisionDetails({ sides, children }: { sides: Side[]; children: (open: (side: number) => void) => ReactNode }) {
   const id = useId();
   // Link navigation keeps this entry open; only an explicit dismissal clears it.
   const [open, setOpen] = useHistoryState<number | null>(`decisions:${sides.map(side => side.name).join(":")}`, null);
   return <>
     {children(setOpen)}
-    {open != null ? createPortal(<DecisionsDialog id={id} sides={sides} selected={open} select={setOpen} before={before} close={() => setOpen(null)} />, document.body) : null}
+    {open != null ? createPortal(<DecisionsDialog id={id} sides={sides} selected={open} select={setOpen} close={() => setOpen(null)} />, document.body) : null}
   </>;
 }
