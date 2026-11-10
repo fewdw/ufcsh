@@ -103,10 +103,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-11-10">November 10, 2026</time></p>
             <ul>
-              <li>Faster signed-out page loads.</li>
-              <li>Cleaner fight headers and scorecards on small screens, with all Tale of the tape stats shown.</li>
-              <li>Fighter pay appears when a purse is disclosed.</li>
-              <li>The home page keeps its address while showing the tagged card.</li>
+              <li>Faster matchup opening from the card, with visible bouts loaded ahead of time.</li>
+              <li>Full matchup comparison labels, with longer names wrapping onto another line.</li>
             </ul>
           </Section>
         </div>
