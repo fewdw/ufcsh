@@ -54,7 +54,7 @@ import { adminLive, releasedRounds } from "./live-rounds.ts";
 import { pruneBackups } from "./backup-retention.ts";
 import { ensureImageVariant, normalizeHeadshot, variantPath, type ImageSize } from "./image-variants.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight, fighterNames } from "./sync.ts";
-import { boutOdds, LiveOddsService, scanUpcoming, upcomingBouts, type FinishedBout, type LiveBout } from "./polymarket.ts";
+import { boutOdds, LiveOddsService, ODDS_WARM_MS, scanUpcoming, upcomingBouts, type FinishedBout, type LiveBout } from "./polymarket.ts";
 import { PolymarketMarkets } from "./polymarket-markets.ts";
 import { RATE_LIMITED, allowAgents, createMcpHandler, rpcError } from "./mcp.ts";
 import { createMcpServer } from "./mcp-tools.ts";
@@ -2086,12 +2086,30 @@ async function readStatic(filePath: string): Promise<StaticFile | null> {
   staticFiles.set(filePath, file);
   // Brotli is about a seventh smaller than gzip for the build, but at its best
   // setting the largest chunk takes most of a second, so it is made off the
-  // event loop and gzip answers until it is ready.
+  // event loop and gzip answers until it is ready. One file at a time: zlib
+  // shares its four threads with every file read and gzip, so a first load's
+  // forty files all compressing at once would leave none for the files asked
+  // for a moment later.
   if (file.gzip) {
-    brotliAsync(data, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 11, [zlibConstants.BROTLI_PARAM_SIZE_HINT]: data.length } })
+    brotliQueue = brotliQueue
+      .then(() => brotliAsync(data, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 11, [zlibConstants.BROTLI_PARAM_SIZE_HINT]: data.length } }))
       .then(br => { if (br.length < file.gzip!.length) file.br = br; }, () => {});
   }
   return file;
+}
+let brotliQueue: Promise<void> = Promise.resolve();
+
+/** Reads and compresses the whole build as a release starts, behind its
+ *  warm-up, so the first reader of each file (and Cloudflare, which keeps
+ *  what it is first given for as long as the file lives) gets Brotli rather
+ *  than waiting on a compression or being handed gzip. A few seconds, once. */
+export async function warmStatic(): Promise<number> {
+  const assets = path.join(CLIENT_DIST, "assets");
+  const names = (await fs.readdir(assets).catch(() => [] as string[])).filter(name => COMPRESSIBLE.has(path.extname(name)));
+  for (const name of names) await readStatic(path.join(assets, name));
+  await readStatic(path.join(CLIENT_DIST, "index.html"));
+  await brotliQueue;
+  return names.length;
 }
 
 /** Earlier builds' chunks, on the data volume that outlives each release, so a
@@ -2126,6 +2144,21 @@ function decodedAssetName(name: string): string | null {
   let decoded: string;
   try { decoded = decodeURIComponent(name); } catch { return null; }
   return /^[\w.-]+$/.test(decoded) && !decoded.startsWith(".") && !decoded.endsWith(".partial") ? decoded : null;
+}
+
+/** Crawlers that build backlink and keyword indexes for SEO products. They
+ *  run the app on every page, so each page they open is also its data
+ *  requests: in the week to Nov 9, 2026 they were 622,000 of production's
+ *  764,000 requests (`agentOf` in visitors.ts, "seo") and sent no reader.
+ *  Search engines, link previews and AI assistants are not on this list. */
+const SEO_TOOL_CRAWLERS = ["AhrefsBot", "SemrushBot", "MJ12bot", "DotBot", "DataForSeoBot", "BLEXBot", "serpstatbot", "Barkrowler"];
+
+export function robotsTxt(): string {
+  return [
+    "User-agent: *", "Allow: /", "Disallow: /admin", "",
+    ...SEO_TOOL_CRAWLERS.map(name => `User-agent: ${name}`), "Disallow: /", "",
+    `Sitemap: ${SITE_URL}/sitemap.xml`, "",
+  ].join("\n");
 }
 
 /** `pages` caches the SEO-filled document per route; without it each is built on request. */
@@ -2488,9 +2521,14 @@ export function startApi(port: number): http.Server {
   setTimeout(thinBackups, 10 * 60_000).unref();
   setInterval(thinBackups, 86_400_000).unref();
   if (process.env.NODE_ENV === "production") void archiveAssets().catch(error => log("asset archive failed:", String(error)));
+  if (process.env.NODE_ENV === "production") void warmStatic().catch(error => log("static warm-up failed:", String(error)));
   // Polymarket's live price is read here, on the main thread, so every reader
   // shares one price and one "just finished" moment (polymarket.ts).
   const liveOdds = new LiveOddsService({ current: polymarketBout, result: boutResult });
+  const oddsWarmer = setInterval(() => {
+    try { liveOdds.keepWarm(); } catch (error) { log("live odds warm-up failed:", String(error)); }
+  }, ODDS_WARM_MS);
+  oddsWarmer.unref();
   const markets = new PolymarketMarkets(scoreStore.db, fighterNames, () => {
     const current = currentBout();
     return current?.live ? current.bout.id : null;
@@ -2881,9 +2919,7 @@ export function startApi(port: number): http.Server {
       if (p === "/api/status") return await sendJson(req, res, status());
       if (p.startsWith("/api/")) return await sendJson(req, res, { error: "not found" }, 404);
 
-      if (p === "/robots.txt") {
-        return await sendText(req, res, `User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: ${SITE_URL}/sitemap.xml\n`, "text/plain; charset=utf-8");
-      }
+      if (p === "/robots.txt") return await sendText(req, res, robotsTxt(), "text/plain; charset=utf-8");
       // Chrome asks before prefetching a link through its private proxy.
       if (p === "/.well-known/traffic-advice") {
         return await sendText(req, res, `[{"user_agent":"prefetch-proxy","fraction":1.0}]`, "application/trafficadvice+json", "public, max-age=86400");
@@ -2958,6 +2994,7 @@ export function startApi(port: number): http.Server {
     clearInterval(sampler);
     clearInterval(warmLists);
     clearInterval(settler);
+    clearInterval(oddsWarmer);
     clearInterval(accountSync);
     clearInterval(googleSync);
     clearInterval(refresher);

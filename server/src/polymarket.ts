@@ -28,6 +28,10 @@ export const ODDS_TTL_MS = 2_000;
 export const ODDS_STALE_MS = 10_000;
 /** A price older than this is not shown at all. */
 export const ODDS_MAX_AGE_MS = 15_000;
+/** How often the answer is re-read behind its readers (`keepWarm`), and for
+ *  how long after the last poll when the bout has not started. */
+export const ODDS_WARM_MS = 4_000;
+export const ODDS_WARM_AFTER_POLL_MS = 10 * 60_000;
 /** How long the result of the bout that just ended stays up. */
 export const HOLD_MS = 3 * 60_000;
 const MARKETS_TTL_MS = 10 * 60_000;
@@ -325,6 +329,7 @@ export class LiveOddsService {
   private cached: { at: number; answer: LiveOddsAnswer } | null = null;
   private building: Promise<LiveOddsAnswer> | null = null;
   private lastPrice: { token: string; at: number; pair: Pair } | null = null;
+  private polledAt = -Infinity;
 
   constructor(deps: LiveOddsDeps) {
     this.deps = {
@@ -341,14 +346,27 @@ export class LiveOddsService {
    *  ODDS_STALE_MS old it is served while the next one is read, so a poll
    *  never waits on Polymarket. Never throws. */
   answer(): Promise<LiveOddsAnswer> {
+    this.polledAt = this.deps.now();
     const cached = this.cached;
-    const age = cached ? this.deps.now() - cached.at : Infinity;
+    const age = cached ? this.polledAt - cached.at : Infinity;
     if (age >= ODDS_TTL_MS) this.refresh();
     if (!cached || age >= ODDS_STALE_MS) return this.building!;
     const { answer } = cached;
     return Promise.resolve(answer.finished
       ? { ...answer, finished: { ...answer.finished, remaining_ms: Math.max(0, answer.finished.remaining_ms - age) } }
       : answer);
+  }
+
+  /** Called every ODDS_WARM_MS. An answer past ODDS_STALE_MS makes its reader
+   *  wait on Polymarket (0.4 s, and up to 4 s), which was every first poll
+   *  after a pause: a tab coming back, the first reader of a bout. While a bout
+   *  is being fought, or the pill was polled lately, the answer is re-read
+   *  behind its readers instead. With no bout on there is nothing to read. */
+  keepWarm(): void {
+    const now = this.deps.now();
+    if (this.cached && now - this.cached.at < ODDS_TTL_MS) return;
+    const bout = this.deps.current();
+    if (bout && (bout.underway || now - this.polledAt < ODDS_WARM_AFTER_POLL_MS)) this.refresh();
   }
 
   private refresh() {

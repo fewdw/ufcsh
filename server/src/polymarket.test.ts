@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  displayPrices, HOLD_MS, LiveOddsService, matchMarket, midpointPrices, nameMatch, ODDS_MAX_AGE_MS, ODDS_STALE_MS, ODDS_TTL_MS, parseExtra, parseMarkets,
+  displayPrices, HOLD_MS, LiveOddsService, matchMarket, midpointPrices, nameMatch, ODDS_MAX_AGE_MS, ODDS_STALE_MS, ODDS_TTL_MS, ODDS_WARM_AFTER_POLL_MS, ODDS_WARM_MS, parseExtra, parseMarkets,
   type Book, type FinishedBout, type LiveBout, type Market, type Pair,
 } from "./polymarket.ts";
 
@@ -243,6 +243,41 @@ test("live odds: a failed read keeps the last price briefly, then shows none", a
   c.failing = false;
   c.advance(ODDS_STALE_MS);
   assert.ok((await live.answer()).odds);
+});
+
+test("live odds: a bout being fought is re-read behind its readers, so a first poll never waits", async () => {
+  const c = card();
+  const live = c.service();
+  // No bout on: nothing is read, however long it runs.
+  live.keepWarm();
+  assert.equal(c.reads, 0);
+  // Booked for today but not started, and nobody watching: still nothing.
+  c.current = c.bout("a");
+  live.keepWarm();
+  assert.equal(c.reads, 0);
+  // One poll, then the tab is left: the answer is kept current for a while.
+  await live.answer();
+  assert.equal(c.reads, 1);
+  live.keepWarm();
+  assert.equal(c.reads, 1, "an answer under two seconds old is not read again");
+  c.price = [0.9, 0.1];
+  c.advance(ODDS_STALE_MS + ODDS_WARM_MS);
+  live.keepWarm();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(c.reads, 2);
+  // The reader who comes back is answered from memory, with the new price.
+  const back = live.answer();
+  assert.equal(c.reads, 2);
+  assert.equal((await back).odds?.f1, 0.1);
+  // Long after the last poll an unstarted bout is left alone again…
+  c.advance(ODDS_WARM_AFTER_POLL_MS);
+  live.keepWarm();
+  assert.equal(c.reads, 2);
+  // …and one under way is read whether or not anyone is watching.
+  c.current = { ...c.bout("a"), underway: true };
+  live.keepWarm();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(c.reads, 3);
 });
 
 test("live odds: a poll gets the last answer at once while the next is read", async () => {

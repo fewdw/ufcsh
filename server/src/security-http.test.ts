@@ -17,7 +17,7 @@ test("HTTP security holds across alternate page paths and arbitrary resource URL
   process.env.METRICS_PORT = "0";
   process.env.HOST = "127.0.0.1";
   process.env.ADMIN_TOKEN = "security-test-only";
-  const { startApi } = await import("./api.ts");
+  const { startApi, warmStatic } = await import("./api.ts");
   const { db } = await import("./db.ts");
   const server = startApi(0);
   t.after(async () => {
@@ -105,6 +105,37 @@ test("HTTP security holds across alternate page paths and arbitrary resource URL
     assert.equal(denied.status, 401);
     assert.equal(denied.headers.get("X-Frame-Options"), "DENY");
     await denied.arrayBuffer();
+  });
+
+  await t.test("a release compresses its build before readers ask, so the first answer is already Brotli", async () => {
+    // Started with the server; awaited here because the test asks at once.
+    assert.ok(await warmStatic() > 10);
+    const page = await (await request("/")).text();
+    const scripts = [...page.matchAll(/(?:src|href)="(\/assets\/[^"]+\.js)"/g)].map(match => match[1]);
+    assert.ok(scripts.length > 5);
+    let brotli = 0;
+    for (const script of scripts) {
+      const response = await request(script, { headers: { "Accept-Encoding": "br, gzip" } });
+      assert.equal(response.status, 200, script);
+      // Files of a kilobyte or less are sent as they are.
+      if (response.headers.get("content-encoding") === "br") brotli++;
+      else assert.ok((await response.arrayBuffer()).byteLength <= 1024, `${script} was not Brotli`);
+    }
+    assert.ok(brotli > 5);
+  });
+
+  await t.test("search engines may read every page; SEO-product crawlers are asked to stay out", async () => {
+    const robots = await (await request("/robots.txt")).text();
+    const groups = robots.trim().split("\n\n").map(group => group.split("\n"));
+    assert.deepEqual(groups[0], ["User-agent: *", "Allow: /", "Disallow: /admin"]);
+    assert.equal(groups[1].at(-1), "Disallow: /");
+    const refused = groups[1].slice(0, -1).map(line => line.replace("User-agent: ", ""));
+    assert.ok(refused.includes("AhrefsBot") && refused.includes("SemrushBot"));
+    // Everyone a reader can arrive from, or ask through, stays welcome.
+    for (const welcome of ["Googlebot", "bingbot", "DuckDuckBot", "Applebot", "GPTBot", "ClaudeBot", "PerplexityBot", "facebookexternalhit", "SeznamBot", "PetalBot"]) {
+      assert.ok(!refused.some(name => name.toLowerCase() === welcome.toLowerCase()), welcome);
+    }
+    assert.match(groups[2].join("\n"), /^Sitemap: https?:\/\/\S+\/sitemap\.xml$/);
   });
 
   await t.test("an address that names a host or cannot be read is refused, never served or failed", async () => {
