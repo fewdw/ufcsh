@@ -322,7 +322,7 @@ function EventSidebar({
           // shares the panel's white surface, so a row is told apart by its
           // ring and shadow rather than by the tone it happens to sit on. A
           // phone keeps Top at the bottom, so the last card scrolls clear of it.
-          className="h-full overflow-y-auto bg-white px-2 pb-16 sm:pb-2"
+          className="page-scroll h-full overflow-y-auto bg-white px-2 pb-16 sm:pb-2"
           onClick={openEvent}
         >
           {(drawn ? groups : []).map(([yearMonth, list]) => (
@@ -959,7 +959,7 @@ function EventPane({ eventId, oddsMode, nav, home = false }: { eventId: string; 
   // Read from the opener up, the card runs in the order it is fought.
   const openerFirst = settings.cardOrder === "opener";
   const oddsCard = oddsMode && (!event || event.fights.some(hasFightOdds));
-  const pane = "@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+3.25rem)] sm:gap-3 sm:pb-0 sm:pr-1";
+  const pane = "page-scroll @container flex h-full min-h-0 flex-col gap-2 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+3.25rem)] sm:gap-3 sm:pb-0 sm:pr-1";
   // Stepping through cards one after another, the next is already here.
   const loaded = Boolean(event);
   const prevUrl = nav.prev ? withRanking(`/api/events/${nav.prev.id}`, settings.rankingSource) : null;

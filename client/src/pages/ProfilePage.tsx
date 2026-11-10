@@ -174,7 +174,7 @@ function Profile({ handle }: { handle: string }) {
   const { scorer, agreement } = view;
 
   return (
-    <div ref={scroll} className="h-full overflow-y-auto overflow-x-hidden">
+    <div ref={scroll} className="page-scroll h-full overflow-y-auto overflow-x-hidden">
       <div className="mx-auto flex min-w-0 max-w-3xl flex-col gap-2 px-2 py-2 sm:gap-3 sm:px-5 sm:py-4">
         <ProfileHeader scorer={scorer} mine={mine} onRenamed={refresh} />
 

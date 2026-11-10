@@ -94,6 +94,37 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* The parlay slip floats bottom right from a tablet up. On a phone it is
+   centred in the bottom dock, the same height as the card's Prev/Next pill
+   and stacked just above it while that pill shows, else where the pill would
+   sit. Each page's scroller then runs past its last row by the slip's height,
+   so nothing stays hidden under it. Unlayered, so these beat utilities. */
+.parlay-dock {
+  right: 1rem;
+  bottom: 1rem;
+}
+@media (width < 40rem) {
+  .parlay-dock {
+    right: auto;
+    left: 50%;
+    translate: -50% 0;
+    max-width: calc(100vw - 2rem);
+    bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
+  }
+  :root:has([data-dock-nav]) .parlay-dock {
+    bottom: calc(env(safe-area-inset-bottom) + 3.875rem);
+  }
+  :root:has(.parlay-dock) .page-scroll::after {
+    content: "";
+    display: block;
+    flex-shrink: 0;
+    height: calc(env(safe-area-inset-bottom) + 4rem);
+  }
+  :root:has(.parlay-dock):has([data-dock-nav]) .page-scroll::after {
+    height: 3.75rem;
+  }
+}
+
 .search-dialog::backdrop {
   background: rgb(9 9 11 / 0.4);
   backdrop-filter: blur(3px);
