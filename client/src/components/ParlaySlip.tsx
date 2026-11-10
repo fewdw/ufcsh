@@ -63,7 +63,7 @@ export default function ParlaySlip() {
   const { settings } = useSettings();
   const [stakeText, setStakeText] = useState(() => String(stake));
   if (!legs.length && placed) return createPortal(
-    <div className="fixed bottom-4 right-4 z-[90] flex items-center gap-2 rounded-full border border-zinc-200 bg-white py-1.5 pl-4 pr-1.5 text-sm shadow-2xl" role="status">
+    <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+4rem)] right-4 z-[90] sm:bottom-4 flex items-center gap-2 rounded-full border border-zinc-200 bg-white py-1.5 pl-4 pr-1.5 text-sm shadow-2xl" role="status">
       <Check className="h-4 w-4 text-emerald-600" aria-hidden="true" />
       <span className="font-semibold text-zinc-900">Added to your profile</span>
       <Link to="/profiles/me?tab=bets" onClick={() => markPlaced(false)} className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-semibold text-zinc-900 hover:bg-zinc-200">View</Link>
@@ -78,7 +78,7 @@ export default function ParlaySlip() {
   const combinedPrice = formatCombinedPrice(combinedDecimal, settings.oddsFormat);
 
   return createPortal(
-    <div className="fixed bottom-4 right-4 z-[90] flex flex-col items-end gap-2" role="region" aria-label="Parlay slip">
+    <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+4rem)] right-4 z-[90] sm:bottom-4 flex flex-col items-end gap-2" role="region" aria-label="Parlay slip">
       {open ? (
         <div className="flex w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl">
           <div className="flex items-center justify-between gap-2 border-b border-zinc-100 px-4 py-3">
