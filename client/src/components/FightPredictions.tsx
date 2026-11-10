@@ -1,8 +1,7 @@
-import { useAuth } from "@clerk/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiCache, useApi, type Matchup } from "../api";
-import { accountsEnabled, useAccount } from "../auth";
+import { accountsEnabled, useAccount, useAuth } from "../auth";
 import { recallMine, rememberMine, useSessionUser } from "../profile";
 import { lastName } from "../format";
 import { METHOD_LABEL, predictionLabel, predictionPoints, sharePct } from "../predictions";

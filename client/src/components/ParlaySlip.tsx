@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { useAuth } from "@clerk/react";
 import { Check, ChevronDown, Ticket, Trash2, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { MAX_STAKE, MIN_STAKE, useParlay, parlayPayout, formatCombinedPrice } from "../parlay";
 import { formatPrice } from "../methodOdds";
-import { accountsEnabled, useAccount } from "../auth";
+import { accountsEnabled, useAccount, useAuth } from "../auth";
 import { BetError, placeBet } from "../bets";
 import { useSettings } from "../settings";
 import { BUTTON_PRIMARY } from "../ui";

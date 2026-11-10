@@ -1,7 +1,6 @@
-import { useAuth, useUser } from "@clerk/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Check, LoaderCircle } from "lucide-react";
-import { useAccount } from "../auth";
+import { useAccount, useAuth } from "../auth";
 import { storeLocal } from "../preferences";
 import { GoogleLogo } from "./calendarLogos";
 import { CALENDAR_TILE, GOOGLE_CALENDAR_SCOPE, returnUrl, type FeedCards, type FeedStart, type Returning } from "../googleCalendar";
@@ -34,7 +33,7 @@ function remembered(userId: string): Status | null {
 
 function useGoogleCalendar(onOptionsLoaded: OptionsLoaded) {
   const { getToken } = useAuth();
-  const { isLoaded, user } = useUser();
+  const { isLoaded, user } = useAccount();
   const [status, setStatus] = useState<Status | null>(null);
   const [busy, setBusy] = useState(false);
   /** Adding (or on the way to Google to add) the calendar; stays on while the page leaves. */

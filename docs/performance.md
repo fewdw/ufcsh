@@ -3,6 +3,45 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Clerk only when someone may be signed in (2026-11-10)
+
+A first visit (no cookies, no cache) downloaded and ran Clerk whether or not
+anyone was signed in: `@clerk/react` sat in the main bundle beside React DOM,
+and its provider then fetched clerk-js and its UI files (~350 KB compressed
+from `clerk.ufc.sh` on production) plus two Frontend API calls, right after
+the first paint, competing with the card's pictures and the main thread.
+
+Clerk now loads beside the app instead of around it (`AuthProvider` in
+`auth.tsx`, provider in `clerkSession.tsx`), only when it can matter: Clerk's
+`__client_uat` cookie is set and not 0, this browser has seen an account
+(`ufcsh:my-identity:v1`), or a sign-in, sign-up, `/profiles/me` or admin page
+opens. Everyone else is known signed out at once (the Sign in button shows
+immediately instead of an empty slot) and Clerk loads when they go to sign in
+(pointer or focus on the button starts it). The sign-in pages mount Clerk's
+forms from the instance. For someone who may be signed in, the Clerk chunk is
+requested as the app starts, so they wait on no extra round trip. The app's token reader
+stays the same function throughout, so nothing keyed on it reloads when Clerk
+arrives. If Clerk's code cannot be downloaded (a tab open across a release),
+the reader is treated as signed out and Sign in goes to the sign-in page, which
+loads the current build. The cookie and page rules are in `sessionHint.ts`.
+
+A production build of each served over HTTP/2 from dev-pc (API proxied to a
+preview), headless Chrome as a phone (390 px, 150 ms latency, 9.6 Mbit, 4×
+CPU), cold profile, `/`, five alternating runs, medians:
+
+| | First-load code (gzip) | Transferred | Clerk requests | Long tasks | First paint | Largest paint | Network quiet |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Before | 168 KB | 896 KB | 13 | 698 ms | 1,068 ms | 1,464 ms | 3,640 ms |
+| After | 137 KB | 516 KB | 0 | 445 ms | 984 ms | 1,348 ms | 3,374 ms |
+
+Before, ~170 ms of long tasks came after the first paint (Clerk starting);
+after, none in four of five runs.
+
+Still on the first load, not changed here: Cloudflare's own Web Analytics
+beacon (`static.cloudflareinsights.com`, 10 KB, requested at high priority
+beside the page's code) is injected at the edge and can be turned off in the
+dashboard; Admin → Traffic already records load times.
+
 ## Matchup pictures on opening a bout (2026-11-10)
 
 Measured on a preview in headless Chrome as a phone (390 px, 3× screen, 120 ms

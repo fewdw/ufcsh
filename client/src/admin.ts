@@ -1,4 +1,4 @@
-import { useAuth } from "@clerk/react";
+import { useAuth } from "./auth";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /** Who the panel thinks is reading it. `admin` is the server's answer, never a

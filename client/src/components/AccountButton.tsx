@@ -9,7 +9,7 @@ const CONTROL = "grid h-8 w-8 shrink-0 place-items-center rounded-full border bo
 /** The account picture always opens the reader's profile, by its handle as
  *  soon as that is known so the page opens without a redirect. */
 export default function AccountButton() {
-  const { isLoaded, user, signIn } = useAccount();
+  const { isLoaded, user, signIn, prepare } = useAccount();
   const { identity } = useMyProfile();
   const handle = identity?.handle;
   // While Clerk loads, the account this browser last saw is shown; with none,
@@ -18,7 +18,7 @@ export default function AccountButton() {
   if (!isLoaded && !identity) return <div className="h-8 w-8 shrink-0 sm:h-9 sm:w-9" aria-hidden="true" />;
   if (isLoaded && !user)
     return (
-      <button type="button" onClick={signIn} aria-label="Sign in" title="Sign in" className={CONTROL}>
+      <button type="button" onClick={signIn} onPointerEnter={prepare} onFocus={prepare} onTouchStart={prepare} aria-label="Sign in" title="Sign in" className={CONTROL}>
         <User className="h-4 w-4" aria-hidden="true" />
       </button>
     );
