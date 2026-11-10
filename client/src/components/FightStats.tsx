@@ -1076,7 +1076,9 @@ function MethodProfile({ fight, careers }: { fight: Matchup; careers: Record<Sid
               return (
                 <span key={side}
                   className={`block w-full min-w-0 text-left ${side === "f1" ? "@[36rem]:text-right" : ""}`}>
-                  {counts.total > 0 ? <MethodBar side={side} counts={counts} total={counts.total} /> : null}
+                  {counts.total > 0 ? <MethodBar side={side} counts={counts} total={counts.total} />
+                    // Beside the other half, an empty bar keeps its space so each fighter's bars share a row.
+                    : rows.length > 1 ? <span className="invisible block" aria-hidden><MethodBar side={side} counts={counts} total={0} /></span> : null}
                 </span>
               );
             })}
