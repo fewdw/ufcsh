@@ -248,36 +248,71 @@ test("live odds: a failed read keeps the last price briefly, then shows none", a
 test("live odds: a bout being fought is re-read behind its readers, so a first poll never waits", async () => {
   const c = card();
   const live = c.service();
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
   // No bout on: nothing is read, however long it runs.
   live.keepWarm();
   assert.equal(c.reads, 0);
-  // Booked for today but not started, and nobody watching: still nothing.
+  // A bout appears: it is read once, to know it is the one on now…
   c.current = c.bout("a");
   live.keepWarm();
-  assert.equal(c.reads, 0);
+  await settle();
+  assert.equal(c.reads, 1);
+  // …then left alone while it has not started and nobody is watching.
+  c.advance(ODDS_STALE_MS + ODDS_WARM_MS);
+  live.keepWarm();
+  assert.equal(c.reads, 1);
   // One poll, then the tab is left: the answer is kept current for a while.
   await live.answer();
-  assert.equal(c.reads, 1);
+  assert.equal(c.reads, 2);
   live.keepWarm();
-  assert.equal(c.reads, 1, "an answer under two seconds old is not read again");
+  assert.equal(c.reads, 2, "an answer under two seconds old is not read again");
   c.price = [0.9, 0.1];
   c.advance(ODDS_STALE_MS + ODDS_WARM_MS);
   live.keepWarm();
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(c.reads, 2);
+  await settle();
+  assert.equal(c.reads, 3);
   // The reader who comes back is answered from memory, with the new price.
   const back = live.answer();
-  assert.equal(c.reads, 2);
+  assert.equal(c.reads, 3);
   assert.equal((await back).odds?.f1, 0.1);
   // Long after the last poll an unstarted bout is left alone again…
   c.advance(ODDS_WARM_AFTER_POLL_MS);
   live.keepWarm();
-  assert.equal(c.reads, 2);
-  // …and one under way is read whether or not anyone is watching.
-  c.current = { ...c.bout("a"), underway: true };
-  live.keepWarm();
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(c.reads, 3);
+  // …and one under way is read whether or not anyone is watching.
+  c.current = c.bout("a", { underway: true });
+  live.keepWarm();
+  await settle();
+  assert.equal(c.reads, 4);
+});
+
+test("live odds: a bout read with nobody watching is also seen to end, when it ends", async () => {
+  const c = card();
+  const live = c.service();
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  // The last bout of the card is fought with no reader on the site.
+  c.current = c.bout("a", { underway: true });
+  live.keepWarm();
+  await settle();
+  // It ends and nothing is on. The service notices on its own…
+  c.finish("a", 1);
+  c.current = null;
+  c.advance(ODDS_WARM_MS);
+  live.keepWarm();
+  await settle();
+  // …so a reader arriving just after sees the result, dated from then,
+  assert.equal((await live.answer()).finished?.id, "a");
+  // and one arriving hours later is not told it has just happened.
+  c.advance(3 * 60 * MIN);
+  const late = await live.answer();
+  assert.equal(late.fight_id, null);
+  assert.equal(late.finished, null);
+  // Nothing is on and nothing changed: the service is idle again.
+  const reads = c.reads;
+  c.advance(ODDS_WARM_MS);
+  live.keepWarm();
+  await settle();
+  assert.equal(c.reads, reads);
 });
 
 test("live odds: a poll gets the last answer at once while the next is read", async () => {

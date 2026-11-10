@@ -361,12 +361,18 @@ export class LiveOddsService {
    *  wait on Polymarket (0.4 s, and up to 4 s), which was every first poll
    *  after a pause: a tab coming back, the first reader of a bout. While a bout
    *  is being fought, or the pill was polled lately, the answer is re-read
-   *  behind its readers instead. With no bout on there is nothing to read. */
+   *  behind its readers instead. With no bout on there is nothing to read.
+   *
+   *  Having read a bout by itself, it also has to see that bout end: a result
+   *  is dated when the change is seen (`advance`), so one first noticed by a
+   *  reader hours later would be shown as having just happened. So the answer
+   *  is also rebuilt whenever the bout on now is not the one last seen. */
   keepWarm(): void {
     const now = this.deps.now();
     if (this.cached && now - this.cached.at < ODDS_TTL_MS) return;
     const bout = this.deps.current();
-    if (bout && (bout.underway || now - this.polledAt < ODDS_WARM_AFTER_POLL_MS)) this.refresh();
+    const moved = (bout?.id ?? null) !== this.loadState().current;
+    if (moved || (bout && (bout.underway || now - this.polledAt < ODDS_WARM_AFTER_POLL_MS))) this.refresh();
   }
 
   private refresh() {

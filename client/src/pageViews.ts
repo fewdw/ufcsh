@@ -38,15 +38,36 @@ function referringHost(): string {
   } catch { return ""; }
 }
 
-/** What arriving at `path` is: a "new" page view, the "same" view under the
- *  address its page sent the reader on to, or "none" (never counted).
- *  `redirected` is true when this address replaced the one whose view was just
- *  counted: "/" opening its card, a venue's renamed address, `<Navigate replace>`.
- *  That is one page read, and counting both doubled every visit to the home page.
- *  "/profiles/me" is not counted itself, so the profile it turns into is. */
-export function pageViewFor(path: string, redirected: boolean): "new" | "same" | "none" {
-  if (path === "/profiles/me") return "none";
-  return redirected ? "same" : "new";
+/** Navigation state for a page sending the reader on to its own address: "/"
+ *  opening its card, a venue's former name moving to its current one. With
+ *  `replace`, the arrival is the view already counted, not another. It must be
+ *  said by the page that redirects: `replace` alone also moves between the
+ *  Browse tabs, which are different pages. */
+export const SAME_VIEW = { sameView: true } as const;
+/** For pages to say it with (`{ sameView: true } satisfies SameView`): a type
+ *  import costs their chunks nothing, where the constant would put this module
+ *  in a chunk of its own on every first load. */
+export type SameView = typeof SAME_VIEW;
+const isSameView = (state: unknown) => typeof state === "object" && state !== null && (state as { sameView?: unknown }).sameView === true;
+
+/** Decides, arrival by arrival, which are page views. One per tab (`App`).
+ *  A path seen twice running is one view; "/profiles/me" is never counted, so
+ *  the profile it turns into is; and a `SAME_VIEW` redirect from the path just
+ *  counted carries that view to its new address, which had made every visit to
+ *  the home page two. Back, Forward and reloads are views: only `replace` with
+ *  the state above is a redirect. */
+export function pageViewTracker() {
+  let seen: string | null = null;
+  let counted: string | null = null;
+  return (path: string, navigation: { replace: boolean; state: unknown }): boolean => {
+    if (seen === path) return false;
+    const from = seen;
+    seen = path;
+    if (path === "/profiles/me") return false;
+    const redirected = navigation.replace && isSameView(navigation.state) && from !== null && counted === from;
+    counted = path;
+    return !redirected;
+  };
 }
 
 export function sendPageView(path: string, admin: boolean): void {

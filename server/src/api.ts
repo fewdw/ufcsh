@@ -74,7 +74,7 @@ import { summarizeCard } from "./card-stats.ts";
 import { panelCards } from "./judge-scorecards.ts";
 import { storedMedia, verifiedDeductions } from "./point-deductions.ts";
 import { timingRows } from "./page-timing.ts";
-import { injectPageSeo, pageSeo as routeSeo, SITE_URL, sitemap, type PageSeo } from "./seo.ts";
+import { fixedDocument, injectPageSeo, pageSeo as routeSeo, SITE_URL, sitemap, type PageSeo } from "./seo.ts";
 import { landingEvent } from "./landing-event.ts";
 export { sitemap };
 
@@ -2099,11 +2099,13 @@ async function readStatic(filePath: string): Promise<StaticFile | null> {
 }
 let brotliQueue: Promise<void> = Promise.resolve();
 
-/** Reads and compresses the whole build as a release starts, behind its
- *  warm-up, so the first reader of each file (and Cloudflare, which keeps
- *  what it is first given for as long as the file lives) gets Brotli rather
- *  than waiting on a compression or being handed gzip. A few seconds, once. */
-export async function warmStatic(): Promise<number> {
+/** Reads and compresses the whole build as a release starts, beside the query
+ *  workers' warm-up and before `/readyz` passes, so the first reader of each
+ *  file (and Cloudflare, which keeps what it is first given for as long as the
+ *  file lives) gets Brotli rather than waiting on a compression or being
+ *  handed gzip. A few seconds, once. */
+const STATIC_WARM_LIMIT_MS = 60_000;
+async function warmStatic(): Promise<number> {
   const assets = path.join(CLIENT_DIST, "assets");
   const names = (await fs.readdir(assets).catch(() => [] as string[])).filter(name => COMPRESSIBLE.has(path.extname(name)));
   for (const name of names) await readStatic(path.join(assets, name));
@@ -2229,7 +2231,7 @@ export async function serveStatic(req: http.IncomingMessage, res: http.ServerRes
     res.end();
     return;
   }
-  sendRepresentation(req, res, page, "no-cache", "text/html", EDGE.page);
+  sendRepresentation(req, res, page, "no-cache", "text/html", fixedDocument(pathname) ? EDGE.shell : EDGE.page);
 }
 
 /** /roster: Wikipedia's signings and releases, plus departures ufc.com shows
@@ -2521,7 +2523,16 @@ export function startApi(port: number): http.Server {
   setTimeout(thinBackups, 10 * 60_000).unref();
   setInterval(thinBackups, 86_400_000).unref();
   if (process.env.NODE_ENV === "production") void archiveAssets().catch(error => log("asset archive failed:", String(error)));
-  if (process.env.NODE_ENV === "production") void warmStatic().catch(error => log("static warm-up failed:", String(error)));
+  // A release is not ready until its build is compressed (`warmStatic`), so the
+  // proxy sends it no reader, and Cloudflare no request, that would get gzip.
+  // Bounded: a build that will not compress must not keep a release from serving.
+  let staticReady = process.env.NODE_ENV !== "production";
+  if (!staticReady) {
+    const limit = new Promise<void>(resolve => { setTimeout(resolve, STATIC_WARM_LIMIT_MS).unref(); });
+    void Promise.race([warmStatic().then(() => {}), limit])
+      .catch(error => log("static warm-up failed:", String(error)))
+      .finally(() => { staticReady = true; });
+  }
   // Polymarket's live price is read here, on the main thread, so every reader
   // shares one price and one "just finished" moment (polymarket.ts).
   const liveOdds = new LiveOddsService({ current: polymarketBout, result: boutResult });
@@ -2668,7 +2679,7 @@ export function startApi(port: number): http.Server {
     const timestamp = (key: string) => Number(getMeta(key)) || null;
     return {
       generatedAt: Date.now(),
-      ready: !draining && (!queryPool || queryPool.ready),
+      ready: ready(),
       node: process.version,
       process: {
         uptimeSeconds: process.uptime(), rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal,
@@ -2690,6 +2701,7 @@ export function startApi(port: number): http.Server {
   const latencies = new Map<string, { count: number; total_ms: number; max_ms: number }>();
   let stopping = false;
   let draining = false;
+  const ready = () => !draining && staticReady && (!queryPool || queryPool.ready);
   void adoptUnversionedPhotos().catch((err) => log("photo cache migration failed:", String(err)));
   const server = http.createServer(async (req, res) => {
     const started = performance.now();
@@ -2815,8 +2827,8 @@ export function startApi(port: number): http.Server {
         return await sendJson(req, res, { error: "method not allowed" }, 405);
       }
       if (p === "/healthz" || p === "/readyz") {
-        const ready = !draining && (!queryPool || queryPool.ready);
-        return await sendJson(req, res, { ok: p === "/healthz" || ready }, p === "/readyz" && !ready ? 503 : 200);
+        const isReady = ready();
+        return await sendJson(req, res, { ok: p === "/healthz" || isReady }, p === "/readyz" && !isReady ? 503 : 200);
       }
       if (stopping) return await sendJson(req, res, { error: "server is stopping" }, 503);
       const address = clientAddress(req);
@@ -2956,7 +2968,7 @@ export function startApi(port: number): http.Server {
         cacheHits: cache.hits, cacheMisses: cache.misses, cacheEntries: cache.size, cacheBytes: cache.byteSize,
         queriesPending: queryPool?.pending ?? 0, memoryBytes: memory.rss, uptimeSeconds: process.uptime(),
         eventLoopP95Ms: eventLoop.percentile(95) / 1e6, eventLoopMaxMs: eventLoop.max / 1e6,
-        ready: !draining && (!queryPool || queryPool.ready),
+        ready: ready(),
         lastTickMs: Number(getMeta("last_tick_at")) || 0,
         heartbeatMs: Number(getMeta("sync_worker_heartbeat_at")) || 0,
         syncError: recentSyncError(),

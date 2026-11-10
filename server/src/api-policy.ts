@@ -65,13 +65,19 @@ export const EDGE = {
   slow: "public, max-age=30, stale-while-revalidate=300, stale-if-error=86400",
   /** Live odds: re-read every 2 s, polled every 3 s. */
   odds: "public, max-age=2, stale-while-revalidate=2, stale-if-error=30",
-  /** Page HTML: its SEO lines and asset names. Cloudflare answers with a copy
-   *  up to a day old at once and fetches the next behind it (measured: 0.14 s
-   *  to the first byte against 0.5 s when it asks this server first), so only
-   *  an address nobody near that reader opened all day waits on the origin.
-   *  An old copy is safe to run: its scripts outlive a release by two weeks
+  /** Page HTML: its SEO lines and asset names. Old assets outlive a release.
+   *  A fighter's, bout's or card's document states facts in those lines (a
+   *  record, a result) that a link preview shows as they are, so a copy is
+   *  served past its minute for ten more only. */
+  page: "public, max-age=60, stale-while-revalidate=600, stale-if-error=86400",
+  /** Page HTML that states nothing that changes (`fixedDocument` in seo.ts:
+   *  the home page and the section pages). Cloudflare answers with a copy up
+   *  to a day old at once and fetches the next behind it (measured: 0.14 s to
+   *  the first byte against 0.5 s when it asks this server first), so only an
+   *  address nobody near that reader opened all day waits on the origin. An
+   *  old copy is safe to run: its scripts outlive a release by two weeks
    *  (`archiveAssets`), and "/" checks the card it names against the list. */
-  page: "public, max-age=60, stale-while-revalidate=86400, stale-if-error=86400",
+  shell: "public, max-age=60, stale-while-revalidate=86400, stale-if-error=86400",
 };
 
 export function cachePolicy(url: URL): { ttl: number; stale: number; control: string; edge: string } {

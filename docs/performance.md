@@ -43,28 +43,34 @@ To be confirmed on production after release, from Admin → Traffic → Load tim
 | What | Cause | Change |
 | --- | --- | --- |
 | `/api/polymarket/fights/:id` (55, ~380 ms) | Each read waited on Polymarket whenever the bout's last read was over 30 s old, though the feed re-reads every bout on the coming cards by itself | A reader is answered with what is held while it is still what `summary` shows as current (a price under 90 s old, 15 s for the bout on now), and the read goes on behind the answer. Never read, a changed matchup or a failed last read still wait |
-| `/api/live/odds` (16, ~640 ms, one at 4 s) | The first poll after a pause (a tab coming back, the first reader of a bout) found the answer past 10 s and waited on Polymarket | While a bout is being fought, or the pill was polled in the last ten minutes, the answer is re-read every 4 s behind its readers (`keepWarm`). Nothing is read on a day without a card |
+| `/api/live/odds` (16, ~640 ms, one at 4 s) | The first poll after a pause (a tab coming back, the first reader of a bout) found the answer past 10 s and waited on Polymarket | While a bout is being fought, or the pill was polled in the last ten minutes, the answer is re-read every 4 s behind its readers (`keepWarm`), and whenever the bout on now changes, so a result is dated when it happens rather than when a reader next asks. Nothing is read on a day without a card |
 | Cards, matchups, fighters with `?ranking=media` (17, 300–740 ms) | One at a time, all time in a query worker. A warmed worker answers the same addresses in 5–25 ms on dev-pc (400 fighters, 400 fights, 300 cards), and 40 uncached fighter reads inside the live container took 12–69 ms (median 30) with one at 260 ms | Not attributed: left alone. See the host notes below |
 | `/sitemap.xml`, stats boards (4) | Known, rare | Left |
 
 **Page HTML at the edge.** A fight page Cloudflare had to ask this server for
 took 0.51 s to its first byte from Toronto; one it could answer with an older
 copy while fetching the next (`UPDATING`) took 0.14 s. Pages allowed that for
-ten minutes past their one-minute lifetime; now for a day (`EDGE.page`). An old
-copy is safe to run: its scripts outlive a release by two weeks, and `/`
-checks the card it names. The public API keeps its short lifetimes: a stale
-answer there would be shown as current.
+ten minutes past their one-minute lifetime. The home page and the section
+pages (`fixedDocument` in `seo.ts`), whose documents state nothing that
+changes, now allow it for a day (`EDGE.shell`): an old copy is safe to run,
+since its scripts outlive a release by two weeks and `/` checks the card it
+names. A fighter's, bout's or card's document keeps its ten minutes: its
+description states a record or a result, which a link preview shows as it
+stands. The public API keeps its short lifetimes for the same reason.
 
 **Brotli on the first request.** Each build file was compressed the first time
 it was asked for, all of a first load's files at once on zlib's four threads,
 and gzip went out until each finished, to Cloudflare too, which keeps what it
 is first given. A release now reads and compresses its whole build as it starts
 (65 files, 1,530 KB: 464 KB gzip, 399 KB Brotli; 2.1 s on dev-pc, one file at a
-time), behind the warm-up it already waits for.
+time) and is not ready until it has (`/readyz`), beside the query workers'
+warm-up, which takes longer.
 
 **Counting.** `/` sends the reader on to its card's address, and both were
-counted: every visit to the home page was two page views. A redirect to a
-page's own address is now the same view (`pageViewFor`). Load times also
+counted: every visit to the home page was two page views. A page that sends
+the reader on to its own address now says so, and that arrival is the same
+view (`pageViewTracker`; the Browse tabs also replace one another in history
+and are still each a view). Load times also
 counted paints that happened after a tab had been hidden (a page opened behind
 another and read later); those are left out, using the browser's own record
 of when it was first hidden.

@@ -17,7 +17,7 @@ test("HTTP security holds across alternate page paths and arbitrary resource URL
   process.env.METRICS_PORT = "0";
   process.env.HOST = "127.0.0.1";
   process.env.ADMIN_TOKEN = "security-test-only";
-  const { startApi, warmStatic } = await import("./api.ts");
+  const { startApi } = await import("./api.ts");
   const { db } = await import("./db.ts");
   const server = startApi(0);
   t.after(async () => {
@@ -33,12 +33,20 @@ test("HTTP security holds across alternate page paths and arbitrary resource URL
   const request = (pathname: string, init?: RequestInit) => fetch(base + pathname, {
     ...init, signal: AbortSignal.timeout(10_000),
   });
+  // Alive at once, but not ready while the build is still being compressed.
+  assert.equal((await request("/healthz")).status, 200);
+  assert.equal((await request("/readyz")).status, 503);
 
   await t.test("only shared answers are held at the edge; anything else is kept nowhere", async () => {
     const page = await request("/");
     assert.equal(page.status, 200);
     assert.equal(page.headers.get("cache-control"), "no-cache");
     assert.match(page.headers.get("cloudflare-cdn-cache-control") ?? "", /^public, max-age=60,/);
+    // Only a document that states nothing that changes may be served a day stale.
+    const staleFor = async (pathname: string) => /stale-while-revalidate=(\d+)/.exec((await request(pathname)).headers.get("cloudflare-cdn-cache-control") ?? "")?.[1];
+    assert.equal(await staleFor("/"), "86400");
+    assert.equal(await staleFor("/rankings"), "86400");
+    assert.equal(await staleFor("/profiles/someone"), "600");
     for (const pathname of ["/missing-page", "/api/fighters/ffffffffffffffff", "/api/status", "/api/admin/bugs", "/api/profiles/mine",
       "/api/fights/ffffffffffffffff/scores/mine", "/api/fights/ffffffffffffffff/predictions/mine", "/healthz"]) {
       const response = await request(pathname);
@@ -107,9 +115,12 @@ test("HTTP security holds across alternate page paths and arbitrary resource URL
     await denied.arrayBuffer();
   });
 
-  await t.test("a release compresses its build before readers ask, so the first answer is already Brotli", async () => {
-    // Started with the server; awaited here because the test asks at once.
-    assert.ok(await warmStatic() > 10);
+  await t.test("a release is not ready until its build is compressed, so the first answer is already Brotli", async () => {
+    // Nothing here waits for the compression itself: only for /readyz, as the proxy does.
+    for (let waited = 0; (await request("/readyz")).status !== 200; waited += 50) {
+      assert.ok(waited < 60_000, "the release became ready");
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
     const page = await (await request("/")).text();
     const scripts = [...page.matchAll(/(?:src|href)="(\/assets\/[^"]+\.js)"/g)].map(match => match[1]);
     assert.ok(scripts.length > 5);

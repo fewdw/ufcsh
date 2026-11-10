@@ -9,7 +9,7 @@ import { ChevronDown, Moon, Shield, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { rememberAdmin, useAdminResource, wasAdmin, type AdminSession } from "./admin";
 import { inMore, MORE_HOME, MoreGroups } from "./components/MoreNav";
-import { pageViewFor, sendPageView, watchPageTiming } from "./pageViews";
+import { pageViewTracker, sendPageView, watchPageTiming } from "./pageViews";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
@@ -250,9 +250,7 @@ function routeGroup(pathname: string): string {
 export default function App() {
   const location = useLocation();
   const navigationType = useNavigationType();
-  /** The last path seen, and the last one a page view was sent for. */
-  const trackedPath = useRef<string | null>(null);
-  const countedPath = useRef<string | null>(null);
+  const isPageView = useRef(pageViewTracker());
   const [searchOpen, setSearchOpen] = useState(false);
   const { settings } = useSettings();
   useLinkPrefetch(settings.rankingSource);
@@ -263,13 +261,8 @@ export default function App() {
     // React changes pages without a new document request. Count those views by
     // route on the server; it discards usernames and fight IDs immediately.
     const path = location.pathname;
-    const from = trackedPath.current;
-    if (from === path) return;
-    trackedPath.current = path;
-    const view = pageViewFor(path, navigationType === "REPLACE" && from !== null && countedPath.current === from);
-    if (view !== "none") countedPath.current = path;
-    if (view === "new") sendPageView(path, wasAdmin());
-    // Only a change of page is a view: the navigation type is read as it was then.
+    if (isPageView.current(path, { replace: navigationType === "REPLACE", state: location.state })) sendPageView(path, wasAdmin());
+    // Only a change of page is a view: how the reader got there is read as it was then.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 

@@ -62,6 +62,12 @@ const STATIC_PAGES: Record<string, { title: string; description: string }> = {
   "/info": { title: "About | ufc.sh", description: "UFC data for hardcore fans. About, shortcuts, community rules, privacy, support and the latest changes." },
 };
 
+/** Whether a page's document says nothing that changes with the data: the
+ *  home page and the section pages, whose titles and descriptions are fixed
+ *  text. Cloudflare may keep those far longer than a page that states a
+ *  record or a result (`EDGE.shell`). */
+export const fixedDocument = (pathname: string) => pathname === "/" || pathname === "/index.html" || Object.hasOwn(STATIC_PAGES, pathname);
+
 const link = (href: string, text: string) => `<a href="${htmlEscape(href)}">${htmlEscape(text)}</a>`;
 const notFound = (): PageSeo => ({
   ...DEFAULT, title: "Page not found | ufc.sh", description: "This page could not be found on ufc.sh.",
