@@ -9,7 +9,7 @@ import { accountsEnabled, useClerkInstance } from "../auth";
  *  the instance rather than as components. */
 export default function AuthPage({ mode }: { mode: "sign-in" | "sign-up" }) {
   const location = useLocation();
-  const clerk = useClerkInstance();
+  const { clerk, unavailable } = useClerkInstance();
   const form = useRef<HTMLDivElement>(null);
   const handled = useRef(false);
   const callback = location.pathname === "/sign-in/callback";
@@ -32,6 +32,7 @@ export default function AuthPage({ mode }: { mode: "sign-in" | "sign-up" }) {
     return () => clerk.unmountSignUp(node);
   }, [clerk, callback, mode, to]);
   if (!accountsEnabled) return <Navigate to="/" replace />;
+  if (unavailable) return <p className="px-4 py-10 text-center text-sm text-zinc-500">Sign-in could not load. Reload the page to try again.</p>;
   if (callback) return null;
   return (
     <div className="flex min-h-full items-start justify-center overflow-y-auto px-4 py-10">

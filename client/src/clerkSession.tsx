@@ -1,6 +1,6 @@
 import { ClerkProvider, useAuth, useClerk, useUser } from "@clerk/react";
 import { useEffect, type ReactNode } from "react";
-import type { ClerkState } from "./auth";
+import type { ClerkAnswer, SessionProps } from "./auth";
 
 /** Set when Clerk's Frontend API is reached through this site's own /__clerk. */
 const PROXY_URL = (import.meta.env.VITE_CLERK_PROXY_URL as string | undefined) || undefined;
@@ -16,7 +16,7 @@ const DARK = {
 /** Clerk, loaded on its own beside the app (`AuthProvider` in auth.tsx) so the
  *  page never waits for it or remounts when it arrives. Its windows open from
  *  the instance, outside this tree. */
-export default function ClerkSession({ publishableKey, dark, onChange }: { publishableKey: string; dark: boolean; onChange: (state: ClerkState) => void }): ReactNode {
+export default function ClerkSession({ publishableKey, dark, onChange }: SessionProps): ReactNode {
   return (
     <ClerkProvider publishableKey={publishableKey} proxyUrl={PROXY_URL} signInUrl="/sign-in" signUpUrl="/sign-up" afterSignOutUrl="/" appearance={{ variables: dark ? DARK : {} }}>
       <Report onChange={onChange} />
@@ -24,12 +24,15 @@ export default function ClerkSession({ publishableKey, dark, onChange }: { publi
   );
 }
 
-function Report({ onChange }: { onChange: (state: ClerkState) => void }): ReactNode {
+function Report({ onChange }: { onChange: (answer: ClerkAnswer) => void }): ReactNode {
   const clerk = useClerk();
   const { isLoaded, user } = useUser();
   const { getToken } = useAuth();
   useEffect(() => {
-    onChange({ isLoaded, user, getToken, clerk: isLoaded ? clerk : null });
+    // While a sign-in completes, Clerk briefly reports no user as it moves to
+    // the next page; the last answer stands, so its form stays mounted.
+    if (!isLoaded || user === undefined) return;
+    onChange({ user, getToken, clerk });
   }, [onChange, isLoaded, user, getToken, clerk]);
   return null;
 }

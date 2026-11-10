@@ -19,7 +19,11 @@ opens. Everyone else is known signed out at once (the Sign in button shows
 immediately instead of an empty slot) and Clerk loads when they go to sign in
 (pointer or focus on the button starts it). The sign-in pages mount Clerk's
 forms from the instance. For someone who may be signed in, the Clerk chunk is
-requested as the app starts, so they wait on no extra round trip.
+requested as the app starts, so they wait on no extra round trip. The app's token reader
+stays the same function throughout, so nothing keyed on it reloads when Clerk
+arrives. If Clerk's code cannot be downloaded (a tab open across a release),
+the reader is treated as signed out and Sign in goes to the sign-in page, which
+loads the current build. The cookie and page rules are in `sessionHint.ts`.
 
 A production build of each served over HTTP/2 from dev-pc (API proxied to a
 preview), headless Chrome as a phone (390 px, 150 ms latency, 9.6 Mbit, 4×
