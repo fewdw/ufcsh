@@ -436,7 +436,7 @@ function EnteringRow({ label, f1, f2, note, action }: { label: React.ReactNode; 
     <CompareRow
       f1={value(f1)}
       f2={value(f2)}
-      center={<span className={compareLabel} title={note}>{label}</span>}
+      center={<span className={`${compareLabel} whitespace-normal`} title={note}>{label}</span>}
       action={action}
     />
   );
@@ -770,8 +770,24 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const [failedPortraits, setFailedPortraits] = useState<string[]>([]);
   const { data: loadedFight, loading, error, retry } = useApi<Matchup>(withRanking(`/api/fights/${fightId}`, settings.rankingSource),
     data => data?.refreshing ? 5_000 : isFightDay(data?.event.date) ? 15_000 : data?.status === "past" ? 0 : 5 * 60_000);
-  if (loadedFight) previousFight.current = loadedFight;
-  const fight = loadedFight ?? previousFight.current;
+  // A finished bout is drawn once its fans' card and picks are in too (the
+  // card warms them with the matchup): drawn before them, the scorecard grid
+  // grew a column and the tab bar a tab a moment later. The previous matchup
+  // stays up meanwhile, as it does for the matchup itself; never for long.
+  const finished = Boolean(loadedFight && !loadedFight.potential && (loadedFight.status === "past" || loadedFight.in_progress));
+  const incomingScores = useApi<unknown>(finished ? `/api/fights/${fightId}/scores` : null);
+  const incomingPicks = useApi<unknown>(finished && loadedFight?.status === "past" && loadedFight.prediction_available !== false
+    ? `/api/fights/${fightId}/predictions` : null);
+  const [releasedFor, setReleasedFor] = useState<string | null>(null);
+  const waitingForExtras = finished && releasedFor !== fightId && (incomingScores.loading || incomingPicks.loading);
+  useEffect(() => {
+    if (!waitingForExtras) return;
+    const timer = setTimeout(() => setReleasedFor(fightId), 1_500);
+    return () => clearTimeout(timer);
+  }, [waitingForExtras, fightId]);
+  const ready = loadedFight && !waitingForExtras ? loadedFight : null;
+  if (ready) previousFight.current = ready;
+  const fight = ready ?? previousFight.current;
   // Finished fights need saved community picks to have a useful Predict tab.
   // Share the panel's cached public summary; no private pick request is needed.
   const { data: predictions, error: predictionError } = useApi<PredictionSummary>(
@@ -865,7 +881,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     next: stepTo(cardAt > 0 ? cardFights[cardAt - 1] : undefined),
   } : null);
 
-  if (loading && !fight) {
+  if ((loading || waitingForExtras) && !fight) {
     return (
       <div className="flex h-full min-h-0 gap-3">
         {eventId ? <FightRail eventId={eventId} currentId={fightId} returnDepth={eventReturnDepth} /> : <FightRailSkeleton />}
@@ -900,7 +916,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     setFailedPortraits(failed => [...failed, side.photo_full_url ?? ""]);
   const referee = fight.detail?.methodInfo?.["Referee"];
   const labelled = Boolean(fight.weight_class || fight.scheduled_rounds || beltOf(fight));
-  const changingMatchup = !loadedFight && fight.id !== fightId;
+  const changingMatchup = !ready && fight.id !== fightId;
   const orderedFights = cardEvent?.id === fight.event.id ? cardEvent.fights : [];
   const fightIndex = orderedFights.findIndex((entry) => entry.id === fightId);
   // Card rows run main event first. Next moves up that list toward the main
