@@ -22,7 +22,7 @@ import { SITE_URL, useSeo } from "../seo";
 import { useRememberedState, useRouteScrollRestoration } from "../navigationState";
 import { oneOf } from "../preferences";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
-import { warmFight } from "../warmFight";
+import { useWarmOnScreen, warmFight } from "../warmFight";
 import { eventKind, type EventKind } from "../eventKind";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
@@ -540,6 +540,8 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
   // A matchup the reader has not opened before is a cold request; hovering or
   // pressing the row is enough notice to have it loaded by the time it opens.
   const warm = () => warmFight(fight, settings.rankingSource);
+  const row = useRef<HTMLDivElement>(null);
+  useWarmOnScreen(row, cancellation ? null : fight, settings.rankingSource);
   const open = () => navigate(`/fights/${fight.id}`, { state: { eventId, eventReturnDepth: 1 } });
   // Beside the price in the face-off layout; the compact layout writes its own.
   const weightClassRow = (
@@ -569,6 +571,7 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
     // A plain button so the odds pair below can't hold one of its own — the
     // row still opens the matchup on Enter/Space, same as a real button would.
     <div
+      ref={row}
       role={cancellation ? undefined : "button"}
       tabIndex={cancellation ? undefined : 0}
       onPointerEnter={cancellation ? undefined : warm}
