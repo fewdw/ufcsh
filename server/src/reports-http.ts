@@ -3,6 +3,7 @@ import { RateLimiter, clientAddress } from "./api-policy.ts";
 import { authenticateScorer, scoringOrigins } from "./scoring-http.ts";
 import { ScoringError } from "./scoring.ts";
 import type { ReportStore } from "./reports.ts";
+import { reportFailure } from "./request-failures.ts";
 
 async function body(req: IncomingMessage): Promise<unknown> {
   if (req.headers["content-type"]?.split(";")[0].trim() !== "application/json") throw new ScoringError(415, "Send JSON.");
@@ -36,6 +37,7 @@ export function createReportsHandler(store: ReportStore, authenticate = authenti
       if (!limiter.allow(`report-user:${user}`, 5, 5 / 3600)) throw new ScoringError(429, "You’ve sent several reports recently. Try again later.");
       send(store.create(user, await body(req)), 201);
     } catch (error) {
+      if (!(error instanceof ScoringError)) reportFailure(res, "issue report", error);
       const busy = error instanceof Error && /database is locked|SQLITE_BUSY/.test(error.message);
       const status = error instanceof ScoringError ? error.status : busy ? 503 : 500;
       if (status === 429 || status === 503) res.setHeader("Retry-After", "5");

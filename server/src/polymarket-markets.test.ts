@@ -62,6 +62,8 @@ function fixture(
   let books = 0,
     failing = options.failure ?? false,
     bookFailure = false;
+  /** While set, a book read does not answer until it is released. */
+  let gate: Promise<void> | null = null;
   const bookReads: string[] = [];
   t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -113,6 +115,7 @@ function fixture(
       ]);
     if (url.includes("/books")) {
       books++;
+      if (gate) await gate;
       return Response.json([
         {
           asset_id: "111",
@@ -180,6 +183,11 @@ function fixture(
     bookReads,
     fail: () => {
       failing = true;
+    },
+    hold: () => {
+      let release = () => {};
+      gate = new Promise<void>((resolve) => { release = resolve; });
+      return { release: () => { gate = null; release(); } };
     },
     failBooks: () => {
       bookFailure = true;
@@ -292,6 +300,31 @@ test("a result that swaps the corners keeps every capture on the right fighter",
     false,
     "the old corners' source history is read again, never served twice",
   );
+});
+
+test("a reader is answered with a price still current while the next is read, and waits when none is held", async (t) => {
+  const f = fixture(t);
+  const first = (await f.service.detail(f.id))!;
+  assert.equal(first.quote?.p, 0.4);
+  assert.equal(f.books(), 1);
+  // 50 s on the feed is due to read the book again (45 s), and Polymarket is slow.
+  let now = f.at + 50_000;
+  t.mock.method(Date, "now", () => now);
+  const slow = f.hold();
+  const second = (await f.service.detail(f.id))!;
+  assert.equal(second.quote?.p, 0.4, "the held price, not a wait");
+  assert.equal(f.books(), 2, "the next read started behind the answer");
+  slow.release();
+  await new Promise((resolve) => setImmediate(resolve));
+  // Past the age a price is shown at, nothing current is held: the reader waits for the read.
+  now = f.at + 50_000 + 95_000;
+  let answered = false;
+  const held = f.hold();
+  const waiting = f.service.detail(f.id).then((detail) => { answered = true; return detail; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(answered, false);
+  held.release();
+  assert.ok((await waiting)?.quote);
 });
 
 test("discovery outages report unavailable rather than claiming there is no market", async (t) => {

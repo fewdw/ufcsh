@@ -3,6 +3,7 @@ import { RateLimiter, clientAddress } from "./api-policy.ts";
 import { authenticateScorer, scoringOrigins } from "./scoring-http.ts";
 import { ScoringError } from "./scoring.ts";
 import { COMMENT_SORTS, PROFILE_COMMENT_SORTS, type CommentSort, type CommentStore, type ProfileCommentSort } from "./comments.ts";
+import { reportFailure } from "./request-failures.ts";
 
 const MAX_BODY = 16_384;
 /** Signed-out readers of a discussion all get the same page, so it is built
@@ -135,6 +136,7 @@ export function createCommentsHandler(store: CommentStore, authenticate = authen
         else send(store.edit(user, comment![1], await readBody(req)));
       }
     } catch (error) {
+      if (!(error instanceof ScoringError)) reportFailure(res, "discussion", error);
       const busy = error instanceof Error && /database is locked|SQLITE_BUSY/.test(error.message);
       const status = error instanceof ScoringError ? error.status : busy ? 503 : 500;
       if (status === 429 || status === 503) res.setHeader("Retry-After", "5");

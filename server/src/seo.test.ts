@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { injectPageSeo, pageRedirect, pageSeo } from "./seo.ts";
+import { fixedDocument, injectPageSeo, pageRedirect, pageSeo } from "./seo.ts";
 import { db } from "./db.ts";
 
 test("unknown routes and unknown records answer 404 and ask not to be indexed", () => {
@@ -9,6 +9,21 @@ test("unknown routes and unknown records answer 404 and ask not to be indexed", 
     assert.equal(seo.status, 404, path);
     assert.equal(seo.noindex, true, path);
   }
+});
+
+test("an address with a stray percent sign is not found rather than a failure", () => {
+  for (const path of ["/fights/100%", "/fighters/%E0%A4%A", "/profiles/%", "/judges/%zz"]) {
+    const seo = pageSeo(path);
+    assert.equal(seo.status, 404, path);
+    assert.equal(seo.noindex, true, path);
+  }
+});
+
+test("only documents that state no changing fact are the ones kept longest at the edge", () => {
+  for (const path of ["/", "/index.html", "/rankings", "/stats", "/news", "/info"]) assert.ok(fixedDocument(path), path);
+  // A record, a result, a card: what a link preview would show as it stands.
+  for (const path of ["/fighters/07f72a2a7591b409", "/fights/588347615984ec29", "/events/110404b505fb562c", "/judges/sal-d-amato",
+    "/venues/t-mobile-arena", "/profiles/someone", "/constructor", "/toString"]) assert.ok(!fixedDocument(path), path);
 });
 
 test("known routes answer 200 with a canonical address and share image", () => {

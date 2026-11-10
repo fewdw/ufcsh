@@ -28,6 +28,7 @@ import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { betFightId } from "../parlay";
 import { cardSections } from "../cardSections";
+import type { SameView } from "../pageViews";
 
 const shell = PANEL;
 /** The source flags a tournament or TUF final the same way it flags a
@@ -1175,7 +1176,7 @@ export default function EventsPage() {
   const shownEventId = eventId ?? landingId;
   const selectedId = shownEventId ?? openFight?.event.id ?? fightEventIdHint ?? null;
   useEffect(() => {
-    if (landingId) navigate(`/events/${landingId}`, { replace: true });
+    if (landingId) navigate(`/events/${landingId}`, { replace: true, state: { sameView: true } satisfies SameView });
   }, [landingId, navigate]);
 
   const oddsMode = new URLSearchParams(location.search).get("odds") === "1";

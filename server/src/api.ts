@@ -31,6 +31,7 @@ import { enqueueRefresh } from "./refresh-queue.ts";
 import { QueryPool } from "./query-pool.ts";
 import { ResponseCache, representation, acceptsEncoding, acceptsGzip, matchesEtag, OverloadedError, type Representation } from "./response-cache.ts";
 import { HttpObservability, UNCOUNTED_ROUTES, pageRouteGroup, routeGroup } from "./observability.ts";
+import { failureMessage, reportFailure } from "./request-failures.ts";
 import { agentOf, isAutomated, sourceOf } from "./visitors.ts";
 import { TrafficHistory } from "./traffic-history.ts";
 import { createRepairRunner } from "./repair-guard.ts";
@@ -53,7 +54,7 @@ import { adminLive, releasedRounds } from "./live-rounds.ts";
 import { pruneBackups } from "./backup-retention.ts";
 import { ensureImageVariant, normalizeHeadshot, variantPath, type ImageSize } from "./image-variants.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight, fighterNames } from "./sync.ts";
-import { boutOdds, LiveOddsService, scanUpcoming, upcomingBouts, type FinishedBout, type LiveBout } from "./polymarket.ts";
+import { boutOdds, LiveOddsService, ODDS_WARM_MS, scanUpcoming, upcomingBouts, type FinishedBout, type LiveBout } from "./polymarket.ts";
 import { PolymarketMarkets } from "./polymarket-markets.ts";
 import { RATE_LIMITED, allowAgents, createMcpHandler, rpcError } from "./mcp.ts";
 import { createMcpServer } from "./mcp-tools.ts";
@@ -73,7 +74,7 @@ import { summarizeCard } from "./card-stats.ts";
 import { panelCards } from "./judge-scorecards.ts";
 import { storedMedia, verifiedDeductions } from "./point-deductions.ts";
 import { timingRows } from "./page-timing.ts";
-import { injectPageSeo, pageSeo as routeSeo, SITE_URL, sitemap, type PageSeo } from "./seo.ts";
+import { fixedDocument, injectPageSeo, pageSeo as routeSeo, SITE_URL, sitemap, type PageSeo } from "./seo.ts";
 import { landingEvent } from "./landing-event.ts";
 export { sitemap };
 
@@ -2085,12 +2086,32 @@ async function readStatic(filePath: string): Promise<StaticFile | null> {
   staticFiles.set(filePath, file);
   // Brotli is about a seventh smaller than gzip for the build, but at its best
   // setting the largest chunk takes most of a second, so it is made off the
-  // event loop and gzip answers until it is ready.
+  // event loop and gzip answers until it is ready. One file at a time: zlib
+  // shares its four threads with every file read and gzip, so a first load's
+  // forty files all compressing at once would leave none for the files asked
+  // for a moment later.
   if (file.gzip) {
-    brotliAsync(data, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 11, [zlibConstants.BROTLI_PARAM_SIZE_HINT]: data.length } })
+    brotliQueue = brotliQueue
+      .then(() => brotliAsync(data, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 11, [zlibConstants.BROTLI_PARAM_SIZE_HINT]: data.length } }))
       .then(br => { if (br.length < file.gzip!.length) file.br = br; }, () => {});
   }
   return file;
+}
+let brotliQueue: Promise<void> = Promise.resolve();
+
+/** Reads and compresses the whole build as a release starts, beside the query
+ *  workers' warm-up and before `/readyz` passes, so the first reader of each
+ *  file (and Cloudflare, which keeps what it is first given for as long as the
+ *  file lives) gets Brotli rather than waiting on a compression or being
+ *  handed gzip. A few seconds, once. */
+const STATIC_WARM_LIMIT_MS = 60_000;
+async function warmStatic(): Promise<number> {
+  const assets = path.join(CLIENT_DIST, "assets");
+  const names = (await fs.readdir(assets).catch(() => [] as string[])).filter(name => COMPRESSIBLE.has(path.extname(name)));
+  for (const name of names) await readStatic(path.join(assets, name));
+  await readStatic(path.join(CLIENT_DIST, "index.html"));
+  await brotliQueue;
+  return names.length;
 }
 
 /** Earlier builds' chunks, on the data volume that outlives each release, so a
@@ -2125,6 +2146,21 @@ function decodedAssetName(name: string): string | null {
   let decoded: string;
   try { decoded = decodeURIComponent(name); } catch { return null; }
   return /^[\w.-]+$/.test(decoded) && !decoded.startsWith(".") && !decoded.endsWith(".partial") ? decoded : null;
+}
+
+/** Crawlers that build backlink and keyword indexes for SEO products. They
+ *  run the app on every page, so each page they open is also its data
+ *  requests: in the week to Nov 9, 2026 they were 622,000 of production's
+ *  764,000 requests (`agentOf` in visitors.ts, "seo") and sent no reader.
+ *  Search engines, link previews and AI assistants are not on this list. */
+const SEO_TOOL_CRAWLERS = ["AhrefsBot", "SemrushBot", "MJ12bot", "DotBot", "DataForSeoBot", "BLEXBot", "serpstatbot", "Barkrowler"];
+
+export function robotsTxt(): string {
+  return [
+    "User-agent: *", "Allow: /", "Disallow: /admin", "",
+    ...SEO_TOOL_CRAWLERS.map(name => `User-agent: ${name}`), "Disallow: /", "",
+    `Sitemap: ${SITE_URL}/sitemap.xml`, "",
+  ].join("\n");
 }
 
 /** `pages` caches the SEO-filled document per route; without it each is built on request. */
@@ -2195,7 +2231,7 @@ export async function serveStatic(req: http.IncomingMessage, res: http.ServerRes
     res.end();
     return;
   }
-  sendRepresentation(req, res, page, "no-cache", "text/html", EDGE.page);
+  sendRepresentation(req, res, page, "no-cache", "text/html", fixedDocument(pathname) ? EDGE.shell : EDGE.page);
 }
 
 /** /roster: Wikipedia's signings and releases, plus departures ufc.com shows
@@ -2487,9 +2523,23 @@ export function startApi(port: number): http.Server {
   setTimeout(thinBackups, 10 * 60_000).unref();
   setInterval(thinBackups, 86_400_000).unref();
   if (process.env.NODE_ENV === "production") void archiveAssets().catch(error => log("asset archive failed:", String(error)));
+  // A release is not ready until its build is compressed (`warmStatic`), so the
+  // proxy sends it no reader, and Cloudflare no request, that would get gzip.
+  // Bounded: a build that will not compress must not keep a release from serving.
+  let staticReady = process.env.NODE_ENV !== "production";
+  if (!staticReady) {
+    const limit = new Promise<void>(resolve => { setTimeout(resolve, STATIC_WARM_LIMIT_MS).unref(); });
+    void Promise.race([warmStatic().then(() => {}), limit])
+      .catch(error => log("static warm-up failed:", String(error)))
+      .finally(() => { staticReady = true; });
+  }
   // Polymarket's live price is read here, on the main thread, so every reader
   // shares one price and one "just finished" moment (polymarket.ts).
   const liveOdds = new LiveOddsService({ current: polymarketBout, result: boutResult });
+  const oddsWarmer = setInterval(() => {
+    try { liveOdds.keepWarm(); } catch (error) { log("live odds warm-up failed:", String(error)); }
+  }, ODDS_WARM_MS);
+  oddsWarmer.unref();
   const markets = new PolymarketMarkets(scoreStore.db, fighterNames, () => {
     const current = currentBout();
     return current?.live ? current.bout.id : null;
@@ -2629,7 +2679,7 @@ export function startApi(port: number): http.Server {
     const timestamp = (key: string) => Number(getMeta(key)) || null;
     return {
       generatedAt: Date.now(),
-      ready: !draining && (!queryPool || queryPool.ready),
+      ready: ready(),
       node: process.version,
       process: {
         uptimeSeconds: process.uptime(), rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal,
@@ -2645,14 +2695,13 @@ export function startApi(port: number): http.Server {
   };
   let requests = 0;
   let failures = 0;
-  /** What a request that failed logged, for Admin → Errors. */
-  const failureMessages = new WeakMap<http.ServerResponse, string>();
   /** How long a public API answer took to come from the cache or a query
    *  worker, for Admin → Slow. */
   const answerTimes = new WeakMap<http.ServerResponse, number>();
   const latencies = new Map<string, { count: number; total_ms: number; max_ms: number }>();
   let stopping = false;
   let draining = false;
+  const ready = () => !draining && staticReady && (!queryPool || queryPool.ready);
   void adoptUnversionedPhotos().catch((err) => log("photo cache migration failed:", String(err)));
   const server = http.createServer(async (req, res) => {
     const started = performance.now();
@@ -2680,7 +2729,7 @@ export function startApi(port: number): http.Server {
       if ((res.statusCode >= 500 || res.statusCode === 404) && pathname !== "/readyz") {
         const referer = req.headers.referer;
         trafficHistory.errors.record({
-          status: res.statusCode, method: req.method ?? "OTHER", path: req.url ?? "/", message: failureMessages.get(res),
+          status: res.statusCode, method: req.method ?? "OTHER", path: req.url ?? "/", message: failureMessage(res),
           fromSite: typeof referer === "string" && referer.startsWith(`${SITE_URL}/`),
         });
       }
@@ -2694,7 +2743,10 @@ export function startApi(port: number): http.Server {
     });
     try {
       if ((req.url?.length ?? 0) > 16_384) return await sendJson(req, res, { error: "URL too long" }, 414);
-      const url = new URL(req.url ?? "/", "http://localhost");
+      // A request names a path, never a host: "//example.com/api/events" is not
+      // /api/events. A target that reads as no address at all is refused.
+      const url = URL.parse((req.url ?? "/").replace(/^\/{2,}/, "/"), "http://localhost");
+      if (!url) return await sendJson(req, res, { error: "bad request" }, 400);
       const p = url.pathname;
       // Page views, and how the first page of each visit loaded (page-timing.ts).
       if (p === "/api/pageview" || p === "/api/timing") {
@@ -2775,8 +2827,8 @@ export function startApi(port: number): http.Server {
         return await sendJson(req, res, { error: "method not allowed" }, 405);
       }
       if (p === "/healthz" || p === "/readyz") {
-        const ready = !draining && (!queryPool || queryPool.ready);
-        return await sendJson(req, res, { ok: p === "/healthz" || ready }, p === "/readyz" && !ready ? 503 : 200);
+        const isReady = ready();
+        return await sendJson(req, res, { ok: p === "/healthz" || isReady }, p === "/readyz" && !isReady ? 503 : 200);
       }
       if (stopping) return await sendJson(req, res, { error: "server is stopping" }, 503);
       const address = clientAddress(req);
@@ -2879,9 +2931,7 @@ export function startApi(port: number): http.Server {
       if (p === "/api/status") return await sendJson(req, res, status());
       if (p.startsWith("/api/")) return await sendJson(req, res, { error: "not found" }, 404);
 
-      if (p === "/robots.txt") {
-        return await sendText(req, res, `User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: ${SITE_URL}/sitemap.xml\n`, "text/plain; charset=utf-8");
-      }
+      if (p === "/robots.txt") return await sendText(req, res, robotsTxt(), "text/plain; charset=utf-8");
       // Chrome asks before prefetching a link through its private proxy.
       if (p === "/.well-known/traffic-advice") {
         return await sendText(req, res, `[{"user_agent":"prefetch-proxy","fraction":1.0}]`, "application/trafficadvice+json", "public, max-age=86400");
@@ -2893,8 +2943,7 @@ export function startApi(port: number): http.Server {
 
       await serveStatic(req, res, p === "/" ? "/index.html" : p, cache);
     } catch (err) {
-      log("API ERROR:", String(err));
-      failureMessages.set(res, String(err));
+      reportFailure(res, "request", err);
       if (!res.headersSent && !res.destroyed) {
         const overloaded = err instanceof OverloadedError;
         if (overloaded) res.setHeader("Retry-After", "5");
@@ -2919,7 +2968,7 @@ export function startApi(port: number): http.Server {
         cacheHits: cache.hits, cacheMisses: cache.misses, cacheEntries: cache.size, cacheBytes: cache.byteSize,
         queriesPending: queryPool?.pending ?? 0, memoryBytes: memory.rss, uptimeSeconds: process.uptime(),
         eventLoopP95Ms: eventLoop.percentile(95) / 1e6, eventLoopMaxMs: eventLoop.max / 1e6,
-        ready: !draining && (!queryPool || queryPool.ready),
+        ready: ready(),
         lastTickMs: Number(getMeta("last_tick_at")) || 0,
         heartbeatMs: Number(getMeta("sync_worker_heartbeat_at")) || 0,
         syncError: recentSyncError(),
@@ -2957,6 +3006,7 @@ export function startApi(port: number): http.Server {
     clearInterval(sampler);
     clearInterval(warmLists);
     clearInterval(settler);
+    clearInterval(oddsWarmer);
     clearInterval(accountSync);
     clearInterval(googleSync);
     clearInterval(refresher);

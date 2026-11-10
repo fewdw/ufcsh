@@ -4,6 +4,7 @@ import { authenticateScorer, scoringOrigins } from "./scoring-http.ts";
 import { ScoringError } from "./scoring.ts";
 import type { BetStore } from "./bets.ts";
 import type { Leaderboards } from "./leaderboards.ts";
+import { reportFailure } from "./request-failures.ts";
 
 const MAX_BODY = 16_384;
 
@@ -49,6 +50,7 @@ export function createBetsHandler(store: BetStore, leaderboards: () => Leaderboa
       catch { throw new ScoringError(400, "Invalid JSON bet."); }
       send(store.place(user, body), 201);
     } catch (error) {
+      if (!(error instanceof ScoringError)) reportFailure(res, "bets", error);
       const busy = error instanceof Error && /database is locked|SQLITE_BUSY/.test(error.message);
       const status = error instanceof ScoringError ? error.status : busy ? 503 : 500;
       if (status === 429 || status === 503) res.setHeader("Retry-After", "5");

@@ -33,6 +33,13 @@ const CHART_POINTS = 1500;
 const LIVE_MARKETS_MS = 60_000;
 /** Past this a live prop falls back to Gamma's price, minutes old but honest. */
 const LIVE_EXTRAS_MS = 30_000;
+/** How long a price read is shown as the current one (`summary`). A reader is
+ *  answered with one this young while the next is read (`held`): the feed
+ *  re-reads well inside it, so a bout it covers never makes a reader wait. */
+const LIVE_QUOTE_MS = 15_000;
+const UPCOMING_QUOTE_MS = 90_000;
+/** A bout with no market is looked for again behind the answer for this long. */
+const MISSING_HELD_MS = 3 * 60_000;
 type Context = MarketFight & {
   identity: string;
   names: [string[], string[]];
@@ -229,6 +236,23 @@ export class PolymarketMarkets {
     } catch {
       return null;
     }
+  }
+
+  /** Whether what is stored for this bout can be answered with as it stands:
+   *  a price `summary` still shows as current (the feed re-reads at 45 s, 8 s
+   *  for the bout on now), a market looked for in the last few minutes, or a
+   *  bout with nothing left to price. A bout never read, one whose matchup
+   *  changed, or one whose last read failed holds nothing: that reader waits. */
+  private held(c: Context): boolean {
+    const saved = this.stored(c);
+    if (!saved?.checked_at || saved.error) return false;
+    const mapping = this.mapping(c);
+    const now = Date.now();
+    if (!mapping) return c.state !== "live" && now - saved.checked_at < MISSING_HELD_MS;
+    if (c.state === "finished" || mapping.market.closed) return true;
+    const quote = this.quotes.get(c.id);
+    return quote?.identity === c.identity && quote.key === mapping.market.slug
+      && now - quote.quote.at < (c.state === "live" ? LIVE_QUOTE_MS : UPCOMING_QUOTE_MS);
   }
 
   async refresh(c: Context, force = false): Promise<void> {
@@ -605,7 +629,7 @@ export class PolymarketMarkets {
       cached.key === mapping?.market.slug &&
       c.state !== "finished" &&
       !mapping?.market.closed &&
-      Date.now() - cached.quote.at < (c.state === "live" ? 15_000 : 90_000)
+      Date.now() - cached.quote.at < (c.state === "live" ? LIVE_QUOTE_MS : UPCOMING_QUOTE_MS)
         ? cached.quote
         : null;
     const opening = mapping
@@ -675,7 +699,12 @@ export class PolymarketMarkets {
   async detail(id: string): Promise<MarketDetail | null> {
     const c = this.context(id);
     if (!c) return null;
-    await this.refresh(c);
+    // The feed re-reads every bout on the coming cards behind its readers, so
+    // one waits on Polymarket only while nothing current is held for the bout.
+    // Otherwise the read (a few hundred ms from here) goes on behind the answer.
+    const reading = this.refresh(c);
+    if (this.held(c)) void reading.catch(() => {});
+    else await reading;
     const mapping = this.mapping(c),
       saved = this.stored(c);
     return {

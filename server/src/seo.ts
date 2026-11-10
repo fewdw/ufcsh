@@ -62,6 +62,12 @@ const STATIC_PAGES: Record<string, { title: string; description: string }> = {
   "/info": { title: "About | ufc.sh", description: "UFC data for hardcore fans. About, shortcuts, community rules, privacy, support and the latest changes." },
 };
 
+/** Whether a page's document says nothing that changes with the data: the
+ *  home page and the section pages, whose titles and descriptions are fixed
+ *  text. Cloudflare may keep those far longer than a page that states a
+ *  record or a result (`EDGE.shell`). */
+export const fixedDocument = (pathname: string) => pathname === "/" || pathname === "/index.html" || Object.hasOwn(STATIC_PAGES, pathname);
+
 const link = (href: string, text: string) => `<a href="${htmlEscape(href)}">${htmlEscape(text)}</a>`;
 const notFound = (): PageSeo => ({
   ...DEFAULT, title: "Page not found | ufc.sh", description: "This page could not be found on ufc.sh.",
@@ -134,7 +140,9 @@ function pageSeoFor(pathname: string): PageSeo {
   // Stream overlays are for a streaming tool's browser, not for search.
   if (pathname === "/overlay" || /^\/overlay\/[a-f0-9]{16}$/.test(pathname)) return { ...home, title: "Live fan scorecard overlay | ufc.sh", noindex: true };
   const parts = pathname.split("/");
-  const id = decodeURIComponent(parts[2] ?? "");
+  // A stray "%" ("/fights/100%") is an address no page has, not a server error.
+  let id = "";
+  try { id = decodeURIComponent(parts[2] ?? ""); } catch { return notFound(); }
   if (parts.length !== 3 || !id) return notFound();
   if (parts[1] === "profiles") return { ...home, canonical: `${SITE_URL}${pathname}`, title: "Fan profile | ufc.sh", description: "A fan's UFC scorecards, predictions and how often their cards matched the judges." };
 
