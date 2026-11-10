@@ -445,7 +445,12 @@ function FighterBlock({
           {profileLink && side.profile_eligible && side.id ? <Link to={`/fighters/${side.id}`} className="hover:underline">{side.name}</Link> : side.name}
         </span>
         <span className={`flex shrink-0 items-center gap-2 empty:hidden ${align === "right" ? "flex-row-reverse" : ""}`}>
-          <ResultBadge tag={resultTag} outcome={side.outcome} />
+          {resultTag ? (
+            <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>
+              {resultTag.label}
+              {resultTag.when ? <span className="ml-1 font-semibold tabular-nums opacity-70">{resultTag.when}</span> : null}
+            </span>
+          ) : null}
           <WeightMissBadge side={side} />
           <BoutChangeBadge side={side} />
           <BonusIcons bonuses={bonuses} outcome={side.outcome} />
@@ -473,22 +478,10 @@ function FighterBlock({
   );
 }
 
-type ResultTag = { label: string; when: string | null };
-
-function ResultBadge({ tag, outcome }: { tag: ResultTag | null; outcome: FightSide["outcome"] }) {
-  if (!tag) return null;
-  return (
-    <span className={`${METHOD_TAG} ${outcomeClasses(outcome)}`}>
-      {tag.label}
-      {tag.when ? <span className="ml-1 font-semibold tabular-nums opacity-70">{tag.when}</span> : null}
-    </span>
-  );
-}
-
 /** The badge beside the winner's name: how the bout ended and when.
  *  A finish is placed by its round and the clock it came at; a decision is
  *  only ever reached at the end of a round, so it carries the round alone. */
-function resultTag(fight: EventFight, outcome: FightSide["outcome"]): ResultTag | null {
+function resultTag(fight: EventFight, outcome: FightSide["outcome"]): { label: string; when: string | null } | null {
   if (outcome !== "win" || !fight.method) return null;
   const when = [fight.round ? `R${fight.round}` : "", isDecision(fight.method) ? "" : fight.time ?? ""]
     .filter(Boolean)
@@ -496,13 +489,15 @@ function resultTag(fight: EventFight, outcome: FightSide["outcome"]): ResultTag 
   return { label: fight.method === "CNC" ? "NC" : fight.method.toUpperCase(), when: when || null };
 }
 
-/** A draw or no contest has no winner to carry the badge, and the same one
- *  beside both names reads twice, so the bout carries it once instead. */
-function boutResult(fight: EventFight): { tag: ResultTag; outcome: "draw" | "nc" } | null {
+/** The result in words, as every bout writes it under its prices. A draw or
+ *  no contest has no winner's badge, and the same badge beside both names
+ *  read twice, so the line leads with it instead. */
+function resultLine(fight: EventFight): string {
+  const result = formatMethod(fight.method, fight.round, fight.time);
   const outcome = fight.f1.outcome ?? fight.f2.outcome;
-  if (outcome === "draw") return { tag: { label: "Draw", when: fight.round ? `R${fight.round}` : null }, outcome };
-  if (outcome === "nc") return { tag: { label: "NC", when: null }, outcome };
-  return null;
+  if (outcome === "draw") return result ? `Draw · ${result}` : "Draw";
+  if (outcome === "nc") return fight.method === "CNC" ? formatMethod("NC", fight.round, fight.time) : result ? `NC · ${result}` : "NC";
+  return result;
 }
 
 /** Why the fans' cards question the decision, shown on hover. */
@@ -521,8 +516,7 @@ function ControversyTag({ fight }: { fight: EventFight }) {
 function CenterBlock({ fight, past, cancellation }: { fight: EventFight; past: boolean; cancellation?: CancelledBout }) {
   const f1Odds = fight.odds?.f1.close ?? null;
   const f2Odds = fight.odds?.f2.close ?? null;
-  const result = formatMethod(fight.method, fight.round, fight.time);
-  const shared = past ? boutResult(fight) : null;
+  const result = resultLine(fight);
   // A bout that has not happened yet says when it is expected instead. The
   // Estimate follows segment timing and available broadcast space.
   const expected = !past ? clockTime(fight.starts_at) : null;
@@ -535,9 +529,7 @@ function CenterBlock({ fight, past, cancellation }: { fight: EventFight; past: b
       {/* The result wraps rather than truncating: the round and the clock are
           the point of the line, and the centre column is narrow enough that
           "KO/TKO · R1 · 2:54" would lose its tail to an ellipsis. */}
-      {cancellation ? null : shared ? (
-        <div className="mt-1.5" title={fight.method_details ?? result}><ResultBadge tag={shared.tag} outcome={shared.outcome} /></div>
-      ) : past ? (
+      {cancellation ? null : past ? (
         <div className="mt-1.5 max-w-full text-balance text-center text-[10px] font-medium leading-4 text-zinc-500" title={fight.method_details ?? result}>
           {result || "Result"}
         </div>
@@ -640,7 +632,12 @@ function CompactSide({ side, fight, done, other, profileLink = false }: { side: 
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
           {rank ? <span className={`text-[10px] font-semibold tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-400"}`} title={rankingTitle(side.ranking, done)}>{rank}</span> : null}
           <span className={`text-[14px] font-semibold leading-5 ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>{profileLink && side.profile_eligible && side.id ? <Link to={`/fighters/${side.id}`} className="hover:underline">{side.name}</Link> : side.name}</span>
-          <ResultBadge tag={tag} outcome={side.outcome} />
+          {tag ? (
+            <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>
+              {tag.label}
+              {tag.when ? <span className="ml-1 font-semibold tabular-nums opacity-70">{tag.when}</span> : null}
+            </span>
+          ) : null}
           <WeightMissBadge side={side} />
           <BoutChangeBadge side={side} />
           <BonusIcons bonuses={fight.bonuses} outcome={side.outcome} />
@@ -672,25 +669,26 @@ function CompactFightRow({ fight, done, live, cancellation }: { fight: EventFigh
   const expected = !done ? clockTime(fight.starts_at) : null;
   // The winner's badge already says how it ended; only a result with no
   // winner's badge to carry it is written out here.
-  const shared = done ? boutResult(fight) : null;
-  const tagged = shared || resultTag(fight, fight.f1.outcome) || resultTag(fight, fight.f2.outcome);
-  const result = done && !tagged ? formatMethod(fight.method, fight.round, fight.time) : "";
+  const tagged = resultTag(fight, fight.f1.outcome) || resultTag(fight, fight.f2.outcome);
+  const result = done && !tagged ? resultLine(fight) : "";
   return (
     <div className="flex flex-col gap-1">
-      {/* Whole pieces wrap on the narrowest phones, never a word of the division. */}
-      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] leading-4 text-zinc-400">
-        {live ? <>
-          <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-          <span className="font-bold uppercase tracking-[0.14em] text-emerald-700">Live</span>
-        </> : null}
-        <span className="whitespace-nowrap font-medium text-zinc-500">{divisionName(fight.weight_class, fight.catch_weight)}</span>
-        {fight.scheduled_rounds ? <span className="whitespace-nowrap">{roundsLabel(fight.scheduled_rounds)}</span> : null}
-        {title ? <span className={`rounded px-1 py-px text-[9px] font-bold uppercase leading-3 ${title.className}`}>{title.label}</span> : null}
-        <ControversyTag fight={fight} />
-        {cancellation ? <span className="ml-auto font-semibold text-red-700 dark:text-red-300">Cancelled</span> : null}
-        {shared ? <span className="ml-auto" title={fight.method_details ?? undefined}><ResultBadge tag={shared.tag} outcome={shared.outcome} /></span> : null}
-        {result ? <span className="ml-auto text-right" title={fight.method_details ?? result}>{result}</span> : null}
-        {expected ? <span className="ml-auto tabular-nums" title="Approximate start in your time zone.">~{expected}</span> : null}
+      {/* On the narrowest phones the left side wraps whole pieces, never a
+          word of the division, and the result on the right stays one line. */}
+      <div className="flex items-start gap-1.5 text-[10px] leading-4 text-zinc-400">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 whitespace-nowrap">
+          {live ? <>
+            <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+            <span className="font-bold uppercase tracking-[0.14em] text-emerald-700">Live</span>
+          </> : null}
+          <span className="font-medium text-zinc-500">{divisionName(fight.weight_class, fight.catch_weight)}</span>
+          {fight.scheduled_rounds ? <span>{roundsLabel(fight.scheduled_rounds)}</span> : null}
+          {title ? <span className={`rounded px-1 py-px text-[9px] font-bold uppercase leading-3 ${title.className}`}>{title.label}</span> : null}
+          <ControversyTag fight={fight} />
+        </div>
+        {cancellation ? <span className="ml-auto shrink-0 font-semibold text-red-700 dark:text-red-300">Cancelled</span> : null}
+        {result ? <span className="ml-auto shrink-0 whitespace-nowrap text-right" title={fight.method_details ?? result}>{result}</span> : null}
+        {expected ? <span className="ml-auto shrink-0 tabular-nums" title="Approximate start in your time zone.">~{expected}</span> : null}
       </div>
       <div className="flex flex-col gap-1.5">
         <CompactSide side={fight.f1} other={fight.f2} fight={fight} done={done} profileLink={Boolean(cancellation)} />
