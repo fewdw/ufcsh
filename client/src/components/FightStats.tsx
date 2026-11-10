@@ -8,7 +8,8 @@ import type { CareerBefore, ComparisonBlock, FightDetailBlock, Matchup, RoundBlo
 import { useApi } from "../api";
 import { decimalScore, type ScoreSummary } from "../scoring";
 import { lastName } from "../format";
-import { signalPills } from "./ControversyRow";
+import { RESULT_PILL } from "../ui";
+import { SIGNAL_TONE, signalPills } from "./ControversyRow";
 import { MediaDetails, MediaSplit, type MediaScores } from "./MediaScores";
 import { mediaTally } from "../mediaScores";
 import { Tooltip as TipBubble } from "./Tooltip";
@@ -1168,26 +1169,26 @@ export function Scorecards({ fight }: { fight: Matchup }) {
           {fans ? <span className="block font-normal text-zinc-500">Fan scores include referee deductions.</span> : null}
         </p>
       ) : null}
-      {judging?.controversy ? <ControversyLine row={judging.controversy} joined={Boolean(decided || deductions.length)} /> : null}
+      {judging?.controversy ? <ControversyLine row={judging.controversy} /> : null}
     </section>
   );
 }
 
-/** Why the fans' cards make this decision controversial, as one line of small
- *  print under the deciding round (the Controversial page keeps the pills). */
-function ControversyLine({ row, joined }: { row: NonNullable<NonNullable<Matchup["judging"]>["controversy"]>; joined: boolean }) {
+/** Why the fans' cards make this decision controversial, on one line: centred
+ *  when it fits, otherwise scrolling sideways under faded edges (the fade
+ *  covers only the padding, so a line that fits is never dimmed). */
+function ControversyLine({ row }: { row: NonNullable<NonNullable<Matchup["judging"]>["controversy"]> }) {
   const pills = signalPills(row);
   if (!pills.length) return null;
   return (
-    <p className={`${joined ? "-mt-1" : "border-t border-zinc-100 pt-2"} px-4 pb-2 text-center text-[11px] leading-4 text-zinc-500 sm:px-5`}>
-      <span className="font-semibold text-rose-700">Controversial</span>
-      {pills.map((pill) => (
-        <span key={pill.key}>
-          <span aria-hidden="true" className="text-zinc-300"> · </span>
-          <span className="whitespace-nowrap" title={pill.title}>{pill.label}</span>
-        </span>
-      ))}
-    </p>
+    <div className="border-t border-zinc-100">
+      <div className="scrollbar-none overflow-x-auto py-2 [mask-image:linear-gradient(to_right,transparent,#000_1rem,#000_calc(100%-1rem),transparent)] sm:[mask-image:linear-gradient(to_right,transparent,#000_1.25rem,#000_calc(100%-1.25rem),transparent)]">
+        <div className="mx-auto flex w-max items-center gap-1.5 px-4 sm:px-5">
+          <span className="shrink-0 text-[11px] font-semibold text-zinc-900">Controversial</span>
+          {pills.map((pill) => <span key={pill.key} className={`${RESULT_PILL} ${SIGNAL_TONE[pill.key]}`} title={pill.title}>{pill.label}</span>)}
+        </div>
+      </div>
+    </div>
   );
 }
 
