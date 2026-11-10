@@ -38,6 +38,17 @@ function referringHost(): string {
   } catch { return ""; }
 }
 
+/** What arriving at `path` is: a "new" page view, the "same" view under the
+ *  address its page sent the reader on to, or "none" (never counted).
+ *  `redirected` is true when this address replaced the one whose view was just
+ *  counted: "/" opening its card, a venue's renamed address, `<Navigate replace>`.
+ *  That is one page read, and counting both doubled every visit to the home page.
+ *  "/profiles/me" is not counted itself, so the profile it turns into is. */
+export function pageViewFor(path: string, redirected: boolean): "new" | "same" | "none" {
+  if (path === "/profiles/me") return "none";
+  return redirected ? "same" : "new";
+}
+
 export function sendPageView(path: string, admin: boolean): void {
   // Administrators and automated browsers (tests, honest crawlers) are not readers.
   if (admin || navigator.webdriver) return;
@@ -47,6 +58,18 @@ export function sendPageView(path: string, admin: boolean): void {
     method: "POST", headers: { "Content-Type": "text/plain" }, body: lines.join("\n"),
     credentials: "omit", keepalive: true,
   }).catch(() => {});
+}
+
+/** When this page was first hidden, in ms since it was requested: Chromium
+ *  keeps every change from the start, including a tab that loaded behind
+ *  another and was looked at before its code ran (which the check at the top
+ *  of `watchPageTiming` cannot see). Elsewhere the watcher is only ever sending
+ *  at the first hide it sees, so nothing later is counted. */
+export function firstHiddenAt(entries: { name: string; startTime: number }[] = visibilityStates()): number {
+  return entries.find(entry => entry.name === "hidden")?.startTime ?? Infinity;
+}
+function visibilityStates() {
+  try { return performance.getEntriesByType("visibility-state"); } catch { return []; }
 }
 
 /**
@@ -71,8 +94,11 @@ export function watchPageTiming(admin: () => boolean): () => void {
     const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
     const fcp = performance.getEntriesByName("first-contentful-paint")[0]?.startTime;
     const network = (navigator as Navigator & { connection?: { effectiveType?: string } }).connection?.effectiveType;
-    const value = (ms: number | undefined) => ms != null && ms > 0 ? String(Math.round(ms)) : "-";
-    const line = [value(navigation?.responseStart), value(fcp), value(lcp), network ?? "-"].join(" ");
+    const hiddenAt = firstHiddenAt();
+    // A paint after the tab was first hidden waited for the reader to come
+    // back, however fast the page was: it says nothing about the load.
+    const value = (ms: number | undefined, paint = false) => ms != null && ms > 0 && !(paint && ms >= hiddenAt) ? String(Math.round(ms)) : "-";
+    const line = [value(navigation?.responseStart), value(fcp, true), value(lcp, true), network ?? "-"].join(" ");
     try { navigator.sendBeacon("/api/timing", new Blob([line], { type: "text/plain" })); } catch { /* the reader is leaving anyway */ }
   };
   document.addEventListener("visibilitychange", send);
