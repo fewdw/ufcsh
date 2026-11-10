@@ -3,6 +3,27 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Matchup pictures on opening a bout (2026-11-10)
+
+Measured on a preview in headless Chrome as a phone (390 px, 3× screen, 120 ms
+latency, 1.5 MB/s): the card opened, its first bout pressed, the hero's two
+full-body pictures sampled every 15 ms from the press.
+
+**Before.** The pictures waited for the matchup's data, then climbed the
+ladder one copy at a time, each request starting when the last had loaded:
+empty until 447 ms, the 40 px placeholder until ~970 ms, the small copy until
+1,250 ms, sharp at 1,250 ms. A full body needs `large` on any phone (160 px
+frame × 3), so the reader always saw all three steps.
+
+**After.** Pressing or pointing at a bout (card rows, the rail, Prev/Next)
+starts its placeholder and the copy the hero will need alongside the data
+(`warmFight`); any other matchup link starts them as soon as the data arrives.
+An eager picture measures its box before paint and fetches that copy with the
+placeholder, skipping the steps between (`ProgressiveImage`). The bouts either
+side of an open matchup have their pictures loaded 400 ms after it shows.
+Same probe: sharp at 330 ms, the placeholder on screen for 16 ms. Opening a
+matchup address directly: sharp ~200 ms after the hero appears.
+
 ## First load, slow requests and crawlers (2026-11-09)
 
 Read from production's saved week (Nov 2–9: 764,430 requests), its slow log,

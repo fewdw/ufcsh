@@ -22,6 +22,7 @@ import { SITE_URL, useSeo } from "../seo";
 import { useRememberedState, useRouteScrollRestoration } from "../navigationState";
 import { oneOf } from "../preferences";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
+import { warmFight } from "../warmFight";
 import { eventKind, type EventKind } from "../eventKind";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
@@ -539,7 +540,7 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
   const done = past || fight.method != null || fight.f1.outcome != null;
   // A matchup the reader has not opened before is a cold request; hovering or
   // pressing the row is enough notice to have it loaded by the time it opens.
-  const warm = () => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource));
+  const warm = () => warmFight(fight, settings.rankingSource);
   const open = () => navigate(`/fights/${fight.id}`, { state: { eventId, eventReturnDepth: 1 } });
   // Beside the price in the face-off layout; the compact layout writes its own.
   const weightClassRow = (
