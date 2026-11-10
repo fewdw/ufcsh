@@ -1211,7 +1211,7 @@ function ScorePair({ f1, f2, text, size, deducted }: { f1: number; f2: number; t
       ? "bg-red-100 font-semibold text-red-700 dark:bg-red-950 dark:text-red-300"
       : lead === side ? "font-semibold" : "font-medium text-zinc-400";
     return (
-      <span className={`inline-block rounded px-1 py-0.5 ${tone}`}
+      <span className={`inline-block rounded px-0.5 py-0.5 @[24rem]:px-1 ${tone}`}
         style={!points && lead === side ? { color: SIDE[side].ink } : undefined}
         title={note} aria-label={note ? `${text(value)}. ${note}.` : undefined}>
         {text(value)}
@@ -1219,7 +1219,7 @@ function ScorePair({ f1, f2, text, size, deducted }: { f1: number; f2: number; t
     );
   };
   return (
-    <span className={`inline-grid grid-cols-[1fr_auto_1fr] items-center gap-1 tabular-nums leading-tight ${size}`}>
+    <span className={`inline-grid grid-cols-[1fr_auto_1fr] items-center gap-0.5 tabular-nums leading-tight @[24rem]:gap-1 ${size}`}>
       <span className="text-right">{score("f1", f1)}</span>
       <span className="h-3 w-px bg-zinc-200" aria-hidden="true" />
       <span className="text-left">{score("f2", f2)}</span>
@@ -1244,7 +1244,7 @@ function ScoreGrid({ fight, judges, fans, rounds, decided, media, openMedia }: {
   const roundCount = Math.max(0, ...judges.map((judge) => judge.rounds?.length ?? 0), fans ? rounds.length : 0);
   const places = fans && !(Number.isInteger(fans.avg1!) && Number.isInteger(fans.avg2!)) ? 2 : 0;
   const columns = judges.length + (fans ? 1 : 0);
-  const totalSize = "text-lg @[32rem]:text-2xl";
+  const totalSize = "text-base @[24rem]:text-lg @[32rem]:text-2xl";
   // Two decimals fit a large total only without the media column beside it.
   const decimalSize = media ? "text-[13px] @[48rem]:text-base" : "text-[13px] @[44rem]:text-xl";
   const cell = "flex min-w-0 items-center justify-center px-0.5";
@@ -1252,16 +1252,18 @@ function ScoreGrid({ fight, judges, fans, rounds, decided, media, openMedia }: {
   const mediaPlaces = tally && !(Number.isInteger(tally.avg1) && Number.isInteger(tally.avg2)) ? 2 : 0;
   const mediaCell = "hidden @[40rem]:flex";
   const track = (count: number) => `2rem repeat(${count}, minmax(0, 1fr))`;
+  // Decimal fan totals need more room than integer judge totals on a phone.
+  const narrowTrack = `1.25rem repeat(${judges.length}, minmax(0, 1fr))${fans ? " minmax(0, 1.6fr)" : ""}`;
   return (
     <div
-      className="mx-auto grid max-w-3xl px-2 pb-2.5 pt-1.5 text-center [grid-template-columns:var(--score-columns)] @[32rem]:px-5 @[32rem]:pb-4 @[32rem]:pt-3 @[40rem]:[grid-template-columns:var(--score-columns-wide)]"
-      style={{ "--score-columns": track(columns), "--score-columns-wide": track(columns + (media ? 1 : 0)) } as React.CSSProperties}
+      className="mx-auto grid max-w-3xl px-2 pb-2.5 pt-1.5 text-center [grid-template-columns:var(--score-columns-narrow)] @[32rem]:px-5 @[32rem]:pb-4 @[32rem]:pt-3 @[32rem]:[grid-template-columns:var(--score-columns)] @[40rem]:[grid-template-columns:var(--score-columns-wide)]"
+      style={{ "--score-columns-narrow": narrowTrack, "--score-columns": track(columns), "--score-columns-wide": track(columns + (media ? 1 : 0)) } as React.CSSProperties}
     >
       <span />
       {judges.map((judge, index) => {
         const slug = fight.officials?.judges[index];
         const name = judge.judge ? <><span className="@[40rem]:hidden">{lastName(judge.judge)}</span><span className="hidden @[40rem]:inline">{judge.judge}</span></> : `Judge ${index + 1}`;
-        const label = "line-clamp-2 self-end break-words px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] @[32rem]:text-[10px] @[32rem]:leading-4";
+        const label = "line-clamp-2 self-end break-words px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-normal @[24rem]:tracking-[0.06em] @[32rem]:text-[10px] @[32rem]:leading-4";
         // Each name opens that judge's record: every card they have scored.
         return slug
           ? <Link key={`name-${index}`} to={`/judges/${slug}`} title={`${judge.judge} — every card they have scored`}
