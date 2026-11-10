@@ -1,11 +1,10 @@
-import { useAuth } from "@clerk/react";
 import { CalendarDays, Check, ChevronDown, Flag, Info, LogOut, Pencil, Radio, Search, Settings, SquareTerminal, X } from "lucide-react";
 import { isDevSite, useDevStats } from "../devStats";
 import { updatePreview, usePreviewSettings } from "../livePreview";
 import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
-import { accountsEnabled, useAccount } from "../auth";
+import { accountsEnabled, useAccount, useAuth } from "../auth";
 import { ConfirmRemove, RemoveX } from "../components/ConfirmRemove";
 import Avatar from "../components/Avatar";
 import { PANEL_SHELL, PanelHeading } from "../components/FightStats";

@@ -3,8 +3,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { X } from "lucide-react";
-import { apiCache, type EventListItem } from "./api";
-import { landingEvent } from "./liveEvent";
 import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "./ui";
 
 /** What the arrow keys do on the page being read, named for the help sheet. */
@@ -53,26 +51,21 @@ export function ShortcutProvider({ children, onSearch }: { children: ReactNode; 
   }, []);
 
   useEffect(() => {
-    const handler = async (event: KeyboardEvent) => {
+    const handler = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
       if (ownsKeys(event.target, event.key) || dialogOpen()) return;
       if (event.key === "?") { event.preventDefault(); setHelp(true); return; }
       if (event.key === "/") { event.preventDefault(); onSearch(); return; }
       if (event.key === "t" || event.key === "T") {
         event.preventDefault();
-        const loaded = apiCache.read("/api/events").data as EventListItem[] | null;
-        if (!loaded) await apiCache.load("/api/events");
-        const events = (apiCache.read("/api/events").data as EventListItem[] | null) ?? [];
-        const target = landingEvent(events);
-        if (target) navigate(`/events/${target.id}`);
+        navigate("/");
         return;
       }
       if (event.key === "ArrowLeft" && nav.current?.prev) { event.preventDefault(); nav.current.prev(); }
       else if (event.key === "ArrowRight" && nav.current?.next) { event.preventDefault(); nav.current.next(); }
     };
-    const listener = (event: KeyboardEvent) => { void handler(event); };
-    window.addEventListener("keydown", listener);
-    return () => window.removeEventListener("keydown", listener);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, [navigate, onSearch]);
 
   const value = useMemo(() => ({ setNav, openHelp: () => setHelp(true) }), [setNav]);
