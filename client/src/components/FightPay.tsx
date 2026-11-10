@@ -159,14 +159,14 @@ function PayDialog({ fight, pay, names, start, close }: { fight: Matchup; pay: P
 
 /** What each fighter was paid for the bout, as far as anyone published it:
  *  the purse a commission disclosed, post-fight bonuses, and an estimate of
- *  fight-week pay. Undisclosed is said plainly; an estimate wears a ~. */
+ *  fight-week pay. Shown only once a purse is disclosed; an estimate wears a ~. */
 export default function FightPay({ fight }: { fight: Matchup }) {
   const [info, setInfo] = useState<Category | null>(null);
   const pay: Pay | null | undefined = fight.pay;
-  if (!pay) return null;
-  const sides = [pay.f1, pay.f2] as const;
+  const sides = pay ? [pay.f1, pay.f2] as const : [];
+  // No disclosed purse, no panel: bonuses and fight-week estimates alone wait for one.
+  if (!pay || !sides.some((side) => side.purse)) return null;
   const names: [string, string] = [fight.f1.name, fight.f2.name];
-  const anyPurse = sides.some((side) => side.purse);
   const anyBonus = sides.some((side) => side.bonuses.length);
   const anyCompliance = sides.some((side) => side.compliance || side.compliance_gap);
   const commissions = [...new Set(pay.purse_sources.map((source) => source.commission).filter(Boolean))];
@@ -174,12 +174,12 @@ export default function FightPay({ fight }: { fight: Matchup }) {
     <Row label={LABELS[category]} f1={cell(pay.f1)} f2={cell(pay.f2)} onInfo={() => setInfo(category)} />;
   return (
     <section className={`${PANEL_SHELL} overflow-hidden`}>
-      <PanelHeading title="Pay" subtitle={commissions.length ? `Disclosed by the ${commissions.join(" and ")}` : pay.read ? "Purses undisclosed" : undefined} />
+      <PanelHeading title="Pay" subtitle={commissions.length ? `Disclosed by the ${commissions.join(" and ")}` : undefined} />
       <div className="px-4 py-1.5 sm:px-5">
         {row("purse", (side) => purseCell(side, pay.read))}
         {anyBonus ? row("bonus", bonusCell) : null}
         {anyCompliance ? row("week", weekCell) : null}
-        {anyPurse && anyBonus ? row("total", totalCell) : null}
+        {anyBonus ? row("total", totalCell) : null}
       </div>
       {info ? <PayDialog fight={fight} pay={pay} names={names} start={info} close={() => setInfo(null)} /> : null}
     </section>
