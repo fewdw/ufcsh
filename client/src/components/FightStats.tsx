@@ -1174,14 +1174,20 @@ export function Scorecards({ fight }: { fight: Matchup }) {
   );
 }
 
-/** Why the fans' cards make this decision controversial, and the way to the rest. */
+/** Why the fans' cards make this decision controversial, on one line: centred
+ *  when it fits, otherwise scrolling sideways under faded edges (the fade
+ *  covers only the padding, so a line that fits is never dimmed). */
 function ControversyLine({ row }: { row: NonNullable<NonNullable<Matchup["judging"]>["controversy"]> }) {
   const pills = signalPills(row);
   if (!pills.length) return null;
   return (
-    <div className="flex flex-wrap items-center justify-center gap-1.5 border-t border-zinc-100 px-4 py-2 sm:px-5">
-      <span className="text-[11px] font-semibold text-zinc-900">Controversial</span>
-      {pills.map((pill) => <span key={pill.key} className={`${RESULT_PILL} ${SIGNAL_TONE[pill.key]}`} title={pill.title}>{pill.label}</span>)}
+    <div className="border-t border-zinc-100">
+      <div className="scrollbar-none overflow-x-auto py-2 [mask-image:linear-gradient(to_right,transparent,#000_1rem,#000_calc(100%-1rem),transparent)] sm:[mask-image:linear-gradient(to_right,transparent,#000_1.25rem,#000_calc(100%-1.25rem),transparent)]">
+        <div className="mx-auto flex w-max items-center gap-1.5 px-4 sm:px-5">
+          <span className="shrink-0 text-[11px] font-semibold text-zinc-900">Controversial</span>
+          {pills.map((pill) => <span key={pill.key} className={`${RESULT_PILL} ${SIGNAL_TONE[pill.key]}`} title={pill.title}>{pill.label}</span>)}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1300,7 +1306,7 @@ function ScoreGrid({ fight, judges, fans, rounds, decided, media, openMedia }: {
 
       {Array.from({ length: roundCount }, (_, index) => (
         <Fragment key={`round-${index}`}>
-          <span className={`flex items-center border-t border-zinc-100 py-1 ${sectionLabel} !text-[9px] !tracking-normal ${decided === index + 1 ? "!text-zinc-900" : ""}`} title={decided === index + 1 ? "This round decided the fight" : undefined}>R{index + 1}</span>
+          <span className={`flex items-center border-t border-zinc-100 py-1 ${sectionLabel} !text-[9px] !tracking-normal ${decided === index + 1 ? "!text-zinc-900 dark:!text-zinc-100" : ""}`} title={decided === index + 1 ? "This round decided the fight" : undefined}>R{index + 1}</span>
           {judges.map((judge, judgeIndex) => {
             const round = judge.rounds?.[index];
             return (
