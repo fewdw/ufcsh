@@ -1,8 +1,7 @@
-import { useAuth } from "@clerk/react";
 import { ArrowBigDown, ArrowBigUp, ChevronDown, Ellipsis, Flag, Link2, Minus, Pencil, Plus, Trash2, UserX, X } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { accountsEnabled, useAccount } from "../auth";
+import { accountsEnabled, useAccount, useAuth } from "../auth";
 import { useSessionUser } from "../profile";
 import { readSnapshot, writeSnapshot } from "../snapshots";
 import { oneOf, readPreference, writePreference } from "../preferences";

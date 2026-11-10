@@ -1,8 +1,7 @@
-import { useAuth } from "@clerk/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { BUTTON_PRIMARY, BUTTON_QUIET, CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
-import { useAccount } from "../auth";
+import { useAccount, useAuth } from "../auth";
 import { useSessionUser } from "../profile";
 
 const CATEGORIES = [

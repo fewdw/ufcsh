@@ -1,6 +1,5 @@
-import { useAuth } from "@clerk/react";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
-import { useAccount } from "./auth";
+import { IDENTITY_KEY, useAccount, useAuth } from "./auth";
 import type { ScorerIdentity } from "./scoring";
 import { readSnapshot, writeSnapshot } from "./snapshots";
 
@@ -29,7 +28,7 @@ const publish = (next: Partial<State>) => {
  *  and the owner's controls on a profile are right at once while the session
  *  loads and the server confirms it. Before the session has loaded, any saved
  *  identity is offered; after, only the one for the signed-in account. */
-const IDENTITY_KEY = "ufcsh:my-identity:v1";
+// IDENTITY_KEY lives in auth.tsx, which reads it to decide whether to load Clerk.
 let saved: { userId: string; identity: ScorerIdentity; email?: string } | null | undefined;
 function rememberedIdentity(userId?: string): ScorerIdentity | null {
   if (saved === undefined) {

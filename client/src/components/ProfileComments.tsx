@@ -1,4 +1,4 @@
-import { useAuth } from "@clerk/react";
+import { useAuth } from "../auth";
 import { ArrowBigUp } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
