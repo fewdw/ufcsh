@@ -436,7 +436,7 @@ select:not([multiple]):not([size]) {
   grid-template-columns: minmax(0, 1fr) 112px minmax(0, 1fr);
   gap: 8px;
 }
-/* Wide enough for the longest label, "5-round fights", at every width. */
+/* Keep context labels aligned; longer labels wrap between words. */
 .matchup-context > :is(div, button) > div:first-child { grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr); }
 .matchup-comparisons dd { flex-wrap: wrap; row-gap: 3px; }
 .matchup-comparisons dl > div:first-child dd { justify-content: flex-start; }
@@ -447,7 +447,7 @@ select:not([multiple]):not([size]) {
   overflow-wrap: anywhere;
 }
 .matchup-context > :is(div, button) > div:nth-child(1) > div:nth-child(2) > span {
-  white-space: nowrap;
+  overflow-wrap: normal;
 }
 @container (max-width: 57.99rem) {
   .matchup-body { padding: 0 16px 16px; }
