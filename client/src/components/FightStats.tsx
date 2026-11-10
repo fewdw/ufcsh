@@ -1,4 +1,3 @@
-import { MedianLabel, MedianTick } from "./DivisionMedian";
 import CareerStatDetails from "./CareerStatDetails";
 import { decidingRound } from "../decidingRound";
 import { PANEL } from "./chartTokens";
@@ -968,20 +967,16 @@ function ProfileRow({
   fight,
   metric,
   careers,
-  median,
 }: {
   fight: Matchup;
   metric: ProfileMetric;
   careers: Record<Side, CareerBefore | null>;
-  /** The division's median, drawn as a tick on both bars. */
-  median: number | null;
 }) {
   const values: Record<Side, number | null> = {
     f1: careers.f1 ? metric.value(careers.f1) : null,
     f2: careers.f2 ? metric.value(careers.f2) : null,
   };
-  // The median shares the bars' scale, so a tick past both bars still fits.
-  const scale = Math.max(values.f1 ?? 0, values.f2 ?? 0, median ?? 0, 0.0001);
+  const scale = Math.max(values.f1 ?? 0, values.f2 ?? 0, 0.0001);
   const both = values.f1 != null && values.f2 != null;
   const ahead: Side | null = !both || values.f1 === values.f2
     ? null
@@ -995,7 +990,6 @@ function ProfileRow({
         <span className="@[40rem]:hidden">{metric.short}</span>
         <span className="hidden @[40rem]:inline">{metric.label}</span>
         {metric.better === "low" ? <span className="text-zinc-400"> ↓</span> : null}
-        {median != null ? <span className="hidden text-zinc-400 @[40rem]:inline"> · median {profileText(median, metric.format)}</span> : null}
       </span>
       <span className="grid grid-cols-2 items-center gap-x-1 @[40rem]:gap-x-1.5">
         {SIDES.map((side) => {
@@ -1012,7 +1006,6 @@ function ProfileRow({
                   opacity: ahead && ahead !== side ? 0.55 : 1,
                 }}
               />
-              {median != null ? <MedianTick at={(median / scale) * 100} from={side === "f1" ? "right" : "left"} /> : null}
             </span>
           );
           const figure = (
@@ -1043,8 +1036,7 @@ function MethodBar({ side, counts, total }: { side: Side; counts: { ko: number; 
   ];
   return (
     <>
-      {/* None yet is an empty track, so both fighters' rows keep one shape. */}
-      <span className="flex h-2 w-full gap-[2px] overflow-hidden rounded-[3px] bg-plot-track @[36rem]:h-3" role="img" aria-label={total > 0 ? segments.map((segment) => `${segment.value} by ${segment.label}`).join(", ") : "None yet"}>
+      <span className="flex h-2 w-full gap-[2px] overflow-hidden rounded-[3px] bg-plot-track @[36rem]:h-3" role="img" aria-label={segments.map((segment) => `${segment.value} by ${segment.label}`).join(", ")}>
         {segments.filter((segment) => segment.value > 0).map((segment) => (
           <span key={segment.key} title={`${segment.value} by ${segment.label}`} style={{ width: `${(segment.value / total) * 100}%`, backgroundColor: segment.color }} />
         ))}
@@ -1066,14 +1058,17 @@ function MethodProfile({ fight, careers }: { fight: Matchup; careers: Record<Sid
     const sub = kind === "wins" ? career.subWins : career.subLosses;
     return { ko, sub, decision: Math.max(0, total - ko - sub), total };
   };
-  const rows = [
+  // A fighter with none shows no bar; a half neither fighter has is left out.
+  const rows = ([
     { key: "wins", label: "Wins", view: resultView("win") },
     { key: "losses", label: "Losses", view: resultView("loss") },
-  ] as const;
+  ] as const).filter((row) => SIDES.some((side) => split(careers[side], row.key).total > 0));
+  if (!rows.length) return null;
   return (
     <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-zinc-100 px-3 py-2.5 @[36rem]:gap-x-6 @[36rem]:px-4 @[36rem]:py-3">
       {rows.map((row) => (
-        <CareerStatDetails key={row.key} fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id} view={row.view} className="block w-full min-w-0 py-1 text-left">
+        <CareerStatDetails key={row.key} fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id} view={row.view}
+          className={`block min-w-0 py-1 text-left ${rows.length === 1 ? "col-span-2 w-1/2 justify-self-center" : "w-full"}`}>
           <span className={`mb-1 block text-center ${sectionLabel}`}>{row.label}</span>
           <span className="grid gap-1.5 @[36rem]:grid-cols-2 @[36rem]:gap-3">
             {SIDES.map((side) => {
@@ -1081,7 +1076,7 @@ function MethodProfile({ fight, careers }: { fight: Matchup; careers: Record<Sid
               return (
                 <span key={side}
                   className={`block w-full min-w-0 text-left ${side === "f1" ? "@[36rem]:text-right" : ""}`}>
-                  <MethodBar side={side} counts={counts} total={counts.total} />
+                  {counts.total > 0 ? <MethodBar side={side} counts={counts} total={counts.total} /> : null}
                 </span>
               );
             })}
@@ -1102,20 +1097,16 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
   ];
   const anyTracked = tracked(careers.f1) + tracked(careers.f2) > 0;
   if (!anyTracked) return null;
-  const medians = fight.division_medians ?? null;
 
   return (
     <section className={`${shell} @container overflow-hidden`}>
-      <PanelHeading title="Career stats" subtitle={<>
-        {medians ? <><MedianLabel medians={medians} before /> · </> : null}
-        <span className="max-sm:hidden">Stats are before this fight</span><span className="sm:hidden">Before this fight</span>
-      </>} />
+      <PanelHeading title="Career stats" />
       <div className="grid grid-cols-2 gap-x-4 px-3 pb-1 pt-1.5 @[40rem]:gap-x-8 @[40rem]:px-4 @[40rem]:pt-2">
         {groups.map((group) => (
           <div key={group.key} className="min-w-0">
             <div className={`pb-0.5 pt-1 text-center ${sectionLabel}`}>{group.label}</div>
             {group.metrics.map((metric) => (
-              <ProfileRow key={metric.key} fight={fight} metric={metric} careers={careers} median={medians?.values[metric.key] ?? null} />
+              <ProfileRow key={metric.key} fight={fight} metric={metric} careers={careers} />
             ))}
           </div>
         ))}
