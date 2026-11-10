@@ -2,10 +2,19 @@ import { apiCache, prefetch, type FightSide, type Matchup } from "./api";
 import { preloadImage } from "./imageLevels";
 import { withRanking, type RankingSource } from "./settings";
 
+/** What a finished bout's Result tab and tab bar wait for besides the
+ *  matchup: the fans' card and the picks summary. FightView holds the swap
+ *  for them, so the page is drawn once instead of shifting as each lands. */
+export function finishedBoutRequests(fightId: string): string[] {
+  return [`/api/fights/${fightId}/scores`, `/api/fights/${fightId}/predictions`];
+}
+
 /** A matchup about to open, from a row that already has its pictures: its
- *  data and its hero pictures load side by side. */
-export function warmFight(fight: { id: string; f1: FightSide; f2: FightSide }, ranking: RankingSource): void {
+ *  data and its hero pictures load side by side, and a finished bout's fan
+ *  card and picks with them. */
+export function warmFight(fight: { id: string; f1: FightSide; f2: FightSide; method?: string | null; potential?: boolean }, ranking: RankingSource): void {
   prefetch(withRanking(`/api/fights/${fight.id}`, ranking));
+  if (fight.method && !fight.potential) finishedBoutRequests(fight.id).forEach((request) => prefetch(request));
   preloadMatchupPortraits(fight.f1, fight.f2);
 }
 
@@ -14,6 +23,7 @@ export function warmFightPictures(request: string): void {
   void apiCache.load(request, 30_000).then(() => {
     const matchup = apiCache.read(request).data as Matchup | null;
     if (matchup?.f1 && matchup.f2) preloadMatchupPortraits(matchup.f1, matchup.f2);
+    if (matchup && !matchup.potential && (matchup.status === "past" || matchup.in_progress)) finishedBoutRequests(matchup.id).forEach((request) => prefetch(request));
   });
 }
 
