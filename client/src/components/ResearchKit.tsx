@@ -69,7 +69,7 @@ export function ProfileColumns({ scope, ready, identity, stats, list, listLabel,
     </button>
   );
   return (
-    <div ref={page} onPointerDownCapture={hold} onKeyDownCapture={hold} onChangeCapture={hold} className="h-full overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
+    <div ref={page} onPointerDownCapture={hold} onKeyDownCapture={hold} onChangeCapture={hold} className="page-scroll h-full overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
       <div className="flex flex-col gap-3 p-3 pb-8 lg:h-full lg:pb-3">
         <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(24rem,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
           <div ref={main} className={`flex ${column}`}>

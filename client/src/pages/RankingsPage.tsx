@@ -681,7 +681,7 @@ export default function RankingsPage() {
   const updated = historical ? null : <Freshness label="Updated" at={data?.updated_at} staleAfterHours={24} />;
 
   return (
-    <div ref={pageScroll} className="h-full overflow-y-auto" aria-busy={loading}>
+    <div ref={pageScroll} className="page-scroll h-full overflow-y-auto" aria-busy={loading}>
       <div className="p-2 pb-8 sm:p-3">
         <h1 className="sr-only">UFC rankings</h1>
         {/* Division tabs sit before Filters; phone tabs scroll when space is tight. */}

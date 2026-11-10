@@ -40,7 +40,7 @@ export default function InfoPage() {
     path: "/info",
   });
   return (
-    <div ref={scroll} className="h-full overflow-y-auto overflow-x-hidden">
+    <div ref={scroll} className="page-scroll h-full overflow-y-auto overflow-x-hidden">
       <div className="mx-auto grid w-full max-w-5xl gap-3 p-2 pb-12 sm:p-3 lg:grid-cols-[13rem_minmax(0,1fr)] lg:p-4">
         <nav aria-label="On this page" className="lg:sticky lg:top-4 lg:self-start">
           <div className={`${PANEL} px-3 py-3`}>
