@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createClerkClient } from "@clerk/backend";
 import { EDGE, EDGE_CACHE_HEADER, RateLimiter, clientAddress } from "./api-policy.ts";
 import { PROFILE_FILTERS, ScoringError, ScoringStore, type ProfileFilter } from "./scoring.ts";
+import { reportFailure } from "./request-failures.ts";
 
 export function scoringOrigins(): string[] {
   const configured = (process.env.CLERK_AUTHORIZED_PARTIES ?? "").split(",").map(x => x.trim()).filter(Boolean);
@@ -259,6 +260,7 @@ export function createScoringHandler(
         send(cached(id, 3000, () => store.summary(id)));
       }
     } catch (error) {
+      if (!(error instanceof ScoringError)) reportFailure(res, "scoring", error);
       res.setHeader("Cache-Control", "private, no-store");
       res.removeHeader(EDGE_CACHE_HEADER);
       const busy = error instanceof Error && /database is locked|SQLITE_BUSY/.test(error.message);

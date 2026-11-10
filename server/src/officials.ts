@@ -63,7 +63,18 @@ const ALIASES = new Map([
   ["munah holland querido", "munah querido"], ["henry gueary", "henry guery"],
   ["vjacheslav kiselev", "vyacheslav kiselev"], ["viacheslav kiselev", "vyacheslav kiselev"], ["kiselev viacheslav", "vyacheslav kiselev"],
   ["jay stafin", "jason stafin"], ["michael bell", "mike bell"], ["douglas crosby", "doug crosby"],
+  // One Utah judge: on Naurdiev vs Vettori (2026-10-03) UFCStats prints "Stephen", MMA Decisions "Steve".
+  ["stephen faragher", "steve faragher"],
 ]);
+
+/** Pairs Admin → Bugs would list as possibly one person (same surname and first
+ *  initial) that were looked at and are two: sorted keys, as `officialKey` gives them. */
+const KEPT_APART = new Set([
+  // Raphael Davis judges in California (2024–25); Richard Davis judged in Florida (2012–16).
+  "raphael davis|richard davis",
+]);
+/** Whether two identities were reviewed and found to be different people. */
+export const keptApart = (a: string, b: string) => KEPT_APART.has([a, b].sort().join("|"));
 
 /** A spelling merged by hand above, which needs no second review. */
 export const mergedByHand = (name: string) => ALIASES.has(normName(name));

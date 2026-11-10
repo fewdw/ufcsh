@@ -38,6 +38,38 @@ function referringHost(): string {
   } catch { return ""; }
 }
 
+/** Navigation state for a page sending the reader on to its own address: "/"
+ *  opening its card, a venue's former name moving to its current one. With
+ *  `replace`, the arrival is the view already counted, not another. It must be
+ *  said by the page that redirects: `replace` alone also moves between the
+ *  Browse tabs, which are different pages. */
+export const SAME_VIEW = { sameView: true } as const;
+/** For pages to say it with (`{ sameView: true } satisfies SameView`): a type
+ *  import costs their chunks nothing, where the constant would put this module
+ *  in a chunk of its own on every first load. */
+export type SameView = typeof SAME_VIEW;
+const isSameView = (state: unknown) => typeof state === "object" && state !== null && (state as { sameView?: unknown }).sameView === true;
+
+/** Decides, arrival by arrival, which are page views. One per tab (`App`).
+ *  A path seen twice running is one view; "/profiles/me" is never counted, so
+ *  the profile it turns into is; and a `SAME_VIEW` redirect from the path just
+ *  counted carries that view to its new address, which had made every visit to
+ *  the home page two. Back, Forward and reloads are views: only `replace` with
+ *  the state above is a redirect. */
+export function pageViewTracker() {
+  let seen: string | null = null;
+  let counted: string | null = null;
+  return (path: string, navigation: { replace: boolean; state: unknown }): boolean => {
+    if (seen === path) return false;
+    const from = seen;
+    seen = path;
+    if (path === "/profiles/me") return false;
+    const redirected = navigation.replace && isSameView(navigation.state) && from !== null && counted === from;
+    counted = path;
+    return !redirected;
+  };
+}
+
 export function sendPageView(path: string, admin: boolean): void {
   // Administrators and automated browsers (tests, honest crawlers) are not readers.
   if (admin || navigator.webdriver) return;
@@ -47,6 +79,18 @@ export function sendPageView(path: string, admin: boolean): void {
     method: "POST", headers: { "Content-Type": "text/plain" }, body: lines.join("\n"),
     credentials: "omit", keepalive: true,
   }).catch(() => {});
+}
+
+/** When this page was first hidden, in ms since it was requested: Chromium
+ *  keeps every change from the start, including a tab that loaded behind
+ *  another and was looked at before its code ran (which the check at the top
+ *  of `watchPageTiming` cannot see). Elsewhere the watcher is only ever sending
+ *  at the first hide it sees, so nothing later is counted. */
+export function firstHiddenAt(entries: { name: string; startTime: number }[] = visibilityStates()): number {
+  return entries.find(entry => entry.name === "hidden")?.startTime ?? Infinity;
+}
+function visibilityStates() {
+  try { return performance.getEntriesByType("visibility-state"); } catch { return []; }
 }
 
 /**
@@ -71,8 +115,11 @@ export function watchPageTiming(admin: () => boolean): () => void {
     const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
     const fcp = performance.getEntriesByName("first-contentful-paint")[0]?.startTime;
     const network = (navigator as Navigator & { connection?: { effectiveType?: string } }).connection?.effectiveType;
-    const value = (ms: number | undefined) => ms != null && ms > 0 ? String(Math.round(ms)) : "-";
-    const line = [value(navigation?.responseStart), value(fcp), value(lcp), network ?? "-"].join(" ");
+    const hiddenAt = firstHiddenAt();
+    // A paint after the tab was first hidden waited for the reader to come
+    // back, however fast the page was: it says nothing about the load.
+    const value = (ms: number | undefined, paint = false) => ms != null && ms > 0 && !(paint && ms >= hiddenAt) ? String(Math.round(ms)) : "-";
+    const line = [value(navigation?.responseStart), value(fcp, true), value(lcp, true), network ?? "-"].join(" ");
     try { navigator.sendBeacon("/api/timing", new Blob([line], { type: "text/plain" })); } catch { /* the reader is leaving anyway */ }
   };
   document.addEventListener("visibilitychange", send);

@@ -8,6 +8,7 @@ import { SITE_URL, useSeo } from "../seo";
 import RequestNotice from "../components/RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
 import { searchList } from "../search";
+import type { SameView } from "../pageViews";
 import {
   BOUT_LIST, BoutRow, FilterSearch, FilterSelect, IdentityCard, ListHeading, MethodCircle, NotFound, PageState, Panel,
   ProfileColumns, RankRows, TitleNote, Wheel, YearBars, YearRange, type RankRow, type WheelGroup,
@@ -108,7 +109,7 @@ function PlacePage({ kind }: { kind: "venue" | "location" }) {
   const { search } = useLocation();
   // An address under a building's former name (/venues/arco-arena) moves to its current one.
   useEffect(() => {
-    if (data?.slug && data.slug !== slug) navigate(`/${kind === "venue" ? "venues" : "locations"}/${data.slug}${search}`, { replace: true });
+    if (data?.slug && data.slug !== slug) navigate(`/${kind === "venue" ? "venues" : "locations"}/${data.slug}${search}`, { replace: true, state: { sameView: true } satisfies SameView });
   }, [data?.slug, slug, kind, search, navigate]);
   const filters = useUrlFilters();
   const venue = data && "former_names" in data ? data : null;

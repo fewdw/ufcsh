@@ -9,6 +9,7 @@ import type { CommentStore } from "./comments.ts";
 import type { ErrorList } from "./error-log.ts";
 import { SLOW_MAX_HOURS } from "./slow-log.ts";
 import { isTrafficRange, type TrafficRange } from "./traffic-history.ts";
+import { reportFailure } from "./request-failures.ts";
 
 /** A bout the panel can release rounds for: everything on a card being fought
  *  today, whether or not the feed has noticed it has started. Listed in the
@@ -246,6 +247,7 @@ export function createAdminHandler(options: AdminHandlerOptions) {
       }
       else throw new ScoringError(404, "Not found.");
     } catch (error) {
+      if (!(error instanceof ScoringError)) reportFailure(res, "admin", error);
       const busy = error instanceof Error && /database is locked|SQLITE_BUSY/.test(error.message);
       const status = error instanceof ScoringError ? error.status : busy ? 503 : 500;
       if (status === 429 || status === 503) res.setHeader("Retry-After", "5");

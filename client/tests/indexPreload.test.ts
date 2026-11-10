@@ -71,3 +71,16 @@ test("a card named by the server is asked for with the list, and a stale name co
     ["/api/live", "/api/events", "/api/events/fedcba9876543210?ranking=media", "/api/events/0123456789abcdef?ranking=media"]);
   assert.deepEqual(await requested(events, now, undefined, "<script>"), ["/api/live", "/api/events", "/api/events/0123456789abcdef?ranking=media"]);
 });
+
+test("the scripts that start the page's requests come before anything the build adds to <head>", () => {
+  // The build appends the stylesheet to <head>, and a classic script below a
+  // stylesheet waits for it to download: in <body>, the chunk preload started
+  // some 300 ms late on every first load. (The built page is checked by
+  // scripts/bundle-budget.ts.)
+  const head = html.slice(0, html.indexOf("</head>"));
+  const inline = [...html.matchAll(/<script>/g)].map(match => match.index);
+  assert.equal(inline.length, 2);
+  assert.ok(inline.every(at => at < head.length), "both inline scripts are in <head>");
+  assert.ok(html.indexOf("__PAGE_CHUNKS__") < html.indexOf("<title>"), "the chunk preload is above the tags the build follows");
+  assert.doesNotMatch(head, /rel="stylesheet"/);
+});

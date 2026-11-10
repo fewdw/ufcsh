@@ -5,7 +5,8 @@ import shadow from "../assets/fighter-shadow.webp";
 
 /** ufc.com cuts every full body to 460×700, so these boxes carry that exact
  *  ratio: the picture fills them edge to edge with nothing letterboxed and
- *  nothing cropped, and both corners are drawn to one scale. */
+ *  nothing cropped, and both corners are drawn to one scale. The matchup
+ *  preload (`preloadMatchupPortraits`) asks for the hero's heights. */
 const FRAME = {
   hero: "h-40 w-[6.6rem] lg:h-52 lg:w-[8.6rem]",
   profile: "h-48 w-[7.9rem] sm:h-56 sm:w-[9.2rem]",

@@ -19,8 +19,9 @@ preview and keeps its data; `./start logs` shows recent output.
 
 Each worktree gets the next free port from 5101 (API on port + 1000) and its own
 copy of the archive in ignored `.local-preview/data`, so any number of previews can
-be open at once without sharing writes. Delete `.local-preview/data` while stopped
-to reseed. Previews run as user systemd services (`ufcsh-WORKTREE`, 2 GiB cap) and
+be open at once without sharing writes. The copy takes about a second: databases are
+copied and images hard-linked. `./start reseed` replaces a preview's data with the
+current seed. Previews run as user systemd services (`ufcsh-WORKTREE`, 2 GiB cap) and
 outlive the shell or agent that started them; run `./start` again after a reboot.
 
 Without Tailscale the same command prints a `http://127.0.0.1:PORT` URL.
@@ -34,8 +35,11 @@ Without Tailscale the same command prints a `http://127.0.0.1:PORT` URL.
   production `.env`. The launcher maps `DEV_ADMIN_TOKEN`, `DEV_DEFAULT_ADMIN`,
   `DEV_CLERK_*`, and `DEV_GEMINI_API_KEY`, and refuses live Clerk keys.
 - An archive seed in `~/.local/share/ufcsh/dev-seed` (or `TS_SEED_DIR`): `ufc.db`,
-  `scoring.db`, and `images/` taken from the VPS **dev** volume with SQLite's backup
-  command, not a raw copy of a live database. Without a seed the preview starts empty.
+  `scoring.db`, and `images/` from the VPS **dev** volume (never production).
+  `./tools/refresh-seed.sh` pulls them with SQLite's backup command inside the dev
+  container, checks them, syncs only changed images, and swaps the seed in
+  atomically; `./tools/refresh-seed.sh install` runs it nightly at 05:30 from the
+  main clone (user timer `ufcsh-seed-refresh`). Without a seed the preview starts empty.
 
 Sync is off by default so branches don't all scrape upstream; set `TS_NO_SYNC=0`
 in `.env.dev` and restart the preview when a task needs it.

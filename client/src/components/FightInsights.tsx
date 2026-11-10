@@ -217,7 +217,7 @@ export function StrikesPanel({ fighters }: { fighters: Insightful[] }) {
  *  three- and five-round bouts apart, their totals not being on one scale.
  *  The bar is the margin, winning every round on the left to losing every
  *  round on the right. */
-export function DecisionsPanel({ fighters, before }: { fighters: Insightful[]; before?: boolean }) {
+export function DecisionsPanel({ fighters }: { fighters: Insightful[] }) {
   const two = fighters.length > 1;
   const scored = fighters.some(fighter => fighter.insights?.decisions?.length);
   if (two && !scored) return null;
@@ -226,7 +226,7 @@ export function DecisionsPanel({ fighters, before }: { fighters: Insightful[]; b
   const sides = fighters.map(fighter => ({ name: fighter.name, decisions: fighter.insights?.decisions ?? [] }));
   return <section className={`${PANEL_SHELL} @container flex min-w-0 flex-col`}>
     <PanelHeading title="Average scorecards" />
-    <DecisionDetails sides={sides} before={before}>{open => <div className={`grid flex-1 px-3 pb-3 pt-1.5 @[40rem]:px-5 @[40rem]:pt-2 ${two ? "grid-cols-2 gap-x-4 @[40rem]:gap-x-10" : "content-center"}`}>
+    <DecisionDetails sides={sides}>{open => <div className={`grid flex-1 px-3 pb-3 pt-1.5 @[40rem]:px-5 @[40rem]:pt-2 ${two ? "grid-cols-2 gap-x-4 @[40rem]:gap-x-10" : "content-center"}`}>
       {scored ? fighters.map((fighter, index) => <div key={fighter.name} className={`relative min-w-0 ${two ? "" : "pt-2"}`}>
         {/* The whole side opens its decisions; the figures sit over the button. */}
         {sides[index].decisions.length ? <button type="button" aria-haspopup="dialog" onClick={() => open(index)} aria-label={`${fighter.name}: every decision`}

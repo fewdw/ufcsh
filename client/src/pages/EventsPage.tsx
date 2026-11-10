@@ -22,12 +22,14 @@ import { SITE_URL, useSeo } from "../seo";
 import { useRememberedState, useRouteScrollRestoration } from "../navigationState";
 import { oneOf } from "../preferences";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
+import { warmFight } from "../warmFight";
 import { eventKind, type EventKind } from "../eventKind";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { betFightId } from "../parlay";
 import { cardSections } from "../cardSections";
+import type { SameView } from "../pageViews";
 
 const shell = PANEL;
 /** The source flags a tournament or TUF final the same way it flags a
@@ -538,7 +540,7 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
   const done = past || fight.method != null || fight.f1.outcome != null;
   // A matchup the reader has not opened before is a cold request; hovering or
   // pressing the row is enough notice to have it loaded by the time it opens.
-  const warm = () => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource));
+  const warm = () => warmFight(fight, settings.rankingSource);
   const open = () => navigate(`/fights/${fight.id}`, { state: { eventId, eventReturnDepth: 1 } });
   // Beside the price in the face-off layout; the compact layout writes its own.
   const weightClassRow = (
@@ -1175,7 +1177,7 @@ export default function EventsPage() {
   const shownEventId = eventId ?? landingId;
   const selectedId = shownEventId ?? openFight?.event.id ?? fightEventIdHint ?? null;
   useEffect(() => {
-    if (landingId) navigate(`/events/${landingId}`, { replace: true });
+    if (landingId) navigate(`/events/${landingId}`, { replace: true, state: { sameView: true } satisfies SameView });
   }, [landingId, navigate]);
 
   const oddsMode = new URLSearchParams(location.search).get("odds") === "1";

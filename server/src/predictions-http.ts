@@ -3,6 +3,7 @@ import { EDGE, EDGE_CACHE_HEADER, RateLimiter, clientAddress } from "./api-polic
 import { authenticateScorer, scoringOrigins } from "./scoring-http.ts";
 import { ScoringError } from "./scoring.ts";
 import type { PredictionStore } from "./predictions.ts";
+import { reportFailure } from "./request-failures.ts";
 
 export function createPredictionsHandler(store: PredictionStore, authenticate = authenticateScorer) {
   const limiter = new RateLimiter();
@@ -64,6 +65,7 @@ export function createPredictionsHandler(store: PredictionStore, authenticate = 
         } else send(store.mine(fight![1], user));
       } else send(summary(fight![1]));
     } catch (error) {
+      if (!(error instanceof ScoringError)) reportFailure(res, "predictions", error);
       res.setHeader("Cache-Control", "private, no-store");
       res.removeHeader(EDGE_CACHE_HEADER);
       const busy = error instanceof Error && /database is locked|SQLITE_BUSY/.test(error.message);

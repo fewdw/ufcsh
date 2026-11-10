@@ -55,7 +55,7 @@ export class ErrorLog {
     if (row) {
       row.count++;
       row.lastAt = at;
-      if (request.message) row.message = request.message;
+      if (request.message) row.message = request.message.slice(0, 500);
       if (request.fromSite) row.fromSite++;
       return;
     }

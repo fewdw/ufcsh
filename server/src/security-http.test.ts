@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { connect } from "node:net";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -32,12 +33,21 @@ test("HTTP security holds across alternate page paths and arbitrary resource URL
   const request = (pathname: string, init?: RequestInit) => fetch(base + pathname, {
     ...init, signal: AbortSignal.timeout(10_000),
   });
+  // Alive at once, whether or not it is ready yet. (That it is not ready until
+  // the build is compressed is shown below by what a ready release serves: a
+  // 503 asserted here would race the compression on a fast machine.)
+  assert.equal((await request("/healthz")).status, 200);
 
   await t.test("only shared answers are held at the edge; anything else is kept nowhere", async () => {
     const page = await request("/");
     assert.equal(page.status, 200);
     assert.equal(page.headers.get("cache-control"), "no-cache");
     assert.match(page.headers.get("cloudflare-cdn-cache-control") ?? "", /^public, max-age=60,/);
+    // Only a document that states nothing that changes may be served a day stale.
+    const staleFor = async (pathname: string) => /stale-while-revalidate=(\d+)/.exec((await request(pathname)).headers.get("cloudflare-cdn-cache-control") ?? "")?.[1];
+    assert.equal(await staleFor("/"), "86400");
+    assert.equal(await staleFor("/rankings"), "86400");
+    assert.equal(await staleFor("/profiles/someone"), "600");
     for (const pathname of ["/missing-page", "/api/fighters/ffffffffffffffff", "/api/status", "/api/admin/bugs", "/api/profiles/mine",
       "/api/fights/ffffffffffffffff/scores/mine", "/api/fights/ffffffffffffffff/predictions/mine", "/healthz"]) {
       const response = await request(pathname);
@@ -104,6 +114,60 @@ test("HTTP security holds across alternate page paths and arbitrary resource URL
     assert.equal(denied.status, 401);
     assert.equal(denied.headers.get("X-Frame-Options"), "DENY");
     await denied.arrayBuffer();
+  });
+
+  await t.test("a release is not ready until its build is compressed, so the first answer is already Brotli", async () => {
+    // Nothing here waits for the compression itself: only for /readyz, as the proxy does.
+    for (let waited = 0; (await request("/readyz")).status !== 200; waited += 50) {
+      assert.ok(waited < 60_000, "the release became ready");
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    const page = await (await request("/")).text();
+    const scripts = [...page.matchAll(/(?:src|href)="(\/assets\/[^"]+\.js)"/g)].map(match => match[1]);
+    assert.ok(scripts.length > 5);
+    let brotli = 0;
+    for (const script of scripts) {
+      const response = await request(script, { headers: { "Accept-Encoding": "br, gzip" } });
+      assert.equal(response.status, 200, script);
+      // Files of a kilobyte or less are sent as they are.
+      if (response.headers.get("content-encoding") === "br") brotli++;
+      else assert.ok((await response.arrayBuffer()).byteLength <= 1024, `${script} was not Brotli`);
+    }
+    assert.ok(brotli > 5);
+  });
+
+  await t.test("search engines may read every page; SEO-product crawlers are asked to stay out", async () => {
+    const robots = await (await request("/robots.txt")).text();
+    const groups = robots.trim().split("\n\n").map(group => group.split("\n"));
+    assert.deepEqual(groups[0], ["User-agent: *", "Allow: /", "Disallow: /admin"]);
+    assert.equal(groups[1].at(-1), "Disallow: /");
+    const refused = groups[1].slice(0, -1).map(line => line.replace("User-agent: ", ""));
+    assert.ok(refused.includes("AhrefsBot") && refused.includes("SemrushBot"));
+    // Everyone a reader can arrive from, or ask through, stays welcome.
+    for (const welcome of ["Googlebot", "bingbot", "DuckDuckBot", "Applebot", "GPTBot", "ClaudeBot", "PerplexityBot", "facebookexternalhit", "SeznamBot", "PetalBot"]) {
+      assert.ok(!refused.some(name => name.toLowerCase() === welcome.toLowerCase()), welcome);
+    }
+    assert.match(groups[2].join("\n"), /^Sitemap: https?:\/\/\S+\/sitemap\.xml$/);
+  });
+
+  await t.test("an address that names a host or cannot be read is refused, never served or failed", async () => {
+    // A request names a path. "//example.com/api/events" once read as
+    // /api/events on another host, and "//[" as a server error.
+    assert.equal((await request("/api/events")).status, 200);
+    for (const pathname of ["//example.com/api/events", "//[", "/fights/100%", "/fighters/%E0%A4%A"]) {
+      const response = await request(pathname);
+      assert.equal(response.status, 404, pathname);
+      assert.equal(response.headers.get("X-Frame-Options"), "DENY", pathname);
+      await response.arrayBuffer();
+    }
+    // Only a raw client can send a target that is no address at all.
+    const answer = await new Promise<string>((resolve, reject) => {
+      const socket = connect(address.port, "127.0.0.1", () => socket.write("GET http://[ HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"));
+      let text = "";
+      socket.setEncoding("utf8").on("data", chunk => { text += chunk; }).on("end", () => resolve(text)).on("error", reject);
+      socket.setTimeout(10_000, () => socket.destroy(new Error("no answer")));
+    });
+    assert.match(answer, /^HTTP\/1\.1 400 /);
   });
 
   await t.test("unknown IDs and slugs cannot create permanent per-URL metrics entries", async () => {

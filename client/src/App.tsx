@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType, type MouseEvent } from "react";
-import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation, useNavigationType } from "react-router-dom";
 import AccountButton from "./components/AccountButton";
 import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
@@ -9,7 +9,7 @@ import { ChevronDown, Moon, Shield, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { rememberAdmin, useAdminResource, wasAdmin, type AdminSession } from "./admin";
 import { inMore, MORE_HOME, MoreGroups } from "./components/MoreNav";
-import { sendPageView, watchPageTiming } from "./pageViews";
+import { pageViewTracker, sendPageView, watchPageTiming } from "./pageViews";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
@@ -249,7 +249,8 @@ function routeGroup(pathname: string): string {
 
 export default function App() {
   const location = useLocation();
-  const trackedPath = useRef<string | null>(null);
+  const navigationType = useNavigationType();
+  const isPageView = useRef(pageViewTracker());
   const [searchOpen, setSearchOpen] = useState(false);
   const { settings } = useSettings();
   useLinkPrefetch(settings.rankingSource);
@@ -260,9 +261,9 @@ export default function App() {
     // React changes pages without a new document request. Count those views by
     // route on the server; it discards usernames and fight IDs immediately.
     const path = location.pathname;
-    if (path === "/profiles/me" || trackedPath.current === path) return;
-    trackedPath.current = path;
-    sendPageView(path, wasAdmin());
+    if (isPageView.current(path, { replace: navigationType === "REPLACE", state: location.state })) sendPageView(path, wasAdmin());
+    // Only a change of page is a view: how the reader got there is read as it was then.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
   // Colour transitions come back once the first page has been drawn (see the

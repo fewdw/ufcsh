@@ -30,6 +30,15 @@ export function betFightId(fight: { id: string; bets_open?: boolean }, done = fa
   return fight.bets_open && !done ? fight.id : undefined;
 }
 
+/** A potential matchup's scheduled rounds aren't known until it is booked,
+ *  so the server only takes its moneyline and method picks; total rounds, a
+ *  round, or whether it goes the distance would mean something different on a
+ *  three- or five-round booking. Mirrors `lengthBound` in the server's bets. */
+export function bettable(outcome: Outcome): boolean {
+  if (!outcome.fightId.startsWith("potential-")) return true;
+  return !outcome.totalRounds && outcome.round == null && (outcome.decision === undefined || !!outcome.method);
+}
+
 /** A stable key for an outcome. Clicking "Fight goes to decision" in the
  *  Method table and "Yes" in Goes the distance describe the same real bet, so
  *  both must collapse to the same id — one toggles the other, instead of

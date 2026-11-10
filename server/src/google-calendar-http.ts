@@ -4,6 +4,7 @@ import { calendarOptions } from "./calendar.ts";
 import { GoogleError, type GoogleCalendars } from "./google-calendar.ts";
 import { authenticateScorer, scoringOrigins } from "./scoring-http.ts";
 import { ScoringError } from "./scoring.ts";
+import { reportFailure } from "./request-failures.ts";
 
 const MAX_BODY = 1024;
 
@@ -56,6 +57,7 @@ export function createGoogleCalendarHandler(store: GoogleCalendars, ensureAccoun
       if (!granted) return send({ ...store.status(user), error: "Allow UFC.sh to add a calendar in Google first.", needsGoogle: true }, 403), true;
       send(store.status(user));
     } catch (error) {
+      if (!(error instanceof ScoringError)) reportFailure(res, "google calendar", error);
       const status = error instanceof ScoringError ? error.status : 502;
       if (status === 429) res.setHeader("Retry-After", "10");
       // Google's own words help most when the setup is wrong (the Calendar API off, a scope missing).

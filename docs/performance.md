@@ -3,6 +3,107 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Matchup pictures on opening a bout (2026-11-10)
+
+Measured on a preview in headless Chrome as a phone (390 px, 3× screen, 120 ms
+latency, 1.5 MB/s): the card opened, its first bout pressed, the hero's two
+full-body pictures sampled every 15 ms from the press.
+
+**Before.** The pictures waited for the matchup's data, then climbed the
+ladder one copy at a time, each request starting when the last had loaded:
+empty until 447 ms, the 40 px placeholder until ~970 ms, the small copy until
+1,250 ms, sharp at 1,250 ms. A full body needs `large` on any phone (160 px
+frame × 3), so the reader always saw all three steps.
+
+**After.** Pressing or pointing at a bout (card rows, the rail, Prev/Next)
+starts its placeholder and the copy the hero will need alongside the data
+(`warmFight`); any other matchup link starts them as soon as the data arrives.
+An eager picture measures its box before paint and fetches that copy with the
+placeholder, skipping the steps between (`ProgressiveImage`). The bouts either
+side of an open matchup have their pictures loaded 400 ms after it shows.
+Same probe: sharp at 330 ms, the placeholder on screen for 16 ms. Opening a
+matchup address directly: sharp ~200 ms after the hero appears.
+
+## First load, slow requests and crawlers (2026-11-09)
+
+Read from production's saved week (Nov 2–9: 764,430 requests), its slow log,
+timed probes inside the live container, a first load of `ufc.sh` in a browser
+(Toronto edge, HTTP/2) and a copy of the Nov 9 archive on dev-pc.
+
+**Where the week went.** 749,013 of the 764,430 requests were crawlers; SEO
+products (Ahrefs, Semrush and the like) alone were 622,396. They run the app,
+so each page they open is also its data requests: 158,000 event answers, 75,000
+fights, 73,000 scorecard summaries. The server was fine with it (p95 41 ms, 94
+requests over 300 ms all week), but they fill the response cache and the
+process sits at 3 GB with 360 MB of it in swap. `robots.txt` now asks eight of
+them to stay out (`SEO_TOOL_CRAWLERS` in `api.ts`); search engines, link
+previews and AI assistants are untouched.
+
+**The opening page's code waited for the stylesheet.** `index.html` asked for
+the page's chunks from a script at the end of `<body>`. The build puts the
+stylesheet in `<head>`, and a classic script below a stylesheet does not run
+until it has downloaded. On production the stylesheet finished at 471 ms and
+the chunk was only then requested (483 ms, done at 691), by which time
+`main.tsx` had given up its 300 ms wait for it: first paint at 824 ms, largest
+at 964. The script is now in `<head>`, above everything the build adds
+(`client/scripts/bundle-budget.ts` fails the build if an inline script follows
+the stylesheet again).
+
+A production build behind a 120 ms, 3 Mbit link over HTTP/2, cold, three runs
+each, medians:
+
+| | Chunk requested | Chunk arrived | First paint | Largest paint |
+| --- | --- | --- | --- | --- |
+| Before (script in `<body>`) | 448 ms | 747 ms | 920 ms | 936 ms |
+| After (script in `<head>`) | 173 ms | 496 ms | 676 ms | 796 ms |
+
+To be confirmed on production after release, from Admin → Traffic → Load times.
+
+**Slow requests** (the week's 94):
+
+| What | Cause | Change |
+| --- | --- | --- |
+| `/api/polymarket/fights/:id` (55, ~380 ms) | Each read waited on Polymarket whenever the bout's last read was over 30 s old, though the feed re-reads every bout on the coming cards by itself | A reader is answered with what is held while it is still what `summary` shows as current (a price under 90 s old, 15 s for the bout on now), and the read goes on behind the answer. Never read, a changed matchup or a failed last read still wait |
+| `/api/live/odds` (16, ~640 ms, one at 4 s) | The first poll after a pause (a tab coming back, the first reader of a bout) found the answer past 10 s and waited on Polymarket | While a bout is being fought, or the pill was polled in the last ten minutes, the answer is re-read every 4 s behind its readers (`keepWarm`), and whenever the bout on now changes, so a result is dated when it happens rather than when a reader next asks. Nothing is read on a day without a card |
+| Cards, matchups, fighters with `?ranking=media` (17, 300–740 ms) | One at a time, all time in a query worker. A warmed worker answers the same addresses in 5–25 ms on dev-pc (400 fighters, 400 fights, 300 cards), and 40 uncached fighter reads inside the live container took 12–69 ms (median 30) with one at 260 ms | Not attributed: left alone. See the host notes below |
+| `/sitemap.xml`, stats boards (4) | Known, rare | Left |
+
+**Page HTML at the edge.** A fight page Cloudflare had to ask this server for
+took 0.51 s to its first byte from Toronto; one it could answer with an older
+copy while fetching the next (`UPDATING`) took 0.14 s. Pages allowed that for
+ten minutes past their one-minute lifetime. The home page and the section
+pages (`fixedDocument` in `seo.ts`), whose documents state nothing that
+changes, now allow it for a day (`EDGE.shell`): an old copy is safe to run,
+since its scripts outlive a release by two weeks and `/` checks the card it
+names. A fighter's, bout's or card's document keeps its ten minutes: its
+description states a record or a result, which a link preview shows as it
+stands. The public API keeps its short lifetimes for the same reason.
+
+**Brotli on the first request.** Each build file was compressed the first time
+it was asked for, all of a first load's files at once on zlib's four threads,
+and gzip went out until each finished, to Cloudflare too, which keeps what it
+is first given. A release now reads and compresses its whole build as it starts
+(65 files, 1,530 KB: 464 KB gzip, 399 KB Brotli; 2.1 s on dev-pc, one file at a
+time) and is not ready until it has (`/readyz`), beside the query workers'
+warm-up, which takes longer.
+
+**Counting.** `/` sends the reader on to its card's address, and both were
+counted: every visit to the home page was two page views. A page that sends
+the reader on to its own address now says so, and that arrival is the same
+view (`pageViewTracker`; the Browse tabs also replace one another in history
+and are still each a view). Load times also
+counted paints that happened after a tab had been hidden (a page opened behind
+another and read later); those are left out, using the browser's own record
+of when it was first hidden.
+
+**The host.** Not changed here, measured for the next decision: 4 Haswell
+vCPUs and 7.7 GB shared by production (3.07 GB), dev (0.75–1 GB), BuildKit,
+Grafana and agent sessions; 970 MB of swap in use, 360 MB of it production's;
+a million pages swapped back in over 25 days. Swapped-out worker memory is the
+likeliest reason detail reads in quiet hours take 100–250 ms when the same
+builds take 30 ms warm, but the Oct 25 and Oct 26 reviews could not attribute
+them either: the slow log needs queue and build time kept apart to settle it.
+
 ## MCP tool calls (2026-10-30)
 
 POSTs miss the edge cache, so each call reaches the origin. Tools read the same

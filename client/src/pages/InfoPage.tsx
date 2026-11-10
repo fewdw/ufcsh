@@ -101,9 +101,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-11-09">November 9, 2026</time></p>
+            <p><time dateTime="2026-11-10">November 10, 2026</time></p>
             <ul>
-              <li>Behind-the-scenes improvements to how updates are released; nothing changes on the site.</li>
+              <li>Faster page loads and sharper matchup photos.</li>
+              <li>Cleaner matchup stats and scorecards, with smoother tab switching.</li>
+              <li>Potential-matchup bets use fresh prices and settle when the bout happens within a year.</li>
             </ul>
           </Section>
         </div>

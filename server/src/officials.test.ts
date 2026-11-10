@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { judgeProfile, officialKey, officialsDirectory, refereeProfile } from "./officials.ts";
+import { judgeProfile, keptApart, officialKey, officialsDirectory, refereeProfile } from "./officials.ts";
 import { fightIndex } from "./fight-index.ts";
 import { db } from "./db.ts";
 
@@ -10,11 +10,17 @@ test("short and long first names, particles and titles resolve to one official",
   assert.equal(officialKey("Danny De Alejandro"), officialKey("Danny Dealejandro"));
   assert.equal(officialKey("Dr. Greg Jackson"), officialKey("Greg Jackson"));
   assert.equal(officialKey("Munah Holland"), officialKey("Maimunah Querido"));
+  // Two sources' spellings of one judge on the same bout.
+  assert.equal(officialKey("Stephen Faragher"), officialKey("Steve Faragher"));
 });
 
 test("people who merely share an initial and a surname stay apart", () => {
   assert.notEqual(officialKey("Chris Lee"), officialKey("Charles Lee"));
   assert.notEqual(officialKey("Mike Bell"), officialKey("Gene LeBell"));
+  // Reviewed and found to be two people, in either order; an unreviewed pair is still listed.
+  assert.ok(keptApart(officialKey("Richard Davis")!, officialKey("Raphael Davis")!));
+  assert.ok(keptApart(officialKey("Raphael Davis")!, officialKey("Richard Davis")!));
+  assert.ok(!keptApart(officialKey("Gerald Ritter")!, officialKey("Gary Ritter")!));
   assert.equal(officialKey(""), null);
 });
 

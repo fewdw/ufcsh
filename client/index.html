@@ -54,6 +54,33 @@
         }).catch(function () {});
       })();
     </script>
+    <script>
+      // The opening page's code, asked for alongside the main bundle rather
+      // than after it. Chunk lists come from the build (vite.config.ts); the
+      // paths match `pageFor` in src/pages.ts. It stays here, above everything
+      // the build adds to <head>: a script placed after the stylesheet waits
+      // for it to download, which held these requests back by that long (and
+      // the first render with them, see src/main.tsx).
+      (function () {
+        var chunks = __PAGE_CHUNKS__, path = location.pathname;
+        var page = path === "/" || /^\/(events|fights)\//.test(path) ? "EventsPage"
+          : /^\/fighters\//.test(path) ? "FighterPage"
+          : path === "/rankings" ? "RankingsPage"
+          : path === "/stats" ? "StatsPage"
+          : /^\/judges\//.test(path) ? "JudgePage"
+          : /^\/referees\//.test(path) ? "RefereePage"
+          : /^\/(venues|locations)\//.test(path) ? "VenuePage"
+          : path === "/officials" || path === "/venues" || path === "/locations" || path === "/awards" ? "DirectoryPages"
+          : null;
+        (chunks[page] || []).forEach(function (name) {
+          var link = document.createElement("link");
+          link.rel = "modulepreload";
+          link.crossOrigin = "";
+          link.href = "/assets/" + name + ".js";
+          document.head.appendChild(link);
+        });
+      })();
+    </script>
     <title>UFC Data: Events, Odds, Stats &amp; Rankings | ufc.sh</title>
     <meta
       name="description"
@@ -97,29 +124,5 @@
     <div id="root"></div>
     <noscript>ufc.sh requires JavaScript to display UFC fight cards, matchup statistics, odds and rankings.</noscript>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      // The opening page's code, asked for alongside the main bundle (which
-      // the build puts above) rather than after it. Chunk lists come from the
-      // build (vite.config.ts); the paths match `pageFor` in src/pages.ts.
-      (function () {
-        var chunks = __PAGE_CHUNKS__, path = location.pathname;
-        var page = path === "/" || /^\/(events|fights)\//.test(path) ? "EventsPage"
-          : /^\/fighters\//.test(path) ? "FighterPage"
-          : path === "/rankings" ? "RankingsPage"
-          : path === "/stats" ? "StatsPage"
-          : /^\/judges\//.test(path) ? "JudgePage"
-          : /^\/referees\//.test(path) ? "RefereePage"
-          : /^\/(venues|locations)\//.test(path) ? "VenuePage"
-          : path === "/officials" || path === "/venues" || path === "/locations" || path === "/awards" ? "DirectoryPages"
-          : null;
-        (chunks[page] || []).forEach(function (name) {
-          var link = document.createElement("link");
-          link.rel = "modulepreload";
-          link.crossOrigin = "";
-          link.href = "/assets/" + name + ".js";
-          document.head.appendChild(link);
-        });
-      })();
-    </script>
   </body>
 </html>

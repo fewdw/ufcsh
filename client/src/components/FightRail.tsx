@@ -1,8 +1,9 @@
 import { Link, useLocation } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { prefetch, useApi, type EventDetail, type EventFight, type FightSide } from "../api";
-import { useLayoutEffect, useRef } from "react";
+import { useApi, type EventDetail, type EventFight, type FightSide } from "../api";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import Avatar from "./Avatar";
+import { preloadMatchupPortraits, warmFight } from "../warmFight";
 import { CARD_STEP } from "./CardHeader";
 import { PANEL_SHELL } from "./FightStats";
 import { segmentedSelected } from "./segmented";
@@ -86,6 +87,13 @@ export function FightStepLink({ fight, direction, eventId, returnDepth, search, 
   className?: string;
 }) {
   const { settings } = useSettings();
+  // Stepping along the card is the usual next move, so the bouts either side
+  // have their pictures in hand before Prev or Next is pressed.
+  useEffect(() => {
+    if (!fight) return;
+    const timer = window.setTimeout(() => preloadMatchupPortraits(fight.f1, fight.f2), 400);
+    return () => window.clearTimeout(timer);
+  }, [fight]);
   const label = direction === "prev" ? "Prev" : "Next";
   const glyph = direction === "prev" ? <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />;
   if (!fight) return <span className={`${className} text-zinc-300`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
@@ -95,8 +103,9 @@ export function FightStepLink({ fight, direction, eventId, returnDepth, search, 
       state={{ eventId, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
       aria-label={`${label} fight: ${fight.f1.name} vs ${fight.f2.name}`}
       title={`${fight.f1.name} vs ${fight.f2.name}`}
-      onPointerEnter={() => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource))}
-      onFocus={() => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource))}
+      onPointerEnter={() => warmFight(fight, settings.rankingSource)}
+      onPointerDown={() => warmFight(fight, settings.rankingSource)}
+      onFocus={() => warmFight(fight, settings.rankingSource)}
       className={`${className} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}
     >
       {direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}
@@ -143,9 +152,9 @@ export function FightRail({ eventId, currentId, returnDepth, onReselect }: {
               onClick={(e) => { if (isCurrent && onReselect && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); onReselect(); } }}
               aria-current={isCurrent ? "page" : undefined}
               title={`${f.f1.name} vs ${f.f2.name}${f.method ? ` · ${formatMethod(f.method, f.round, f.time)}` : ""}${isLive ? " · live now" : ""}`}
-              onPointerEnter={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
-              onPointerDown={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
-              onFocus={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
+              onPointerEnter={() => warmFight(f, settings.rankingSource)}
+              onPointerDown={() => warmFight(f, settings.rankingSource)}
+              onFocus={() => warmFight(f, settings.rankingSource)}
               className={[
                 "relative grid w-full grid-cols-2 items-start gap-x-3 gap-y-2 rounded-xl border px-2 py-3 transition-colors",
                 // The bout on now keeps its border whether or not it is also
@@ -269,7 +278,7 @@ export function FightStrip({ eventId, currentId, returnDepth, onReselect, classN
               onClick={(e) => { if (isCurrent && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); onReselect(); } }}
               aria-current={isCurrent ? "page" : undefined}
               aria-label={`${f.f1.name} vs ${f.f2.name}${isLive ? ", live now" : ""}`}
-              onPointerDown={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
+              onPointerDown={() => warmFight(f, settings.rankingSource)}
               // Each bout is a panel like any other; the open one only draws
               // its outline a shade darker, as a selected row does.
               // Faces only: the names are in the link's label and title.
