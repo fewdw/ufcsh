@@ -3,7 +3,7 @@ import { dataRevision, db, getMeta, prepared, setMeta, touchMeta } from "./db.ts
 import { hasUfcFight } from "./fighter-identity.ts";
 import { athleteSlug, scrapeAthleteStatus, scrapeNewAthlete, scrapeNewestAthletes, type AthleteStatus } from "./scrape/ufccom.ts";
 import { articleRevision, fetchArticleByTitle, ROSTER_ARTICLE, rosterChanges, type RosterMove } from "./scrape/wikipedia.ts";
-import { givenName, log, normName, todayIso } from "./util.ts";
+import { givenName, log, namesAgree, normName, todayIso } from "./util.ts";
 import { archiveRosterEvents, departureKind, storedRosterHistory, validRosterDate, type RosterHistoryEvent } from "./roster-history.ts";
 
 /** Who the UFC has just signed and just let go. Two sources: Wikipedia's
@@ -218,36 +218,52 @@ function syncSignees(signed: RosterMove[]): void {
 // ufc.com
 
 const STATUS_EVERY_MS = 12 * 3_600_000;
+/** Anyone ever read is read at least this often, however long ago their last
+ *  bout: a fighter off the roster for years can still come back. */
+const RETURN_EVERY_MS = 7 * 86_400_000;
 /** How long a departure stays on the list: the span Wikipedia keeps its own. */
 export const DEPARTURE_DAYS = 30;
 
 /** A few fighters a tick, stalest first, so every recent UFC fighter's page
  *  is read about twice a day. "Recent" is a bout in the last three years,
- *  or last seen active however long they have been out. */
+ *  or last seen active however long they have been out; everyone else read
+ *  before, weekly. A fighter who shares a name with another UFC fighter is
+ *  told apart by their last division. */
 export async function syncUfcStatuses(batch = 2, readStatus = scrapeAthleteStatus): Promise<void> {
   const due = db.prepare(`
-    SELECT fr.id, fr.name, s.url, s.status, s.left_at FROM fighters fr
+    SELECT fr.id, fr.name, s.url, s.status, s.left_at,
+      CASE WHEN EXISTS (SELECT 1 FROM fighters o WHERE o.norm_name = fr.norm_name AND o.id <> fr.id AND o.signee = 0
+        AND EXISTS (SELECT 1 FROM fights x WHERE x.f1_id = o.id OR x.f2_id = o.id))
+      THEN (SELECT f.weight_class FROM fights f JOIN events e ON e.id = f.event_id
+        WHERE (f.f1_id = fr.id OR f.f2_id = fr.id) AND f.weight_class NOT IN ('Catch Weight', 'Open Weight', '')
+        ORDER BY e.date DESC LIMIT 1) END AS division
+    FROM fighters fr
     LEFT JOIN ufc_status s ON s.fighter_id = fr.id
-    WHERE fr.signee = 0 AND (s.checked_at IS NULL OR s.checked_at < ?)
+    WHERE fr.signee = 0 AND (s.checked_at < ?3 OR (s.checked_at IS NULL OR s.checked_at < ?1)
       AND (s.status = 'active' OR fr.id IN (
         SELECT f.f1_id FROM fights f JOIN events e ON e.id = f.event_id WHERE e.date >= date('now', '-3 years')
-        UNION SELECT f.f2_id FROM fights f JOIN events e ON e.id = f.event_id WHERE e.date >= date('now', '-3 years')))
+        UNION SELECT f.f2_id FROM fights f JOIN events e ON e.id = f.event_id WHERE e.date >= date('now', '-3 years'))))
     ORDER BY s.checked_at IS NOT NULL, s.checked_at
-    LIMIT ?
-  `).all(Date.now() - STATUS_EVERY_MS, batch) as { id: string; name: string; url: string | null; status: AthleteStatus | null; left_at: number | null }[];
+    LIMIT ?2
+  `).all(Date.now() - STATUS_EVERY_MS, batch, Date.now() - RETURN_EVERY_MS) as
+    { id: string; name: string; url: string | null; status: AthleteStatus | null; left_at: number | null; division: string | null }[];
   for (const fighter of due) {
     if (fighter.left_at && offRoster(fighter.status)) archiveRosterEvents([{ name: fighter.name, date: new Date(fighter.left_at).toISOString().slice(0, 10), kind: leftKind(fighter.status),
       reason: leftReason(fighter.status), source_url: fighter.url ?? "https://www.ufc.com/athletes/all", observed: true }]);
-    const found = await readStatus(fighter.name, fighter.url);
-    const status = found?.status ?? fighter.status;
+    const found = await readStatus(fighter.name, fighter.url, undefined, fighter.division);
+    // The page we had was a namesake's: what it said was never theirs, and
+    // their own page reading otherwise is no change we watched happen.
+    const wrongPage = Boolean(fighter.url) && found?.url === null;
+    const fresh = wrongPage || Boolean(fighter.url && found?.url && found.url !== fighter.url);
+    const status = wrongPage ? null : found?.status ?? fighter.status;
     // Only a change we watched happen dates a departure; a page already
     // reading "Not Fighting" the first time we look says nothing about when.
-    const left = fighter.status === "active" && offRoster(status);
+    const left = !fresh && fighter.status === "active" && offRoster(status);
     db.prepare(`
       INSERT INTO ufc_status (fighter_id, url, status, checked_at, left_at) VALUES (?1, ?2, ?3, ?4, ?5)
-      ON CONFLICT(fighter_id) DO UPDATE SET url = coalesce(?2, url), status = ?3, checked_at = ?4,
-        left_at = CASE WHEN ?3 = 'active' THEN NULL WHEN ?5 IS NOT NULL THEN ?5 ELSE left_at END
-    `).run(fighter.id, found?.url ?? null, status, Date.now(), left ? Date.now() : null);
+      ON CONFLICT(fighter_id) DO UPDATE SET url = CASE WHEN ?6 THEN NULL ELSE coalesce(?2, url) END, status = ?3, checked_at = ?4,
+        left_at = CASE WHEN ?7 OR ?3 = 'active' THEN NULL WHEN ?5 IS NOT NULL THEN ?5 ELSE left_at END
+    `).run(fighter.id, found?.url ?? null, status, Date.now(), left ? Date.now() : null, wrongPage ? 1 : 0, fresh ? 1 : 0);
     if (left) {
       archiveRosterEvents([{ name: fighter.name, date: new Date().toISOString().slice(0, 10), kind: leftKind(status),
         reason: leftReason(status), source_url: found?.url ?? "https://www.ufc.com/athletes/all", observed: true }]);
@@ -265,7 +281,7 @@ export async function syncUfcStatuses(batch = 2, readStatus = scrapeAthleteStatu
       );
     }
     // A fighter we saw leave whose page reads Active again has come back.
-    if (offRoster(fighter.status) && status === "active") {
+    if (!fresh && offRoster(fighter.status) && status === "active") {
       const state = storedUfcSignings();
       state.signed.push({ name: fighter.name, division: null, date: new Date().toISOString().slice(0, 10) });
       setMeta("ufc_signings", JSON.stringify(state));
@@ -377,27 +393,18 @@ export async function syncUfcSignings(readNewest = scrapeNewestAthletes, readAth
   touchMeta("ufc_signings_synced_at");
 }
 
-const SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv"]);
-const nameWords = (name: string) => normName(name).split(" ").filter(word => word && !SUFFIXES.has(word));
 const MATCH_DAYS = 60;
 
 /** Whether ufc.com's signing and Wikipedia's name the same person: the same
  *  name, or within two months of each other and in the same division (when
- *  both give one), the same name but for spacing ("Preston La Grange" and
- *  "LaGrange"), or the same first name or its short form ("Tom" and
- *  "Thomas"), with the shorter name's other words in order inside the longer ("Aieza Bertolso" and "Aieza Ramos Bertolso", "Roque Conceicao"
- *  and "Roque Conceição Moreira Jr."). */
+ *  both give one), names that agree (`namesAgree`: "Preston La Grange" and
+ *  "LaGrange", "Tom" and "Thomas", "Aieza Bertolso" and "Aieza Ramos
+ *  Bertolso", "Roque Conceicao" and "Roque Conceição Moreira Jr."). */
 export function sameSigning(move: Pick<RosterMove, "name" | "date" | "division">, signing: Pick<UfcSigning, "name" | "date" | "division">): boolean {
   if (normName(move.name) === normName(signing.name)) return true;
   if (move.division && signing.division && move.division !== signing.division) return false;
   if (move.date && Math.abs(Date.parse(move.date) - Date.parse(signing.date)) > MATCH_DAYS * 86_400_000) return false;
-  const [short, long] = [nameWords(move.name), nameWords(signing.name)].sort((a, b) => a.length - b.length);
-  if (short.join("") === long.join("")) return true;
-  const [first = "", ...rest] = short, [longFirst = "", ...longRest] = long;
-  if (!rest.length || givenName(first) !== givenName(longFirst)) return false;
-  let found = 0;
-  for (const word of longRest) if (word === rest[found]) found++;
-  return found === rest.length;
+  return namesAgree(move.name, signing.name);
 }
 
 /** Signings ufc.com showed in the last month. */
