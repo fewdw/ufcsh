@@ -105,7 +105,7 @@ const compareGrid =
   "grid grid-cols-[minmax(0,1fr)_5rem_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)]";
 const comparePad = "py-2";
 /** The middle column's quiet, uppercase caption. */
-export const compareLabel = `block truncate text-center ${CHART_TEXT} font-semibold uppercase leading-4 tracking-[0.12em] text-zinc-400`;
+export const compareLabel = `block whitespace-normal text-center ${CHART_TEXT} font-semibold uppercase leading-4 tracking-[0.12em] text-zinc-400`;
 
 /** Small uppercase caption for any label inside a panel: chart names, column
  *  heads, group names. One style so every section reads as the same app. */
