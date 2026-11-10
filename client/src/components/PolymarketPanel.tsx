@@ -288,17 +288,6 @@ function PolymarketView({
 }) {
   const now = useNow(true, 3000);
   const q = freshMarketQuote(data, now);
-  const liveHistory = data.history.filter(
-    (p) => p.phase === "live" && p.source === "observed",
-  );
-  const winnerLow =
-    data.fight.winner && liveHistory.length >= 2
-      ? Math.min(
-          ...liveHistory.map((p) =>
-            data.fight.winner === "f1" ? p.p : 1 - p.p,
-          ),
-        )
-      : null;
   return (
     <section
       className={`${MARKET_SHELL} @container overflow-hidden`}
@@ -332,16 +321,6 @@ function PolymarketView({
               <span className="mt-1 block">{data.error}</span>
             ) : null}
           </div>
-        ) : null}
-        {winnerLow != null ? (
-          <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-800 dark:bg-blue-950/30 dark:text-blue-300">
-            {data.fight.winner === "f1"
-              ? data.fight.f1.name
-              : data.fight.f2.name}{" "}
-            won after being priced as low as{" "}
-            <strong>{marketPct(winnerLow)}</strong> in the captured live
-            observations.
-          </p>
         ) : null}
         {!compact ? (
           <div className="border-t border-zinc-200 pt-4 dark:border-zinc-700">
