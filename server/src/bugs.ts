@@ -24,7 +24,7 @@ import { deductionProblem, fightDeductionState, MMA_DECISIONS_BLOCKED, storedMed
 import type { DeductionFight } from "./point-deduction-rules.ts";
 import { readCancelledBoardList, syncCancelledBouts } from "./cancelled-bouts.ts";
 import { repairJudgeNames } from "./repair-judge-names.ts";
-import { mergedByHand, officialsIndex } from "./officials.ts";
+import { keptApart, mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import { rosterEventsByFighter, rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
 import { storedRosterHistory, validRosterDate } from "./roster-history.ts";
@@ -2092,7 +2092,7 @@ function possibleDuplicateOfficials(): BugCheck {
         const firstA = a.key.split(" ")[0];
         const firstB = b.key.split(" ")[0];
         // An initial, or one first name starting the other, is the usual shape of one person listed twice.
-        if (firstA[0] !== firstB[0]) continue;
+        if (firstA[0] !== firstB[0] || keptApart(a.key, b.key)) continue;
         items.push({
           key: `${role}:${a.slug}:${b.slug}`,
           title: `${a.name} / ${b.name}`,
@@ -2101,6 +2101,7 @@ function possibleDuplicateOfficials(): BugCheck {
             [a.name, `${a.fights.length} bouts · ${a.fights.at(-1)?.fight.date ?? "?"} to ${a.fights[0]?.fight.date ?? "?"}`],
             [b.name, `${b.fights.length} bouts · ${b.fights.at(-1)?.fight.date ?? "?"} to ${b.fights[0]?.fight.date ?? "?"}`],
             ["To merge", "add the pair to ALIASES or NICKNAMES in server/src/officials.ts"],
+            ["If they are two people", "add the pair to KEPT_APART there"],
           ],
           links: [
             { label: a.name, href: `/${role === "judge" ? "judges" : "referees"}/${a.slug}`, internal: true },

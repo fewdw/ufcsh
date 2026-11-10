@@ -111,18 +111,34 @@ test("archived crews resolve by event ID, with every core role", () => {
 });
 
 
-test("an unpublished desk host stays unknown while the five sourced roles remain available", () => {
-  const event = { id: "crew-unpublished-host", name: "UFC Fight Night: Cortes Acosta vs. Walker", date: "2026-11-07" };
+/** A reviewed report that names every role but the desk host, as the Nov 7,
+ *  2026 report did ("XX serves as desk anchor") before it was corrected. */
+function partialReview(t: { after: (cleanup: () => void) => void }) {
+  const name = "UFC Fight Night: Partial vs. Review";
+  const { desk_host: _host, ...roles } = EVENT_BROADCASTS["UFC Fight Night: Cortes Acosta vs. Walker"].roles;
+  EVENT_BROADCASTS[name] = { ...EVENT_BROADCASTS["UFC Fight Night: Cortes Acosta vs. Walker"], roles };
+  t.after(() => { delete EVENT_BROADCASTS[name]; });
+  return { name, date: "2026-11-07" };
+}
+
+test("an unpublished desk host stays unknown while the five sourced roles remain available", (t) => {
+  const event = { id: "crew-unpublished-host", ...partialReview(t) };
   const crew = eventBroadcast(event);
   assert.deepEqual(crew?.roles.play_by_play, ["Brendan Fitzgerald"]);
   assert.deepEqual(crew?.roles.desk_analysts, ["Chris Weidman", "Rashad Evans", "Michael Chiesa"]);
   assert.deepEqual(crewGaps(event, crew, Date.parse("2026-11-07")), ["Desk host"]);
 });
 
-test("a complete source read supersedes a partial reviewed report while full reviews retain precedence", () => {
+test("a role the report named after its review is added to the review, with its source", () => {
+  const event = { id: "110404b505fb562c", name: "UFC Fight Night: Cortes Acosta vs. Walker", date: "2026-11-07" };
+  assert.deepEqual(eventBroadcast(event)?.roles.desk_host, ["John Schriffen"]);
+  assert.deepEqual(crewGaps(event, eventBroadcast(event), Date.parse("2026-11-07")), []);
+});
+
+test("a complete source read supersedes a partial reviewed report while full reviews retain precedence", (t) => {
   db.exec("SAVEPOINT crew_partial_review");
   try {
-    const event = { id: "crew-partial-review", name: "UFC Fight Night: Cortes Acosta vs. Walker", date: "2026-11-07" };
+    const event = { id: "crew-partial-review", ...partialReview(t) };
     db.prepare("INSERT INTO events (id, name, date) VALUES (?, ?, ?)").run(event.id, event.name, event.date);
     const partial = EVENT_BROADCASTS[event.name];
     const fetched = { ...partial, source_url: "https://sports.yahoo.com/corrected-fixture", roles: { ...partial.roles, desk_host: ["Source Named Host"] } };

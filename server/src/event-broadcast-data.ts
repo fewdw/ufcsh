@@ -6,8 +6,9 @@ export const EVENT_BROADCASTS: Record<string, Broadcast> = {
   "UFC Fight Night: Cortes Acosta vs. Walker": {
     language: "English", feed: "US / English-language broadcast", reported_at: "2026-11-03",
     source_url: "https://sports.yahoo.com/articles/ufc-fight-night-293-broadcast-135029065.html",
-    // The report literally names the host as "XX". Keep that role unknown.
-    roles: { play_by_play: ["Brendan Fitzgerald"], color_commentary: ["Daniel Cormier", "Dominick Cruz"], announcer: ["Bruce Buffer"], reporter: ["McKenzie Pavacich"], desk_analysts: ["Chris Weidman", "Rashad Evans", "Michael Chiesa"] },
+    // First published with the host as "XX" and kept unknown; the report was
+    // corrected to "John Schriffen serves as desk anchor and host" (read 2026-11-09).
+    roles: { play_by_play: ["Brendan Fitzgerald"], color_commentary: ["Daniel Cormier", "Dominick Cruz"], announcer: ["Bruce Buffer"], reporter: ["McKenzie Pavacich"], desk_host: ["John Schriffen"], desk_analysts: ["Chris Weidman", "Rashad Evans", "Michael Chiesa"] },
   },
   "UFC 332": {
     language: "English", feed: "US / English-language broadcast", reported_at: "2026-09-29",
