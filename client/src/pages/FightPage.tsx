@@ -436,7 +436,7 @@ function EnteringRow({ label, f1, f2, note, action }: { label: React.ReactNode; 
     <CompareRow
       f1={value(f1)}
       f2={value(f2)}
-      center={<span className={compareLabel} title={note}>{label}</span>}
+      center={<span className={`${compareLabel} whitespace-normal`} title={note}>{label}</span>}
       action={action}
     />
   );
