@@ -375,7 +375,7 @@ function FormListBout({ row }: { row: UfcHistoryRow }) {
 }
 
 /** One fighter's last five, oldest to newest. Side by side the second half
- *  is mirrored so both latest bouts meet at the centre; too narrow, it
+ *  is mirrored, name included, so both latest bouts meet at the centre; too narrow, it
  *  becomes a newest-first list. */
 function FormHalf({ name, rows, side }: { name: string; rows: UfcHistoryRow[]; side: "f1" | "f2" }) {
   const chronological = [...rows].reverse();
@@ -386,7 +386,7 @@ function FormHalf({ name, rows, side }: { name: string; rows: UfcHistoryRow[]; s
   const mirror = side === "f2" ? "@[56rem]:flex-row-reverse" : "";
   return (
     <div className="min-w-0" aria-label={`${name}'s last five`}>
-      <div className="px-1"><SideName name={name} /></div>
+      <div className={`px-1 ${side === "f2" ? "@[56rem]:text-right" : ""}`}><SideName name={name} /></div>
       <div className="flex flex-col @[34rem]:hidden">
         {rows.length ? rows.map((row, index) => <FormListBout key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} row={row} />)
           : <p className={`px-1 py-1 ${CHART_TEXT} text-zinc-400`}>No earlier bouts available.</p>}
