@@ -3,6 +3,35 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Matchup data before the tap (2026-11-10)
+
+Opening a bout from the card showed the matchup skeleton for one round trip.
+The server is not the cost: from inside the VPS a matchup answers in 20–50 ms
+cold and ~9 ms warm. The phone's trip through Cloudflare is the cost: 150–250 ms
+TTFB from dev-pc, more on cellular. A press (`warmFight`) gives only ~80 ms of
+notice before a tap's click lands.
+
+A card row now loads its matchup data once it has been at least half on screen
+for 300 ms, one bout at a time, each when the page is idle
+(`useWarmOnScreen` in `warmFight.ts`). This includes a finished bout's fan card
+and picks, which the matchup waits for. Pictures still start on press, since
+they are most of the bytes. Crawlers (`navigator.webdriver`, bot user agents)
+and Save-Data readers skip it.
+
+Cost at 390 px: opening a card warms the 5 bouts in view. For an upcoming card
+that is 5 requests (~45 KB gzip); for a finished one it is 15 (the extras are
+under 1 KB each). Scrolling warms the rest as they come into view.
+
+Preview, headless Chrome as a phone (390 px, 3× screen, 250 ms latency,
+5 MB/s), the card's third bout tapped; warming off by a bot user agent:
+
+| | Upcoming bout | Finished bout |
+| --- | --- | --- |
+| Before (skeleton shown → gone after tap) | 207 → 430 ms | 228 → 398 ms |
+| After | never shown | never shown |
+
+The opened matchup still refreshes behind the page as before.
+
 ## Clerk only when someone may be signed in (2026-11-10)
 
 A first visit (no cookies, no cache) downloaded and ran Clerk whether or not
