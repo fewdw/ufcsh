@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { isClerkAPIResponseError } from "@clerk/backend/errors";
 import type { BugCheck } from "./bugs.ts";
-import { calendarEntries, calendarQuery, type CalendarEntry, type CalendarOptions } from "./calendar.ts";
+import { calendarEntries, calendarQuery, calendarZone, type CalendarEntry, type CalendarOptions } from "./calendar.ts";
 import { clerkClient } from "./scoring-http.ts";
 
 /**
@@ -151,6 +151,8 @@ export class GoogleCalendars {
   /** Creates the reader's UFC calendar, or moves it to new options, and fills
    *  it. False when Google access has not been granted. */
   connect(user: string, options: CalendarOptions, timeZone: string): Promise<boolean> {
+    // A page from before the zone picker sends only its browser's zone.
+    options = { ...options, tz: options.tz ?? calendarZone(timeZone) };
     return this.locked(user, async () => {
       const token = await this.token(user);
       if (!token) return false;
@@ -221,7 +223,22 @@ export class GoogleCalendars {
   private async syncOne(user: string, token?: string, read = new Map<string, CalendarEntry[]>()): Promise<void> {
     const row = this.row(user);
     if (!row) return;
-    const options: CalendarOptions = { cards: row.cards, from: row.start, tz: row.zone };
+    let zone = row.zone;
+    if (zone == null) {
+      // Connected before zones were kept: its Google calendar was made in the
+      // reader's browser zone, so walkout times are written in that, once.
+      token ??= await this.token(user) ?? undefined;
+      if (!token) return this.needsReconnect(user);
+      try {
+        zone = calendarZone((await this.request(token, "GET", `/calendars/${encodeURIComponent(row.calendar_id)}`))?.timeZone ?? null);
+      } catch (error) {
+        if (error instanceof GoogleError && error.status === 401) return this.needsReconnect(user);
+        if (error instanceof GoogleError && error.status === 404) return this.forget(user);
+        // Anything else: without times this pass, asked again on the next.
+      }
+      if (zone) this.db.prepare("UPDATE google_calendars SET zone = ? WHERE user_id = ? AND zone IS NULL").run(zone, user);
+    }
+    const options: CalendarOptions = { cards: row.cards, from: row.start, tz: zone };
     const key = calendarQuery(options);
     const now = this.now();
     if (!read.has(key)) read.set(key, this.entries(options, now));
