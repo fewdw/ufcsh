@@ -2271,7 +2271,7 @@ function rosterMovesUnread(): BugCheck {
     id: "roster-moves",
     group: "Fighters",
     label: "Signings and releases not read",
-    description: "The /roster page lists Wikipedia's recent signings and releases (checked every 10 minutes), ufc.com's newest athlete profiles (every 5 minutes: a signing shows before anyone writes it up; a profile not yet Active is watched until it is), plus fighters whose ufc.com page turned from Active to Not Fighting or Retired (each recent fighter read twice a day). A stale read means the article couldn't be reached or its tables changed shape (the last good read stays up). A row missing a field was written in a form the reader doesn't understand; a release with no profile is usually a name spelled differently from UFCStats.",
+    description: "The /roster page lists Wikipedia's recent signings and releases (checked every 10 minutes), ufc.com's newest athlete profiles (every 5 minutes: a signing shows before anyone writes it up; a profile not yet Active is watched until it is), plus fighters whose ufc.com page turned from Active to Not Fighting or Retired, or back (each recent fighter read twice a day, anyone read before weekly; a page may give a longer or shorter form of the name, and a namesake's must show their division). A stale read means the article couldn't be reached or its tables changed shape (the last good read stays up). A row missing a field was written in a form the reader doesn't understand; a release with no profile is usually a name spelled differently from UFCStats.",
     grade: (item) => item.key === "sync" || item.key === "ufc-status" || item.key === "ufc-signings" ? "must" : item.key.startsWith("ufc:") ? "ok" : "minor",
   }, items);
 }
