@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CalendarDays, CalendarPlus, Check, ChevronLeft, ChevronRight, Copy, X } from "lucide-react";
 import type { CardSchedule, CardSegment } from "../api";
 import { clockTimeWithZone } from "../format";
@@ -30,16 +30,30 @@ const parseStart = oneOf<CardSegment>("early", "prelims", "main");
 const parseFeedStart = oneOf<FeedStart>("early", "main");
 const parseCards = oneOf<Cards>("all", "ppv", "fight_night");
 
+/** The reader's own zone, as the browser knows it. */
+const localZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+/** Every zone the browser knows, the reader's own and the chosen one among
+ *  them even when the list leaves out that alias ("Asia/Calcutta"), as
+ *  "America/New York". */
+function zoneOptions(own: string, chosen: string): { value: string; label: string }[] {
+  let zones: string[] = [];
+  try { zones = Intl.supportedValuesOf("timeZone"); } catch { /* older browsers: the reader's own only */ }
+  for (const zone of new Set([chosen, own])) if (!zones.includes(zone)) zones = [zone, ...zones];
+  return zones.map((zone) => ({ value: zone, label: zone.replace(/_/g, " ") }));
+}
+
 const startOf = (schedule: CardSchedule | undefined, segment: CardSegment): number | null =>
   segment === "main" ? schedule?.main_card_at ?? null
     : segment === "prelims" ? schedule?.prelims_at ?? null
       : schedule?.early_prelims_at ?? null;
 
 /** The feed's address, defaults left out (the server's `calendarQuery`). */
-function feedPath(cards: Cards, from: FeedStart): string {
+function feedPath(cards: Cards, from: FeedStart, tz: string): string {
   const params = new URLSearchParams();
   if (cards !== "all") params.set("cards", cards);
   if (from !== "early") params.set("from", from);
+  params.set("tz", tz);
   const query = params.toString();
   return `/cal/ufc.ics${query ? `?${query}` : ""}`;
 }
@@ -61,6 +75,18 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
   </div>;
 }
 
+/** The zone each bout's estimated walkout time is written in. */
+function ZonePicker({ value, own, onChange }: { value: string; own: string; onChange: (zone: string) => void }) {
+  const zones = useMemo(() => zoneOptions(own, value), [own, value]);
+  return <label className="block">
+    <span className="mb-1.5 block text-xs font-medium text-zinc-700">Estimated walkout times in</span>
+    <select value={value} onChange={(change) => onChange(change.target.value)}
+      className="h-9 w-full truncate rounded-lg border border-zinc-200 bg-zinc-50 pl-3 pr-8 text-sm text-zinc-900 outline-none focus:border-zinc-400 sm:text-xs">
+      {zones.map((option) => <option key={option.value} value={option.value}>{option.label}{option.value === own ? " (your location)" : ""}</option>)}
+    </select>
+  </label>;
+}
+
 /** One calendar app: its mark and its name. */
 function Action({ href, logo, title, download, newTab }: {
   href: string; logo: ReactNode; title: string; download?: string; newTab?: boolean;
@@ -76,13 +102,17 @@ function Actions({ google, apple, outlook }: { google: ReactNode; apple: ReactNo
 }
 
 function CardPanel({ event, onSubscribe }: { event: CalendarEvent; onSubscribe: () => void }) {
+  // Walkout times in the calendar entry are written in this zone, the reader's
+  // own unless they pick another; it is not remembered.
+  const [own] = useState(localZone);
+  const [zone, setZone] = useState(own);
   // Only the sections this card has times for; without early prelims the
   // prelims are its full card.
   const options = ORDER.filter((segment) => startOf(event.schedule, segment) != null)
     .map((segment, index) => ({
       value: segment,
       label: index === 0 ? "Full card" : START_OPTIONS.find((option) => option.value === segment)!.label,
-      detail: clockTimeWithZone(startOf(event.schedule, segment)),
+      detail: clockTimeWithZone(startOf(event.schedule, segment), zone),
     }));
   const remembered = readPreference<CardSegment>("calendar:from", "early", parseStart);
   const [from, setFrom] = useState<CardSegment>(() =>
@@ -92,13 +122,14 @@ function CardPanel({ event, onSubscribe }: { event: CalendarEvent; onSubscribe: 
     writePreference("calendar:from", value === options[0]?.value ? "early" : value, "early");
   };
   const start = startOf(event.schedule, from);
-  const day = start == null ? null : new Date(start).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-  const query = `?from=${from}`;
+  const day = start == null ? null : new Date(start).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: zone });
+  const query = `?${new URLSearchParams({ from, tz: zone })}`;
   const file = `/cal/events/${event.id}.ics${query}`;
   return <div className="space-y-4 px-5 py-4">
     {options.length > 1 ? <Segmented label="Include" value={from} options={options} onChange={choose} /> : null}
+    <ZonePicker value={zone} own={own} onChange={setZone} />
     {start != null ? <p className="text-xs text-zinc-500">
-      Starts <span className="font-medium text-zinc-800">{day}, {clockTimeWithZone(start)}</span>, with every bout listed in the event.
+      Starts <span className="font-medium text-zinc-800">{day}, {clockTimeWithZone(start, zone)}</span>, with every bout and its estimated walkout time listed in the event.
     </p> : null}
     <div>
       <Actions
@@ -121,26 +152,31 @@ function CardPanel({ event, onSubscribe }: { event: CalendarEvent; onSubscribe: 
   </div>;
 }
 
-type Resume = { cards: Cards; from: FeedStart; stage: Returning };
+type Resume = { cards: Cards; from: FeedStart; tz: string | null; stage: Returning };
 
 function SubscribePanel({ resume }: { resume?: Resume }) {
   const [cards, setCards] = useState<Cards>(() => resume?.cards ?? readPreference<Cards>("calendar:cards", "all", parseCards));
   const [from, setFrom] = useState<FeedStart>(() => resume?.from ?? readPreference<FeedStart>("calendar:from", "early", parseFeedStart));
+  // Walkout times are written in the reader's own zone unless they pick
+  // another (or their Google calendar already uses another); not remembered.
+  const [own] = useState(localZone);
+  const [tz, setTz] = useState(() => resume?.tz ?? own);
   // A late Google response must not replace choices made while it was loading,
   // or the explicit choices carried back from signing in or granting access.
   const edited = useRef(false);
-  const restoreGoogleOptions = useCallback((savedCards: Cards, savedFrom: FeedStart) => {
+  const restoreGoogleOptions = useCallback((savedCards: Cards, savedFrom: FeedStart, savedTz: string | null) => {
     if (resume || edited.current) return;
     setCards(savedCards);
     setFrom(savedFrom);
+    if (savedTz) setTz(savedTz);
   }, [resume]);
   const [copied, setCopied] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { writePreference("calendar:cards", cards, "all"); }, [cards]);
   useEffect(() => { writePreference("calendar:from", from, "early"); }, [from]);
-  useEffect(() => { setCopied(false); }, [cards, from]);
+  useEffect(() => { setCopied(false); }, [cards, from, tz]);
 
-  const path = feedPath(cards, from);
+  const path = feedPath(cards, from, tz);
   const https = `${window.location.origin}${path}`;
   const webcal = `webcal://${window.location.host}${path}`;
   const copy = async () => {
@@ -161,8 +197,9 @@ function SubscribePanel({ resume }: { resume?: Resume }) {
         { value: "early", label: "Full card" }, { value: "main", label: "Main card" },
       ]} />
     </div>
+    <ZonePicker value={tz} own={own} onChange={(value) => { edited.current = true; setTz(value); }} />
     {accountsEnabled
-      ? <GoogleCalendarConnect cards={cards} from={from} returning={resume?.stage ?? null} onOptionsLoaded={restoreGoogleOptions}>
+      ? <GoogleCalendarConnect cards={cards} from={from} tz={tz} returning={resume?.stage ?? null} onOptionsLoaded={restoreGoogleOptions}>
         {(google, below) => <div>{apps(google)}{below}</div>}
       </GoogleCalendarConnect>
       : apps(<Action href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`} newTab logo={<GoogleLogo />} title="Google" />)}

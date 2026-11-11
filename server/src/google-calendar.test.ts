@@ -37,7 +37,27 @@ test("connecting makes a UFC calendar of the reader's own and fills it with the 
     `POST /calendars/cal1%40group.calendar.google.com/events ufcsh${A}`,
     `POST /calendars/cal1%40group.calendar.google.com/events ufcsh${B}`,
   ]);
-  assert.deepEqual(store.status("u1"), { connected: true, cards: "all", from: "early", syncedAt: NOW, reconnect: false, cardCount: 2 });
+  assert.deepEqual(store.status("u1"), { connected: true, cards: "all", from: "early", tz: null, syncedAt: NOW, reconnect: false, cardCount: 2 });
+});
+
+test("the reader's time zone is kept, read back, and each pass builds the cards in it", async () => {
+  const db = new DatabaseSync(":memory:");
+  // A calendar connected before zones were kept.
+  db.exec(`CREATE TABLE scorers (user_id TEXT PRIMARY KEY); INSERT INTO scorers VALUES ('u1');
+    CREATE TABLE google_calendars (user_id TEXT PRIMARY KEY, calendar_id TEXT NOT NULL, cards TEXT NOT NULL, start TEXT NOT NULL,
+      created_at INTEGER NOT NULL, synced_at INTEGER, reconnect INTEGER NOT NULL DEFAULT 0, error TEXT, failing_since INTEGER);
+    INSERT INTO google_calendars (user_id, calendar_id, cards, start, created_at) VALUES ('u1', 'cal1', 'all', 'main', 1);`);
+  const asked: (string | null | undefined)[] = [];
+  const store = new GoogleCalendars(db, async () => "token", async () => ({}), (options) => {
+    asked.push(options.tz);
+    return [entry(A, 3)];
+  }, () => NOW);
+  assert.equal(store.status("u1").tz, null, "an older calendar has no zone until the reader picks one");
+  await store.syncAll();
+  await store.connect("u1", { cards: "all", from: "main", tz: "America/New_York" }, "America/New_York");
+  assert.equal(store.status("u1").tz, "America/New_York");
+  await store.syncAll();
+  assert.deepEqual(asked, [null, "America/New_York", "America/New_York"]);
 });
 
 test("a pass sends only what changed: new times updated, a dropped card removed, an old card left as a record", async () => {
@@ -106,7 +126,7 @@ test("without Google access nothing is made; removing takes the calendar out of 
   fail.set("DELETE /calendars/cal1%40group.calendar.google.com", new GoogleError(400, "Bad Request", "badRequest"));
   await store.disconnect("u1");
   assert.equal(store.status("u1").connected, false);
-  assert.deepEqual(store.status("u1"), { connected: false, cards: null, from: null, syncedAt: null, reconnect: false, cardCount: 0 });
+  assert.deepEqual(store.status("u1"), { connected: false, cards: null, from: null, tz: null, syncedAt: null, reconnect: false, cardCount: 0 });
 });
 
 test("a calendar Google keeps refusing reaches the Bugs board after an hour", async () => {

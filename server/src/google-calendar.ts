@@ -82,11 +82,11 @@ function googleEvent(eventId: string, entry: CalendarEntry) {
 }
 
 type Row = {
-  user_id: string; calendar_id: string; cards: CalendarOptions["cards"]; start: CalendarOptions["from"];
+  user_id: string; calendar_id: string; cards: CalendarOptions["cards"]; start: CalendarOptions["from"]; zone: string | null;
   created_at: number; synced_at: number | null; reconnect: number; error: string | null; failing_since: number | null;
 };
 export type GoogleCalendarStatus = {
-  connected: boolean; cards: CalendarOptions["cards"] | null; from: CalendarOptions["from"] | null;
+  connected: boolean; cards: CalendarOptions["cards"] | null; from: CalendarOptions["from"] | null; tz: string | null;
   syncedAt: number | null; reconnect: boolean; cardCount: number;
 };
 
@@ -120,6 +120,11 @@ export class GoogleCalendars {
         PRIMARY KEY (user_id, event_id)
       );
     `);
+    // The zone walkout times are written in; calendars connected before it
+    // have none, and so no times until the reader picks one.
+    if (!(db.prepare("PRAGMA table_info(google_calendars)").all() as { name: string }[]).some((column) => column.name === "zone")) {
+      db.exec("ALTER TABLE google_calendars ADD COLUMN zone TEXT");
+    }
   }
 
   private row(user: string): Row | undefined {
@@ -130,7 +135,7 @@ export class GoogleCalendars {
     const row = this.row(user);
     const cardCount = row ? (this.db.prepare("SELECT COUNT(*) AS n FROM google_calendar_events WHERE user_id = ?").get(user) as { n: number }).n : 0;
     return {
-      connected: Boolean(row), cards: row?.cards ?? null, from: row?.start ?? null,
+      connected: Boolean(row), cards: row?.cards ?? null, from: row?.start ?? null, tz: row?.zone ?? null,
       syncedAt: row?.synced_at ?? null, reconnect: Boolean(row?.reconnect), cardCount,
     };
   }
@@ -151,14 +156,14 @@ export class GoogleCalendars {
       if (!token) return false;
       const row = this.row(user);
       if (row) {
-        this.db.prepare("UPDATE google_calendars SET cards = ?, start = ?, reconnect = 0 WHERE user_id = ?").run(options.cards, options.from, user);
+        this.db.prepare("UPDATE google_calendars SET cards = ?, start = ?, zone = ?, reconnect = 0 WHERE user_id = ?").run(options.cards, options.from, options.tz ?? null, user);
       } else {
         const calendar = await this.request(token, "POST", "/calendars", {
           summary: "UFC", timeZone,
           description: "Every UFC card, with its bouts, kept up to date by UFC.sh. Remove it in Settings, or from ufc.sh.",
         });
-        this.db.prepare("INSERT INTO google_calendars (user_id, calendar_id, cards, start, created_at) VALUES (?, ?, ?, ?, ?)")
-          .run(user, calendar.id, options.cards, options.from, this.now());
+        this.db.prepare("INSERT INTO google_calendars (user_id, calendar_id, cards, start, zone, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+          .run(user, calendar.id, options.cards, options.from, options.tz ?? null, this.now());
       }
       // A first fill Google turns away for now is finished by the next pass.
       await this.syncOne(user, token).catch(() => {});
@@ -216,7 +221,7 @@ export class GoogleCalendars {
   private async syncOne(user: string, token?: string, read = new Map<string, CalendarEntry[]>()): Promise<void> {
     const row = this.row(user);
     if (!row) return;
-    const options: CalendarOptions = { cards: row.cards, from: row.start };
+    const options: CalendarOptions = { cards: row.cards, from: row.start, tz: row.zone };
     const key = calendarQuery(options);
     const now = this.now();
     if (!read.has(key)) read.set(key, this.entries(options, now));

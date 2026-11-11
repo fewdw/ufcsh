@@ -1,5 +1,5 @@
 import { prepared } from "./db.ts";
-import { boutMinutes, cardOrder } from "./card-schedule.ts";
+import { boutMinutes, cardOrder, estimatedStart, scheduledBout } from "./card-schedule.ts";
 import { eventKind, type EventKind } from "./event-kind.ts";
 import { SITE_URL } from "./seo.ts";
 import { venueOfEvent } from "./venues.ts";
@@ -8,7 +8,8 @@ import type { CardSegment } from "./scrape/ufccom.ts";
 /**
  * Cards as calendar entries: one entry per card, from the section the reader
  * chose to the estimated end of the main card, with the bouts listed by
- * section in its description. Served as a subscription feed (`/cal/ufc.ics`,
+ * section in its description (each with its estimated walkout time when the
+ * reader's time zone is given). Served as a subscription feed (`/cal/ufc.ics`,
  * every card in a "UFC" calendar that follows bookings and start times), as a
  * single card's .ics file, and as a Google Calendar link. A card without an
  * announced start time is left out until ufc.com publishes one.
@@ -24,19 +25,39 @@ const RECENT_DAYS = 7;
 /** How often a calendar app should read the feed again, where it listens. */
 const REFRESH = "PT30M";
 
-export type CalendarOptions = { cards: "all" | EventKind; from: CardSegment };
-export const CALENDAR_DEFAULTS: CalendarOptions = { cards: "all", from: "early" };
+/** `tz`: the reader's time zone, for each bout's estimated walkout; none, no times. */
+export type CalendarOptions = { cards: "all" | EventKind; from: CardSegment; tz?: string | null };
+export const CALENDAR_DEFAULTS: CalendarOptions = { cards: "all", from: "early", tz: null };
 
 const oneOf = <T extends string>(value: string | null, allowed: readonly T[], fallback: T): T =>
   allowed.includes(value as T) ? value as T : fallback;
 
 export const calendarStart = (value: string | null): CardSegment => oneOf(value, SECTIONS, "early");
 
+/** A time zone the reader chose, as its IANA name ("America/New_York"), or
+ *  null for anything the runtime does not know. */
+export function calendarZone(value: string | null): string | null {
+  if (!value || value.length > 64) return null;
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: value }).resolvedOptions().timeZone;
+  } catch {
+    return null;
+  }
+}
+
+/** A walkout time in `timeZone`, named: "11:10PM EST", "4:30AM GMT+1". */
+export function walkoutTime(at: number, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", timeZoneName: "short" }).formatToParts(at);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("hour")}:${part("minute")}${part("dayPeriod")} ${part("timeZoneName")}`;
+}
+
 /** The feed's options from its address; anything unknown is the default. */
 export function calendarOptions(params: URLSearchParams): CalendarOptions {
   return {
     cards: oneOf(params.get("cards"), ["all", "ppv", "fight_night"] as const, "all"),
     from: calendarStart(params.get("from")),
+    tz: calendarZone(params.get("tz")),
   };
 }
 
@@ -44,8 +65,9 @@ export function calendarOptions(params: URLSearchParams): CalendarOptions {
  *  for one feed shares one address and one cached copy. */
 export function calendarQuery(options: CalendarOptions): string {
   const params = new URLSearchParams();
-  for (const key of ["cards", "from"] as const) {
-    if (options[key] !== CALENDAR_DEFAULTS[key]) params.set(key, options[key]);
+  for (const key of ["cards", "from", "tz"] as const) {
+    const value = options[key];
+    if (value && value !== CALENDAR_DEFAULTS[key]) params.set(key, value);
   }
   return params.toString();
 }
@@ -63,18 +85,13 @@ export type CalendarEntry = {
   uid: string; title: string; start: number; end: number; location: string; description: string; url: string;
 };
 
-/** Booked for five rounds: as ufc.com publishes it, else a main event or a belt
- *  (the event page's timing estimate makes the same assumption). */
-const fiveRound = (fight: FightRow): boolean =>
-  Number(fight.scheduled_rounds) > 0 ? Number(fight.scheduled_rounds) === 5
-    : ["title", "interim"].includes(fight.title_type) || Number(fight.ord) === 0;
-
 const host = new URL(SITE_URL).host;
 
 /** One card as a calendar entry starting at `from`, held at `venue`, or null
  *  when no section from there on has an announced start. A card without an early-prelims time
- *  starts at the prelims, and so on. */
-export function calendarEntry(event: EventRow, fights: FightRow[], from: CardSegment, venue?: string | null): CalendarEntry | null {
+ *  starts at the prelims, and so on. With `timeZone`, each bout carries the
+ *  event page's estimate of its walkout in that zone: "Alpha vs. Beta (11:10PM EST)". */
+export function calendarEntry(event: EventRow, fights: FightRow[], from: CardSegment, venue?: string | null, timeZone?: string | null): CalendarEntry | null {
   const times: Record<CardSegment, number | null> = { early: event.early_prelims_at, prelims: event.prelims_at, main: event.main_card_at };
   const first = SECTIONS.indexOf(from);
   const section = SECTIONS.slice(first).find((segment) => times[segment] != null);
@@ -91,7 +108,13 @@ export function calendarEntry(event: EventRow, fights: FightRow[], from: CardSeg
     sectionOf.set(fight, carried);
   }
   const card = cardOrder(fights);
-  const bout = (fight: FightRow) => `${fight.f1_name} vs. ${fight.f2_name}`;
+  // Walkouts are estimated, as on the event page, only once every bout is
+  // placed: an unplaced bout could move either broadcast window.
+  const scheduled = timeZone && fights.every((fight) => fight.segment) ? fights.map(scheduledBout) : null;
+  const bout = (fight: FightRow) => {
+    const walkout = scheduled ? estimatedStart(scheduled, Number(fight.ord) || 0, times) : null;
+    return `${fight.f1_name} vs. ${fight.f2_name}${walkout != null ? ` (${walkoutTime(walkout, timeZone!)})` : ""}`;
+  };
   const blocks: string[] = [];
   if (!placed && card.length) blocks.push(["Fight card (sections not announced yet)", ...card.map(bout)].join("\n"));
   else {
@@ -101,6 +124,8 @@ export function calendarEntry(event: EventRow, fights: FightRow[], from: CardSeg
       if (bouts.length) blocks.push([SECTION_LABEL[segment], ...bouts.map(bout)].join("\n"));
     }
   }
+  // The link goes in the description, where every app shows it. The iCalendar
+  // URL property would make Apple Calendar show it a second time.
   const url = `${SITE_URL}/events/${event.id}`;
   blocks.push(url);
 
@@ -109,7 +134,7 @@ export function calendarEntry(event: EventRow, fights: FightRow[], from: CardSeg
   const mainStart = times.main ?? start;
   const mainBouts = placed ? fights.filter((fight) => sectionOf.get(fight) === "main") : [];
   const minutes = mainBouts.length
-    ? mainBouts.reduce((total, fight) => total + boutMinutes({ ord: fight.ord, segment: "main", fiveRound: fiveRound(fight) }), 0)
+    ? mainBouts.reduce((total, fight) => total + boutMinutes(scheduledBout(fight)), 0)
     : 180;
   const end = Math.max(mainStart + minutes * 60_000, start + 60 * 60_000);
 
@@ -141,15 +166,15 @@ export function calendarEntries(options: CalendarOptions, now = Date.now()): Cal
     if (list) list.push(fight);
     else fights.set(fight.event_id, [fight]);
   }
-  return events.flatMap((event) => calendarEntry(event, fights.get(event.id) ?? [], options.from, venueOfEvent(event.id)?.name) ?? []);
+  return events.flatMap((event) => calendarEntry(event, fights.get(event.id) ?? [], options.from, venueOfEvent(event.id)?.name, options.tz) ?? []);
 }
 
 /** One card's entry, or null for an unknown card or one with no start time. */
-export function eventCalendarEntry(id: string, from: CardSegment): CalendarEntry | null {
+export function eventCalendarEntry(id: string, from: CardSegment, timeZone?: string | null): CalendarEntry | null {
   const event = prepared(`SELECT ${EVENT_COLUMNS} FROM events WHERE id = ?`).get(id) as EventRow | undefined;
   if (!event) return null;
   const fights = prepared(`SELECT ${FIGHT_COLUMNS} FROM fights WHERE event_id = ?`).all(id) as FightRow[];
-  return calendarEntry(event, fights, from, venueOfEvent(id)?.name);
+  return calendarEntry(event, fights, from, venueOfEvent(id)?.name, timeZone);
 }
 
 // ---------------------------------------------------------------------------
@@ -191,7 +216,6 @@ function vevent(entry: CalendarEntry, stamp: number): string[] {
     `SUMMARY:${icsText(entry.title)}`,
     ...(entry.location ? [`LOCATION:${icsText(entry.location)}`] : []),
     `DESCRIPTION:${icsText(entry.description)}`,
-    `URL:${entry.url}`,
     "END:VEVENT",
   ];
 }
@@ -246,11 +270,12 @@ export const calendarFileName = (title: string): string =>
   `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80) || "ufc-card"}.ics`;
 
 /** What the query worker answers for `/_calendar`: the feed, or one card as a
- *  file (`event`) or a Google link (`event`, `as=google`). Undefined is a 404. */
+ *  file (`event`) or a Google link (`event`, `as=google`), its walkouts in
+ *  `tz` when given. Undefined is a 404. */
 export function calendarAnswer(params: URLSearchParams): string | undefined {
   const id = params.get("event");
   if (id === null) return calendarFeed(calendarOptions(params));
-  const entry = eventCalendarEntry(id, calendarStart(params.get("from")));
+  const entry = eventCalendarEntry(id, calendarStart(params.get("from")), calendarZone(params.get("tz")));
   if (!entry) return undefined;
   return params.get("as") === "google" ? googleCalendarUrl(entry) : eventCalendarFile(entry);
 }

@@ -51,7 +51,7 @@ export function createGoogleCalendarHandler(store: GoogleCalendars, ensureAccoun
       try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")) ?? {}; }
       catch { throw new ScoringError(400, "Invalid JSON options."); }
       const params = new URLSearchParams();
-      for (const key of ["cards", "from"]) if (typeof body[key] === "string") params.set(key, body[key] as string);
+      for (const key of ["cards", "from", "tz"]) if (typeof body[key] === "string") params.set(key, body[key] as string);
       ensureAccount(user);
       const granted = await store.connect(user, calendarOptions(params), timeZoneOf(body.timeZone));
       if (!granted) return send({ ...store.status(user), error: "Allow UFC.sh to add a calendar in Google first.", needsGoogle: true }, 403), true;

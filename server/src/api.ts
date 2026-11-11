@@ -16,7 +16,7 @@ import { BetStore } from "./bets.ts";
 import { createBetsHandler } from "./bets-http.ts";
 import { createLeaderboards } from "./leaderboards.ts";
 import { cardOrder, estimatedStart, scheduledBout, type SegmentTimes } from "./card-schedule.ts";
-import { calendarAnswer, calendarFileName, calendarOptions, calendarQuery, calendarStart } from "./calendar.ts";
+import { calendarAnswer, calendarFileName, calendarOptions, calendarQuery, calendarStart, calendarZone } from "./calendar.ts";
 import http from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -2890,8 +2890,9 @@ export function startApi(port: number): http.Server {
         // Google Calendar link. Built in a query worker, kept a minute.
         const card = /^\/cal\/events\/([a-f0-9]{16})(\.ics|\/google)$/i.exec(p);
         if (p !== "/cal/ufc.ics" && !card) return await sendJson(req, res, { error: "not found" }, 404);
+        const zone = card ? calendarZone(url.searchParams.get("tz")) : null;
         const query = card
-          ? new URLSearchParams({ event: card[1], from: calendarStart(url.searchParams.get("from")), ...(card[2] === "/google" ? { as: "google" } : {}) }).toString()
+          ? new URLSearchParams({ event: card[1], from: calendarStart(url.searchParams.get("from")), ...(zone ? { tz: zone } : {}), ...(card[2] === "/google" ? { as: "google" } : {}) }).toString()
           : calendarQuery(calendarOptions(url.searchParams));
         const value = await cache.get(`calendar:${query}`, 60_000, async () => {
           if (!queryPool) {
