@@ -50,6 +50,14 @@ test("a finish on top only bounds the total from below", () => {
   assert.deepEqual(picks && [picks.total, picks.least, picks.exact], [4039, 4039, false]);
 });
 
+test("winner-only quick picks filed as decisions leave the top decision a little above its ballot", () => {
+  // UFC 334, Harrison vs Nunes while open: 2,151 picked Harrison by decision,
+  // but her decision option holds 2,159 once quick picks are counted.
+  const picks = verdictPickCounts(bout([1, 0, -1, 2151], [1.56, 21.3, 3.81, 3.01], [2.79, 5.38, 56, 6.48], 5))!;
+  assert.deepEqual([picks.fits, picks.least, picks.exact], [true, 6496, false]);
+  assert.ok(picks.f1.decision >= 2151 && picks.f1.decision <= 2151 * 1.1);
+});
+
 test("prices whose top ballot was read later fit no total and give no counts", () => {
   const picks = verdictPickCounts(bout([2, 0, -1, 60], [5.71, 20, 26.67, 11.43], [1.21, 26.67, 4.44, 1.78]));
   assert.deepEqual(picks && [picks.fits, picks.total, picks.least], [false, 0, 0]);

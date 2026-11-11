@@ -1,8 +1,8 @@
 import { db, getMeta, setMeta } from "./db.ts";
 import { fetchVerdictDocument, VERDICT } from "./scrape/verdict.ts";
 import { fetchVerdictPickFight, type VerdictPickBout, type VerdictPickFight, type VerdictPicks } from "./scrape/verdict-picks.ts";
-import { log } from "./util.ts";
-import { alignment, matchBouts, shiftDate, sides } from "./verdict-import.ts";
+import { log, normName } from "./util.ts";
+import { alignment, sameName, shiftDate, sides } from "./verdict-import.ts";
 import { VERDICT_PICKS_FORMAT } from "./predictions.ts";
 
 /**
@@ -69,13 +69,86 @@ const nearby = db.prepare(`SELECT f.id, f.event_id, f.f1_id, f.f2_id, f.f1_name,
   WHERE e.date BETWEEN ? AND ?`);
 type LocalBout = { id: string; event_id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; f1_alias: string | null; f2_alias: string | null; verdict_picks_json: string | null };
 
-const store = db.prepare("UPDATE fights SET verdict_picks_json = ?1 WHERE id = ?2 AND verdict_picks_json IS NOT ?1");
+/** Stores a split unless a read that started later already stored one: the
+ * sync, the backfill and Admin's repair may read the same card at once. */
+const store = db.prepare(`UPDATE fights SET verdict_picks_json = ?1 WHERE id = ?2 AND verdict_picks_json IS NOT ?1
+  AND (NOT json_valid(verdict_picks_json) OR coalesce(json_extract(verdict_picks_json, '$.fetchedAt'), 0) <= ?3)`);
 const storedPicks = db.prepare("SELECT verdict_picks_json AS json FROM fights WHERE id = ?");
+/** Splits this Verdict card stored on bouts it no longer matches: a bout it
+ * dropped, or every bout once the card is retired or not UFC. */
+const clearFrom = db.prepare(`UPDATE fights SET verdict_picks_json = NULL
+  WHERE json_valid(verdict_picks_json) AND json_extract(verdict_picks_json, '$.sourceUrl') LIKE ?1
+    AND coalesce(json_extract(verdict_picks_json, '$.fetchedAt'), 0) <= ?2
+    AND id NOT IN (SELECT value FROM json_each(?3))`);
+const cardUrl = (verdictId: number) => `${VERDICT}/event/${verdictId}/fight/%`;
 const record = db.prepare(`INSERT INTO verdict_pick_cards (verdict_id, date, event_id, final, checked_at, error) VALUES (?, ?, ?, ?, ?, ?)
   ON CONFLICT(verdict_id) DO UPDATE SET date = COALESCE(excluded.date, verdict_pick_cards.date),
     event_id = COALESCE(excluded.event_id, verdict_pick_cards.event_id), final = excluded.final,
-    checked_at = excluded.checked_at, error = excluded.error`);
-const recordBouts = db.prepare("UPDATE verdict_pick_cards SET bouts_json = ?, empty = ?, unfit = ?, association = ? WHERE verdict_id = ?");
+    checked_at = excluded.checked_at, error = excluded.error
+  WHERE excluded.checked_at >= verdict_pick_cards.checked_at`);
+/** Only the read that owns the card's latest `checked_at` writes its bouts. */
+const recordBouts = db.prepare("UPDATE verdict_pick_cards SET bouts_json = ?, empty = ?, unfit = ?, association = ? WHERE verdict_id = ? AND checked_at = ?");
+/** A failed read: noted for Admin, but a final card stays final. */
+const recordError = db.prepare(`INSERT INTO verdict_pick_cards (verdict_id, final, checked_at, error) VALUES (?, 0, ?, ?)
+  ON CONFLICT(verdict_id) DO UPDATE SET checked_at = excluded.checked_at, error = excluded.error
+  WHERE excluded.checked_at >= verdict_pick_cards.checked_at`);
+const cardRow = db.prepare("SELECT date, event_id, final, checked_at, bouts_json FROM verdict_pick_cards WHERE verdict_id = ?");
+type CardRow = { date: string | null; event_id: string | null; final: number; checked_at: number; bouts_json: string | null };
+
+const tokens = (name: string) => normName(name).split(" ").filter(Boolean);
+function oneEditApart(a: string, b: string): boolean {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+/**
+ * Verdict's own spelling of the same fighter, never just a shared first name:
+ * a one-word name opening its fuller form ("Sumudaerji Tibetan Eagle"), or the
+ * same first name with a surname one letter off ("Charles Olivera") or cut
+ * short ("Muhammad Said" for Saidov).
+ */
+export function nearName(a: string, b: string): boolean {
+  const x = tokens(a), y = tokens(b);
+  for (const [one, many] of [[x, y], [y, x]]) {
+    if (one.length === 1 && one[0].length >= 5 && many.length > 1 && many[0] === one[0]) return true;
+  }
+  if (x.length < 2 || y.length < 2 || x[0] !== y[0]) return false;
+  const s = x.at(-1)!, t = y.at(-1)!;
+  if (Math.min(s.length, t.length) >= 4 && (s.startsWith(t) || t.startsWith(s))) return true;
+  return Math.min(s.length, t.length) >= 5 && oneEditApart(s, t);
+}
+
+/** How a Verdict pairing lines up with one of our bouts: tier 1 both names
+ * agree; tier 2 one agrees and the other is Verdict's spelling of the same
+ * fighter (`nearName`). Anything looser may be another matchup. */
+export function pairing(f1Name: string, f2Name: string, fight: Parameters<typeof sides>[0]): { order: 1 | -1; tier: 1 | 2 } | null {
+  const found = alignment(f1Name, f2Name, ...sides(fight));
+  if (found?.tier === 1) return { order: found.order, tier: 1 };
+  const [x, y] = sides(fight);
+  for (const [order, p, q] of [[1, x, y], [-1, y, x]] as const) {
+    const first = p.some(name => sameName(f1Name, name)), second = q.some(name => sameName(f2Name, name));
+    if ((first && q.some(name => nearName(f2Name, name))) || (second && p.some(name => nearName(f1Name, name)))) return { order, tier: 2 };
+  }
+  return null;
+}
+
+/** Each Verdict bout's one best bout of ours; two equally good is a guess. */
+function matchPicks<S extends VerdictPickBout>(sources: S[], candidates: LocalBout[]): { source: S; fight: LocalBout }[] {
+  return sources.flatMap(source => {
+    const ranked = candidates.flatMap(fight => {
+      const found = pairing(source.f1Name, source.f2Name, fight);
+      return found ? [{ fight, tier: found.tier }] : [];
+    });
+    const tier = Math.min(...ranked.map(match => match.tier));
+    const best = ranked.filter(match => match.tier === tier);
+    return best.length === 1 ? [{ source, fight: best[0].fight }] : [];
+  });
+}
 
 /** Verdict's split in our corner order, ready to store. */
 export function alignedPicks(picks: VerdictPicks | null, order: 1 | -1, fight: Pick<LocalBout, "f1_id" | "f2_id">,
@@ -87,10 +160,10 @@ export function alignedPicks(picks: VerdictPicks | null, order: 1 | -1, fight: P
 }
 
 /** Verdict numbers a card's bouts from 1, but a bout moved to the other half
- * keeps its number, so a half may start in the thirties: try until one answers.
- * A miss is a tiny 404. */
-async function firstBout(verdictId: number): Promise<VerdictPickFight | null> {
-  for (let fightNumber = 1; fightNumber <= 60; fightNumber++) {
+ * keeps its number, so a half may start in the thirties. The numbers the card
+ * had last time are tried first, then each up to 60. A miss is a tiny 404. */
+async function firstBout(verdictId: number, known: number[] = []): Promise<VerdictPickFight | null> {
+  for (const fightNumber of new Set([...known, ...Array.from({ length: 60 }, (_n, i) => i + 1)])) {
     const fight = await fetchVerdictPickFight(verdictId, fightNumber);
     if (fight) return fight;
   }
@@ -127,15 +200,22 @@ async function readBout(source: VerdictPickBout, fight: LocalBout, final: boolea
     await sleep(2_000);
     read = await fetchVerdictPickFight(source.eventId, source.fightNumber);
   }
-  const found = read ? alignment(read.f1Name, read.f2Name, ...sides(fight)) : null;
-  const order = found?.tier === 1 ? found.order : null;
+  const order = read ? pairing(read.f1Name, read.f2Name, fight)?.order ?? null : null;
   const unfit = !!order && !!read?.picks && !read.picks.fits;
   const value = order && read?.picks?.fits ? alignedPicks(read.picks, order, fight, { sourceUrl, fetchedAt: now, final }) : null;
   const prior = (storedPicks.get(fight.id) as { json: string | null } | undefined)?.json ?? null;
-  const write = (json: string | null) => ({ changed: store.run(json, fight.id).changes > 0 && content(json) !== content(prior), unfit, picked: !!read?.picked });
-  if (value) return write(JSON.stringify(value));
-  let ours = false;
-  try { ours = JSON.parse(prior ?? "null")?.sourceUrl === sourceUrl; } catch { /* unreadable: not ours to clear */ }
+  const write = (json: string | null) => ({ changed: store.run(json, fight.id, now).changes > 0 && content(json) !== content(prior), unfit, picked: !!read?.picked });
+  let held: any = null;
+  try { held = JSON.parse(prior ?? "null"); } catch { /* unreadable: replaced, never cleared */ }
+  const ours = held?.sourceUrl === sourceUrl;
+  if (value) {
+    // Verdict may list one bout on two cards (both halves after a move, or a
+    // retired copy): the larger poll is the card's, whichever is read last.
+    if (!ours && held?.format === VERDICT_PICKS_FORMAT && held.fits === true && Number(held.least) > value.least) {
+      return { changed: false, unfit, picked: !!read?.picked };
+    }
+    return write(JSON.stringify(value));
+  }
   if (ours && (final || !read?.picked || !order)) return write(null);
   return { changed: false, unfit, picked: !!read?.picked };
 }
@@ -150,46 +230,57 @@ const FIRST_PICKS = "2016-11-12";
  */
 export async function importVerdictPickCard(verdictId: number, now = Date.now()): Promise<PickCardResult> {
   const result = { bouts: 0, matched: 0, stored: 0 };
+  const today = new Date(now).toISOString().slice(0, 10);
   try {
-    const first = await firstBout(verdictId);
+    const row = cardRow.get(verdictId) as CardRow | undefined;
+    let hints: number[] = [];
+    try { hints = (JSON.parse(row?.bouts_json ?? "[]") as CardBout[]).map(bout => bout.fightNumber); } catch { /* none */ }
+    const first = await firstBout(verdictId, hints);
     if (!first) {
-      // Nothing here yet: a card past the newest ones stays open to be found.
-      record.run(verdictId, null, null, 0, now, null);
+      // No bouts: a card past the newest ones stays open to be found; one we
+      // had dated that has since gone empty is final once its date passes,
+      // and its splits go with it.
+      const gone = !!row?.date && row.date < today;
+      record.run(verdictId, null, null, gone ? 1 : 0, now, null);
+      if (row?.date) clearFrom.run(cardUrl(verdictId), now, "[]");
       return result;
     }
     result.bouts = first.card.length;
     const overdue = first.date < new Date(now - 2 * 86_400_000).toISOString().slice(0, 10);
     const final = first.eventStatus === 3 || overdue;
     const bouts: CardBout[] = first.card.map(bout => ({ ...bout, read: false }));
-    // Only UFC cards: another promotion's bout the same weekend may share a
-    // pair of surnames and initials with one of ours.
-    if (!/ufc|^tbd$/i.test(first.association)) {
+    // Only live UFC cards: another promotion's bout the same weekend may share
+    // a pair of surnames and initials with one of ours, and a copy Verdict has
+    // retired holds a sliver of the card's picks.
+    if (!/ufc|^tbd$/i.test(first.association) || !first.active) {
       record.run(verdictId, first.date, null, 1, now, null);
-      recordBouts.run(JSON.stringify(bouts), 1, 0, first.association, verdictId);
+      recordBouts.run(JSON.stringify(bouts), 1, 0, first.association, verdictId, now);
+      clearFrom.run(cardUrl(verdictId), now, "[]");
       return result;
     }
     const candidates = nearby.all(shiftDate(first.date, -1), shiftDate(first.date, 1)) as LocalBout[];
     // Both names must agree: a bout sharing one fighter and only a first name
     // with ours is another matchup, and its picks say nothing about ours.
-    const matches = matchBouts(bouts, candidates, 1);
+    const matches = matchPicks(bouts, candidates);
     result.matched = matches.length;
     // A card from before Verdict took picks has none to read.
     const early = first.date < FIRST_PICKS && !first.picked;
-    let unfit = 0, picked = false;
+    let unfit = 0;
     for (const { source, fight } of early ? [] : matches) {
       const outcome = await readBout(source, fight, final, now, first);
       if (outcome.changed) result.stored += 1;
       if (outcome.unfit) unfit += 1;
-      picked ||= outcome.picked;
       source.read = true;
     }
-    // Empty: finished, and none of its bouts took picks (a copy Verdict added
-    // after the fact); its other bouts aren't worth matching again.
-    const empty = final && (early || (matches.length > 0 && !picked));
+    // A bout this card no longer lists (or no longer matches) loses its split.
+    clearFrom.run(cardUrl(verdictId), now, JSON.stringify(matches.map(match => match.fight.id)));
+    // Empty: from before Verdict took picks, so its other bouts aren't worth
+    // matching again. A later card's unread bouts stay open to the rematch,
+    // even if those read so far took no picks.
     record.run(verdictId, first.date, matches[0]?.fight.event_id ?? null, final ? 1 : 0, now, null);
-    recordBouts.run(JSON.stringify(bouts), empty ? 1 : 0, unfit, first.association, verdictId);
+    recordBouts.run(JSON.stringify(bouts), final && early ? 1 : 0, unfit, first.association, verdictId, now);
   } catch (error) {
-    record.run(verdictId, null, null, 0, now, String(error).slice(0, 500));
+    recordError.run(verdictId, now, String(error).slice(0, 500));
     throw error;
   }
   return result;
@@ -197,63 +288,89 @@ export async function importVerdictPickCard(verdictId: number, now = Date.now())
 
 const unreadCards = db.prepare(`SELECT verdict_id, date, bouts_json, unfit FROM verdict_pick_cards
   WHERE final = 1 AND empty = 0 AND date IS NOT NULL AND bouts_json LIKE '%"read":false%'`);
-const setBouts = db.prepare("UPDATE verdict_pick_cards SET bouts_json = ?, unfit = ? WHERE verdict_id = ?");
+const setBouts = db.prepare("UPDATE verdict_pick_cards SET bouts_json = ?, unfit = ?, error = ? WHERE verdict_id = ?");
+
+export type RematchResult = { stored: number; cards: number; failed: number; lastError: unknown };
 
 /**
  * Finished cards whose bouts didn't all match ours when read: any that match
  * now (a card of ours loaded later, a name or alias fixed) are read, bout by
- * bout. Nothing is fetched for a card none of whose bouts match.
+ * bout. Nothing is fetched for a card none of whose bouts match. A card that
+ * fails keeps its error for Admin → Bugs and is tried again next pass; one
+ * that succeeds clears it.
  */
-export async function rematchVerdictPicks(now = Date.now()): Promise<number> {
-  let stored = 0;
+export async function rematchVerdictPicks(now = Date.now()): Promise<RematchResult> {
+  const result: RematchResult = { stored: 0, cards: 0, failed: 0, lastError: null };
   for (const card of unreadCards.all() as { verdict_id: number; date: string; bouts_json: string; unfit: number }[]) {
     let bouts: CardBout[];
     try { bouts = JSON.parse(card.bouts_json); } catch { continue; }
     const candidates = nearby.all(shiftDate(card.date, -1), shiftDate(card.date, 1)) as LocalBout[];
-    const matches = matchBouts(bouts.filter(bout => !bout.read), candidates, 1);
+    const matches = matchPicks(bouts.filter(bout => !bout.read), candidates);
     if (!matches.length) continue;
-    let unfit = card.unfit;
+    result.cards += 1;
+    let unfit = card.unfit, error: string | null = null;
     try {
       for (const { source, fight } of matches) {
         const outcome = await readBout(source, fight, true, now);
-        if (outcome.changed) stored += 1;
+        if (outcome.changed) result.stored += 1;
         if (outcome.unfit) unfit += 1;
         source.read = true;
       }
-    } catch (error) {
+    } catch (failure) {
       // One card that won't read never holds up the rest.
-      log(`verdict picks rematch ${card.verdict_id}: ${String(error)}`);
+      result.failed += 1;
+      result.lastError = failure;
+      error = `rematch: ${String(failure)}`.slice(0, 500);
+      log(`verdict picks rematch ${card.verdict_id}: ${String(failure)}`);
     }
-    setBouts.run(JSON.stringify(bouts), unfit, card.verdict_id);
+    setBouts.run(JSON.stringify(bouts), unfit, error, card.verdict_id);
   }
-  return stored;
+  return result;
 }
 
-/** Every card Verdict's events page carries: this week's, those still to be
- * fought, and the most recent ones, each half on its own id. */
-async function listedCards(): Promise<number[]> {
+/** Every card Verdict's events page carries (this week's and those still to
+ * be fought, each half on its own id), with the date and status it gives. */
+async function listedCards(): Promise<Map<number, { date: string; status: number }>> {
   const html = await fetchVerdictDocument("/events");
   const payload = html.match(/<script type="application\/json"[^>]*id="__NUXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)?.[1];
-  if (!payload) return [];
+  const cards = new Map<number, { date: string; status: number }>();
+  if (!payload) return cards;
   const flat = JSON.parse(payload) as unknown[];
   const value = (index: unknown) => typeof index === "number" && index >= 0 ? flat[index] : index;
-  const ids = new Set<number>();
   for (const item of flat) {
     if (!item || typeof item !== "object" || Array.isArray(item) || !("eventID" in item) || !("eventDate" in item) || "fightNumber" in item) continue;
-    const id = Number(value((item as Record<string, unknown>).eventID));
-    if (Number.isInteger(id) && id > 0) ids.add(id);
+    const entry = item as Record<string, unknown>;
+    const id = Number(value(entry.eventID)), seconds = Number(value(entry.eventDate));
+    if (!Number.isInteger(id) || id <= 0) continue;
+    cards.set(id, {
+      date: Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString().slice(0, 10) : "",
+      status: Number(value(entry.eventStatus) ?? 0),
+    });
   }
-  return [...ids];
+  return cards;
 }
 
-/** How often a card still taking picks is read again: most arrive on fight
- * day, and they lock when the card starts. */
-const everyFor = (date: string, now: number) => (Date.parse(`${date}T00:00:00Z`) - now) / 86_400_000 <= 1 ? 10 * 60_000 : 60 * 60_000;
+/** How often a card not yet final is read again. One matched to a card of ours
+ * hourly, every ten minutes from the day before (picks pour in then and lock
+ * when it starts). One not matched yet (still being announced, or a
+ * placeholder Verdict dated years ahead) daily, hourly in its last week. */
+function everyFor(date: string, matched: boolean, now: number): number {
+  const days = (Date.parse(`${date}T00:00:00Z`) - now) / 86_400_000;
+  if (!matched) return days <= 7 ? 60 * 60_000 : 24 * 60 * 60_000;
+  return days <= 1 ? 10 * 60_000 : 60 * 60_000;
+}
 /** Cards still taking picks, and any whose final read was missed (an outage):
  * those are read until one succeeds, for a month. */
-const open = db.prepare(`SELECT verdict_id, date, checked_at FROM verdict_pick_cards
+const open = db.prepare(`SELECT verdict_id, date, event_id, checked_at FROM verdict_pick_cards
   WHERE final = 0 AND date IS NOT NULL AND date >= date('now', '-30 day') ORDER BY date`);
-const known = db.prepare("SELECT final, checked_at FROM verdict_pick_cards WHERE verdict_id = ?");
+
+/** A failure worth giving up on: anything but a dropped connection, a timeout,
+ * a refusal (401/403), a rate limit or a server error, which pass. */
+function lasting(error: unknown): boolean {
+  const status = Number(String(error).match(/Verdict HTTP (\d{3})/)?.[1]);
+  if (Number.isFinite(status)) return status >= 400 && status < 500 && ![401, 403, 408, 429].includes(status);
+  return !/fetch failed|timeout|abort|ECONN|ETIMEDOUT|socket/i.test(String(error));
+}
 
 let running = false;
 let listedAt = 0;
@@ -263,64 +380,75 @@ let walkFailures = 0;
 
 /**
  * Background pass, every 30 seconds: cards on Verdict's events page hourly,
- * open cards again on the schedule above, and the next card of the archive
- * walk, one per pass, until it reaches the newest card.
+ * open cards again on the schedule above, the next card of the archive walk
+ * (one per pass, until it reaches the newest card), and every six hours the
+ * rematch of finished cards' unread bouts.
  */
 export async function syncVerdictPicks(now = Date.now()): Promise<boolean> {
   if (running) return false;
   running = true;
   try {
     const due: number[] = [];
-    // A pass in which every read failed is thrown, so a Verdict outage shows
-    // in Admin's sync status rather than only in the log; a pass that read
-    // nothing returns false, so it neither clears nor extends an outage.
-    let tried = 0, failed = 0, lastError: unknown = null;
+    // Card reads are what an outage is judged on: if every one of them failed
+    // the pass throws, so Admin's sync status shows it even when the events
+    // page still loads. A pass that read nothing returns false, so it neither
+    // clears nor extends an outage.
+    let cards = 0, cardsFailed = 0, tried = 0, failed = 0, lastError: unknown = null;
     const failure = (error: unknown) => { failed += 1; lastError = error; };
+    const today = new Date(now).toISOString().slice(0, 10);
     if (now - listedAt > 3_600_000) {
       listedAt = now;
       tried += 1;
-      const listed = await listedCards().catch((error) => { failure(error); log(`verdict picks listing: ${String(error)}`); return [] as number[]; });
-      for (const id of listed) {
-        const row = known.get(id) as { final: number; checked_at: number } | undefined;
-        if (!row || (!row.final && row.checked_at < now - 3_600_000)) due.push(id);
+      const listed = await listedCards().catch((error) => { failure(error); log(`verdict picks listing: ${String(error)}`); return new Map<number, { date: string; status: number }>(); });
+      for (const [id, card] of listed) {
+        const row = cardRow.get(id) as CardRow | undefined;
+        // A final card Verdict lists again as not started (re-dated) reopens.
+        const reopened = !!row?.final && card.status === 0 && card.date >= today && card.date !== row.date;
+        const stale = !!row && !row.final && row.checked_at < now - everyFor(row.date ?? card.date ?? today, !!row.event_id, now);
+        if (!row || reopened || stale) due.push(id);
       }
-      const newest = Math.max(0, ...listed);
+      const newest = Math.max(0, ...listed.keys());
       if (newest > Number(getMeta("verdict_picks_newest") ?? 0)) setMeta("verdict_picks_newest", String(newest));
     }
-    for (const row of open.all() as { verdict_id: number; date: string; checked_at: number }[]) {
-      if (row.checked_at < now - everyFor(row.date, now) && !due.includes(row.verdict_id)) due.push(row.verdict_id);
+    for (const row of open.all() as { verdict_id: number; date: string; event_id: string | null; checked_at: number }[]) {
+      if (row.checked_at < now - everyFor(row.date, !!row.event_id, now) && !due.includes(row.verdict_id)) due.push(row.verdict_id);
     }
     let stored = 0;
     for (const id of due) {
-      tried += 1;
+      tried += 1; cards += 1;
       try { stored += (await importVerdictPickCard(id, now)).stored; }
-      catch (error) { failure(error); log(`verdict picks ${id}: ${String(error)}`); }
+      catch (error) { failure(error); cardsFailed += 1; log(`verdict picks ${id}: ${String(error)}`); }
     }
-    // The walk moves on past a card once it has read it, rests a while when
-    // Verdict doesn't answer, and gives up on one that fails three times
-    // running (it stays in Admin → Bugs as a failed read).
+    // The walk moves on past a card once it has read it and rests a while when
+    // Verdict doesn't answer. It gives up on a card only after three lasting
+    // failures running (it stays in Admin → Bugs), never over an outage.
     const next = Number(getMeta("verdict_picks_walk") ?? 1);
     if (now >= walkRestUntil && next <= Number(getMeta("verdict_picks_newest") ?? 0)) {
       try {
-        const row = known.get(next) as { final: number } | undefined;
-        if (!row?.final && !due.includes(next)) { tried += 1; stored += (await importVerdictPickCard(next, now)).stored; }
+        const row = cardRow.get(next) as CardRow | undefined;
+        if (!row?.final && !due.includes(next)) { tried += 1; cards += 1; stored += (await importVerdictPickCard(next, now)).stored; }
         setMeta("verdict_picks_walk", String(next + 1));
         walkFailures = 0;
       } catch (error) {
         failure(error);
+        cardsFailed += 1;
         walkRestUntil = now + 15 * 60_000;
-        if (++walkFailures >= 3) { setMeta("verdict_picks_walk", String(next + 1)); walkFailures = 0; }
+        walkFailures = lasting(error) ? walkFailures + 1 : 0;
+        if (walkFailures >= 3) { setMeta("verdict_picks_walk", String(next + 1)); walkFailures = 0; }
         log(`verdict picks walk at ${next}: ${String(error)}`);
       }
     }
     // Mostly local: only bouts that newly match are fetched.
     if (now - rematchedAt > 6 * 3_600_000) {
       rematchedAt = now;
-      try { stored += await rematchVerdictPicks(now); }
-      catch (error) { log(`verdict picks rematch: ${String(error)}`); }
+      const rematch = await rematchVerdictPicks(now);
+      stored += rematch.stored;
+      tried += rematch.cards; cards += rematch.cards;
+      failed += rematch.failed; cardsFailed += rematch.failed;
+      if (rematch.failed) lastError = rematch.lastError;
     }
     if (stored) log(`verdict picks: ${stored} bouts updated`);
-    if (tried && failed === tried) throw lastError instanceof Error ? lastError : new Error(String(lastError));
+    if ((cards && cardsFailed === cards) || (tried && failed === tried)) throw lastError instanceof Error ? lastError : new Error(String(lastError));
     return tried > 0;
   } finally {
     running = false;

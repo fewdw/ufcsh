@@ -40,7 +40,7 @@ const tokensOf = (name: string) => normName(name).replace(/\bjr\b/g, "junior").s
 
 /** The same person under Verdict's spelling: identical, or the same first and
  * last name around a middle name, or the same initial and surname. */
-function sameName(a: string, b: string): boolean {
+export function sameName(a: string, b: string): boolean {
   const left = normName(a);
   const right = normName(b);
   if (!left || !right) return false;
@@ -124,19 +124,19 @@ export const sides = (fight: Pick<LocalFight, "f1_name" | "f2_name" | "f1_alias"
   [fight.f2_name, ...(fight.f2_alias ? [fight.f2_alias] : [])],
 ];
 
-/** Each Verdict bout's one best local bout, no worse than `worstTier`. Two
- * bouts equally good is a guess; take neither. */
+/** Each Verdict bout's one best local bout. Two bouts equally good is a
+ * guess; take neither. */
 export function matchBouts<S extends { f1Name: string; f2Name: string }, F extends Parameters<typeof sides>[0]>(
-  sources: S[], candidates: F[], worstTier: 1 | 2 | 3 = 3,
-): { source: S; fight: F; order: 1 | -1 }[] {
+  sources: S[], candidates: F[],
+): { source: S; fight: F }[] {
   return sources.flatMap(source => {
     const ranked = candidates.flatMap(fight => {
       const found = alignment(source.f1Name, source.f2Name, ...sides(fight));
-      return found && found.tier <= worstTier ? [{ fight, ...found }] : [];
+      return found ? [{ fight, tier: found.tier }] : [];
     });
     const tier = Math.min(...ranked.map(match => match.tier));
     const best = ranked.filter(match => match.tier === tier);
-    return best.length === 1 ? [{ source, fight: best[0].fight, order: best[0].order }] : [];
+    return best.length === 1 ? [{ source, fight: best[0].fight }] : [];
   });
 }
 

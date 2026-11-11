@@ -27,6 +27,8 @@ export type VerdictPickFight = VerdictPickBout & {
   eventStatus: number;
   /** Verdict's promotion for the card: "UFC", "UFCPrelims", "PFL"… */
   association: string;
+  /** False for a copy Verdict has retired; its small poll is not the card's. */
+  active: boolean;
   /** Anyone picked this bout: cards Verdict added after the fact have none. */
   picked: boolean;
   picks: VerdictPicks | null;
@@ -75,12 +77,19 @@ export function verdictPickCounts(fight: any): VerdictPicks | null {
   if (!topBucket) return null;
   const count = Number(top.count);
   const rounds = [3, 5].includes(fight?.roundsCount) ? Number(fight.roundsCount) : 5;
-  // The top ballot is one exact (fighter, method, round): a decision is a
-  // single ballot, a finish is spread over the rounds.
-  const decisionTop = topMethod === "decision";
-  const cap = (b: Bucket) => b === topBucket ? (decisionTop ? count : count * rounds) : b.method === "decision" ? count : count * rounds;
+  // The top ballot is one exact (fighter, method, round): a finish is spread
+  // over the rounds, and a decision is one ballot, except that Verdict's
+  // winner-only quick picks are filed as decisions too (round 0, not -1). The
+  // strict reading (no quick picks) is tried first. If no total fits it, a
+  // decision option may also hold quick picks: up to another top ballot's
+  // worth, but the top option itself only 10% more than its ballot (live
+  // cards show well under 1%). That keeps out a doubled total, which would
+  // otherwise fit prices read a moment before the top ballot.
+  let quick = false;
+  const cap = (b: Bucket) => b.method !== "decision" ? count * rounds
+    : !quick ? count : b === topBucket ? Math.floor(count * 1.1) : 2 * count;
   const low = Math.max(1, Math.floor(count * (topBucket.price - HALF_CENT)));
-  const high = Math.ceil(count * (topBucket.price + HALF_CENT) * (decisionTop ? 1 : rounds));
+  const high = () => Math.ceil((topBucket.price + HALF_CENT) * cap(topBucket));
 
   /** Each option's allowed counts for a total, and each corner's. */
   const ranges = (total: number, unpicked: Set<Bucket>) => {
@@ -130,11 +139,14 @@ export function verdictPickCounts(fight: any): VerdictPicks | null {
   // Each option priced 4.2 may be unpicked or genuinely 4.2: try both.
   const flat = all.filter(b => b.price === UNPICKED && b !== topBucket);
   const solutions: { total: number; unpicked: Set<Bucket> }[] = [];
-  if (high - low <= MAX_SEARCH && flat.length <= 6) {
+  for (const allowQuick of [false, true]) {
+    quick = allowQuick;
+    if (high() - low > MAX_SEARCH || flat.length > 6) break;
     for (let mask = 0; mask < 1 << flat.length; mask++) {
       const unpicked = new Set(flat.filter((_b, index) => mask & (1 << index)));
-      for (let total = low; total <= high; total++) if (fits(total, unpicked)) solutions.push({ total, unpicked });
+      for (let total = low; total <= high(); total++) if (fits(total, unpicked)) solutions.push({ total, unpicked });
     }
+    if (solutions.length) break;
   }
   const zeroSets = new Set(solutions.map(s => [...s.unpicked].map(b => all.indexOf(b)).join(",")));
   if (zeroSets.size > 1) return null;
@@ -150,7 +162,9 @@ export function verdictPickCounts(fight: any): VerdictPicks | null {
     // the only one that is certain.
     const total = (most - least) / least <= 0.002 ? totals[Math.floor(totals.length / 2)] : least;
     const counts = assign(total, solutions[0].unpicked);
-    return { total, least, exact: least === most, fits: true, f1: split(counts, 0), f2: split(counts, 1) };
+    // Under the quick-pick reading a single total is only as certain as that
+    // reading, so it is never called exact.
+    return { total, least, exact: least === most && !quick, fits: true, f1: split(counts, 0), f2: split(counts, 1) };
   }
   // No total fits: prices and the top ballot read a moment apart while picks
   // are still coming in, or Verdict changed how it prices. Nothing here is
@@ -181,6 +195,7 @@ export function parseVerdictPickFight(json: any): VerdictPickFight | null {
     date: new Date(seconds * 1000).toISOString().slice(0, 10),
     eventStatus: Number(json?.event?.eventStatus ?? fight?.fighter1?.eventStatus ?? 0),
     association: String(json?.event?.eventAssociation ?? fight?.fighter1?.eventAssociation ?? ""),
+    active: Number(json?.event?.eventActive ?? fight?.fighter1?.eventActive ?? 1) !== 0,
     picked: !!fight?.fightPoll?.fightBallots?.global,
     picks: verdictPickCounts(fight),
     card: card.length ? card : [own],
