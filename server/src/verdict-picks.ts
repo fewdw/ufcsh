@@ -14,8 +14,13 @@ import { matchBouts, shiftDate } from "./verdict-import.ts";
  * picks lock at the start of the card.
  */
 
-/** As stored on a bout, in our corner order. */
-export type StoredVerdictPicks = Pick<VerdictPicks, "total" | "totalKind" | "f1" | "f2"> & { source: "Verdict MMA"; sourceUrl: string };
+/** As stored on a bout, in our corner order. `f1Id`/`f2Id` are the fighters
+ * it was matched to: if the bout's opponent changes, the split no longer
+ * applies and is not shown. `final` once Verdict's picks have locked. */
+export type StoredVerdictPicks = Omit<VerdictPicks, "f1" | "f2"> & {
+  source: "Verdict MMA"; sourceUrl: string; f1Id: string; f2Id: string;
+  f1: VerdictPicks["f1"]; f2: VerdictPicks["f2"]; fetchedAt: number; final: boolean;
+};
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS verdict_pick_cards (
@@ -31,15 +36,24 @@ db.exec(`
   )
 `);
 
+/** Bumped whenever what is stored changes: every card is then read again by
+ * the walk (and the backfill), so no bout keeps a split an older reader made. */
+const FORMAT = "2";
+if (getMeta("verdict_picks_format") !== FORMAT) {
+  db.exec("UPDATE verdict_pick_cards SET final = 0");
+  setMeta("verdict_picks_walk", "1");
+  setMeta("verdict_picks_format", FORMAT);
+}
+
 /** Every bout on the dates Verdict may file a card under (it uses the UTC
  * date, a day off ours either way), fought or not. */
-const nearby = db.prepare(`SELECT f.id, f.event_id, f.f1_name, f.f2_name,
+const nearby = db.prepare(`SELECT f.id, f.event_id, f.f1_id, f.f2_id, f.f1_name, f.f2_name,
     c1.source_name AS f1_alias, c2.source_name AS f2_alias, f.verdict_picks_json
   FROM fights f JOIN events e ON e.id = f.event_id
   LEFT JOIN career_profiles c1 ON c1.fighter_id = f.f1_id AND c1.status = 'verified'
   LEFT JOIN career_profiles c2 ON c2.fighter_id = f.f2_id AND c2.status = 'verified'
   WHERE e.date BETWEEN ? AND ?`);
-type LocalBout = { id: string; event_id: string; f1_name: string; f2_name: string; f1_alias: string | null; f2_alias: string | null; verdict_picks_json: string | null };
+type LocalBout = { id: string; event_id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; f1_alias: string | null; f2_alias: string | null; verdict_picks_json: string | null };
 
 const store = db.prepare("UPDATE fights SET verdict_picks_json = ?1 WHERE id = ?2 AND verdict_picks_json IS NOT ?1");
 const record = db.prepare(`INSERT INTO verdict_pick_cards (verdict_id, date, event_id, final, checked_at, error) VALUES (?, ?, ?, ?, ?, ?)
@@ -48,10 +62,12 @@ const record = db.prepare(`INSERT INTO verdict_pick_cards (verdict_id, date, eve
     checked_at = excluded.checked_at, error = excluded.error`);
 
 /** Verdict's split in our corner order, ready to store. */
-export function alignedPicks(picks: VerdictPicks | null, order: 1 | -1, sourceUrl: string): StoredVerdictPicks | null {
+export function alignedPicks(picks: VerdictPicks | null, order: 1 | -1, fight: Pick<LocalBout, "f1_id" | "f2_id">,
+  meta: { sourceUrl: string; fetchedAt: number; final: boolean }): StoredVerdictPicks | null {
   if (!picks) return null;
   const [f1, f2] = order === 1 ? [picks.f1, picks.f2] : [picks.f2, picks.f1];
-  return { source: "Verdict MMA", sourceUrl, total: picks.total, totalKind: picks.totalKind, f1, f2 };
+  return { source: "Verdict MMA", ...meta, f1Id: fight.f1_id, f2Id: fight.f2_id,
+    total: picks.total, least: picks.least, exact: picks.exact, fits: picks.fits, f1, f2 };
 }
 
 /** Verdict numbers a card's bouts from 1, but a bout moved to the other half
@@ -90,15 +106,17 @@ export async function importVerdictPickCard(verdictId: number, now = Date.now())
     // Cards Verdict added after they were fought took no picks, so one empty
     // bout of a finished card answers for the rest.
     const empty = first.eventStatus === 3 && !first.picked;
+    const overdue = first.date < new Date(now - 2 * 86_400_000).toISOString().slice(0, 10);
+    const final = first.eventStatus === 3 || overdue;
     for (const { source, fight, order } of empty ? [] : matches) {
       const read = source.eventId === first.eventId && source.fightNumber === first.fightNumber
         ? first : await fetchVerdictPickFight(source.eventId, source.fightNumber);
-      const value = alignedPicks(read?.picks ?? null, order, `${VERDICT}/event/${source.eventId}/fight/${source.fightNumber}`);
+      const value = alignedPicks(read?.picks ?? null, order, fight,
+        { sourceUrl: `${VERDICT}/event/${source.eventId}/fight/${source.fightNumber}`, fetchedAt: now, final });
       // Never cleared: such a card may duplicate the one that took the picks.
       if (value && store.run(JSON.stringify(value), fight.id).changes) result.stored += 1;
     }
-    const overdue = first.date < new Date(now - 2 * 86_400_000).toISOString().slice(0, 10);
-    record.run(verdictId, first.date, matches[0]?.fight.event_id ?? null, first.eventStatus === 3 || overdue ? 1 : 0, now, null);
+    record.run(verdictId, first.date, matches[0]?.fight.event_id ?? null, final ? 1 : 0, now, null);
   } catch (error) {
     record.run(verdictId, null, null, 0, now, String(error).slice(0, 500));
     throw error;
@@ -144,9 +162,14 @@ export async function syncVerdictPicks(now = Date.now()): Promise<void> {
   running = true;
   try {
     const due: number[] = [];
+    // A pass in which every read failed is thrown, so a Verdict outage shows
+    // in Admin's sync status rather than only in the log.
+    let tried = 0, failed = 0, lastError: unknown = null;
+    const failure = (error: unknown) => { failed += 1; lastError = error; };
     if (now - listedAt > 3_600_000) {
       listedAt = now;
-      const listed = await listedCards().catch((error) => { log(`verdict picks listing: ${String(error)}`); return [] as number[]; });
+      tried += 1;
+      const listed = await listedCards().catch((error) => { failure(error); log(`verdict picks listing: ${String(error)}`); return [] as number[]; });
       for (const id of listed) {
         const row = known.get(id) as { final: number; checked_at: number } | undefined;
         if (!row || (!row.final && row.checked_at < now - 3_600_000)) due.push(id);
@@ -159,8 +182,9 @@ export async function syncVerdictPicks(now = Date.now()): Promise<void> {
     }
     let stored = 0;
     for (const id of due) {
+      tried += 1;
       try { stored += (await importVerdictPickCard(id, now)).stored; }
-      catch (error) { log(`verdict picks ${id}: ${String(error)}`); }
+      catch (error) { failure(error); log(`verdict picks ${id}: ${String(error)}`); }
     }
     // The walk only moves on past a card it has read, and rests a while when
     // Verdict doesn't answer.
@@ -168,14 +192,16 @@ export async function syncVerdictPicks(now = Date.now()): Promise<void> {
     if (now >= walkRestUntil && next <= Number(getMeta("verdict_picks_newest") ?? 0)) {
       try {
         const row = known.get(next) as { final: number } | undefined;
-        if (!row?.final && !due.includes(next)) stored += (await importVerdictPickCard(next, now)).stored;
+        if (!row?.final && !due.includes(next)) { tried += 1; stored += (await importVerdictPickCard(next, now)).stored; }
         setMeta("verdict_picks_walk", String(next + 1));
       } catch (error) {
+        failure(error);
         walkRestUntil = now + 15 * 60_000;
         log(`verdict picks walk at ${next}: ${String(error)}`);
       }
     }
     if (stored) log(`verdict picks: ${stored} bouts updated`);
+    if (tried && failed === tried) throw lastError instanceof Error ? lastError : new Error(String(lastError));
   } finally {
     running = false;
   }

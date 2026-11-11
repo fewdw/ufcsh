@@ -29,13 +29,17 @@ test("Verdict picks land on the matching bout in our corner order and a pickless
     const own = verdictBout(eventId, eventId === 999999);
     return Response.json({ fight: own, event: { eventDate: Date.parse(`${fight.date}T22:00:00Z`) / 1000, eventStatus: 3, fights: [stranger(eventId), own] } });
   };
+  const ids = db.prepare("SELECT f1_id, f2_id FROM fights WHERE id = ?").get(fight.id) as { f1_id: string; f2_id: string };
   db.exec("BEGIN");
   try {
     db.prepare("UPDATE fights SET verdict_picks_json = NULL WHERE id = ?").run(fight.id);
     assert.deepEqual(await importVerdictPickCard(999999), { bouts: 2, matched: 1, stored: 1 });
     const stored = () => JSON.parse((db.prepare("SELECT verdict_picks_json AS v FROM fights WHERE id = ?").get(fight.id) as { v: string }).v);
-    assert.deepEqual(stored(), {
-      source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/999999/fight/2", total: 80, totalKind: "exact",
+    const { fetchedAt, ...rest } = stored();
+    assert.ok(fetchedAt > 0);
+    assert.deepEqual(rest, {
+      source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/999999/fight/2", final: true, f1Id: ids.f1_id, f2Id: ids.f2_id,
+      total: 80, least: 80, exact: true, fits: true,
       f1: { ko: 3, submission: 18, decision: 45 }, f2: { ko: 4, submission: 3, decision: 7 },
     });
     const card = db.prepare("SELECT date, final FROM verdict_pick_cards WHERE verdict_id = 999999").get() as { date: string; final: number };

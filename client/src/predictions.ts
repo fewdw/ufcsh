@@ -13,8 +13,13 @@ export type PredictionResult = {
   entry: number; fighter: number; method: number; round: number; reason: string | null;
 };
 type MethodSplit = Record<PredictionMethod, number>;
-/** Picks made on Verdict MMA, counted in with ours for who and how. */
-export type ExternalPicks = { source: string; sourceUrl: string; total: number; totalKind: "exact" | "approx" | "atLeast"; f1: MethodSplit; f2: MethodSplit };
+/** Picks made on Verdict MMA, counted in with ours for who and how. `least`
+ * is the fewest picks Verdict's numbers allow; `exact` when `total` is the only
+ * one. `final` once its picks have locked; `fetchedAt` when last read. */
+export type ExternalPicks = {
+  source: string; sourceUrl: string; total: number; least: number; exact: boolean;
+  fetchedAt: number; final: boolean; f1: MethodSplit; f2: MethodSplit;
+};
 /** How everyone has called this bout, for the community charts. */
 export type PredictionDistribution = {
   total: number;

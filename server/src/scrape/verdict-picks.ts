@@ -12,10 +12,13 @@ import { VERDICT } from "./verdict.ts";
  */
 
 export type VerdictPickSplit = { ko: number; submission: number; decision: number };
-/** `exact`: the only total the prices allow. `approx`: a handful of totals
- * within 0.2% of each other, or prices read mid-update that fit none. `atLeast`:
- * the smallest total the prices allow; larger ones fit too. */
-export type VerdictPicks = { total: number; totalKind: "exact" | "approx" | "atLeast"; f1: VerdictPickSplit; f2: VerdictPickSplit };
+/**
+ * `total` is what the counts add up to; `least` the fewest picks the prices
+ * allow, and `exact` when that is the only total they allow. `fits` is false
+ * when the prices fit no total at all (read mid-update, or Verdict changed how
+ * it prices): the split is then proportional and the total an estimate.
+ */
+export type VerdictPicks = { total: number; least: number; exact: boolean; fits: boolean; f1: VerdictPickSplit; f2: VerdictPickSplit };
 export type VerdictPickBout = { eventId: number; fightNumber: number; f1Name: string; f2Name: string };
 export type VerdictPickFight = VerdictPickBout & {
   /** The UTC date Verdict files the card under. */
@@ -88,28 +91,49 @@ export function verdictPickCounts(fight: any): VerdictPicks | null {
   const low = Math.max(1, Math.floor(count * (topBucket.price - HALF_CENT)));
   const high = Math.ceil(count * (topBucket.price + HALF_CENT) * (decisionTop ? 1 : rounds));
 
-  const fits = (total: number, unpicked: Set<Bucket>): boolean => {
-    let least = 0, most = 0;
-    for (const side of sides) {
-      let sideLeast = 0, sideMost = 0, picked = false;
-      for (const bucket of side.buckets) {
-        if (unpicked.has(bucket)) continue;
-        let [lo, hi] = countsFor(total, bucket.price);
-        if (bucket === topBucket) lo = Math.max(lo, count);
-        hi = Math.min(hi, cap(bucket));
-        if (lo > hi) return false;
-        sideLeast += lo; sideMost += hi; picked = true;
-      }
-      if (!picked) {
-        if (side.price !== UNPICKED) return false;
-        continue;
-      }
+  /** Each option's allowed counts for a total, and each corner's. */
+  const ranges = (total: number, unpicked: Set<Bucket>) => {
+    const options = all.map((bucket): [number, number] => {
+      if (unpicked.has(bucket)) return [0, 0];
+      let [lo, hi] = countsFor(total, bucket.price);
+      if (bucket === topBucket) lo = Math.max(lo, count);
+      return [lo, Math.min(hi, cap(bucket))];
+    });
+    const corners = sides.map((side, index): [number, number] | null => {
+      const own = all.flatMap((bucket, i) => bucket.side === index && !unpicked.has(bucket) ? [options[i]] : []);
+      // A corner nobody picked: possible only if Verdict priced it as unpicked.
+      if (!own.length) return side.price === UNPICKED ? [0, 0] : null;
       const [lo, hi] = countsFor(total, side.price);
-      sideLeast = Math.max(sideLeast, lo); sideMost = Math.min(sideMost, hi);
-      if (sideLeast > sideMost) return false;
-      least += sideLeast; most += sideMost;
+      return [Math.max(lo, own.reduce((n, r) => n + r[0], 0)), Math.min(hi, own.reduce((n, r) => n + r[1], 0))];
+    });
+    return { options, corners };
+  };
+  const fits = (total: number, unpicked: Set<Bucket>): boolean => {
+    const { options, corners } = ranges(total, unpicked);
+    if (options.some(([lo, hi]) => lo > hi) || corners.some(r => !r || r[0] > r[1])) return false;
+    return corners[0]![0] + corners[1]![0] <= total && total <= corners[0]![1] + corners[1]![1];
+  };
+  /** Whole counts inside every allowed range that add up to `total`, as near
+   * the prices' own proportions as those ranges let them be. */
+  const assign = (total: number, unpicked: Set<Bucket>): number[] => {
+    const { options, corners } = ranges(total, unpicked);
+    const [a, b] = corners as [number, number][];
+    const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+    const first = clamp(clamp(Math.round(a[1] ? total / sides[0].price : 0), a[0], a[1]), total - b[1], total - b[0]);
+    const ideal = all.map(bucket => unpicked.has(bucket) ? 0 : total / bucket.price);
+    const counts = all.map((_bucket, i) => clamp(Math.round(ideal[i]), ...options[i]));
+    for (const [side, target] of [[0, first], [1, total - first]] as const) {
+      const own = all.flatMap((bucket, i) => bucket.side === side ? [i] : []);
+      for (let sum = own.reduce((n, i) => n + counts[i], 0); sum !== target;) {
+        const up = sum < target;
+        const room = own.filter(i => up ? counts[i] < options[i][1] : counts[i] > options[i][0]);
+        if (!room.length) break;
+        const i = room.reduce((best, j) => (up ? ideal[j] - counts[j] > ideal[best] - counts[best] : counts[j] - ideal[j] > counts[best] - ideal[best]) ? j : best);
+        counts[i] += up ? 1 : -1;
+        sum += up ? 1 : -1;
+      }
     }
-    return least <= total && total <= most;
+    return counts;
   };
 
   // Each option priced 4.2 may be unpicked or genuinely 4.2: try both.
@@ -123,44 +147,43 @@ export function verdictPickCounts(fight: any): VerdictPicks | null {
   }
   const zeroSets = new Set(solutions.map(s => [...s.unpicked].map(b => all.indexOf(b)).join(",")));
   if (zeroSets.size > 1) return null;
-  let total: number, totalKind: VerdictPicks["totalKind"], unpicked: Set<Bucket>;
-  if (solutions.length) {
-    const totals = solutions.map(s => s.total);
-    const [least, most] = [totals[0], totals.at(-1)!];
-    unpicked = solutions[0].unpicked;
-    if (least === most) { total = least; totalKind = "exact"; }
-    else if ((most - least) / least <= 0.002) { total = totals[Math.floor(totals.length / 2)]; totalKind = "approx"; }
-    else { total = least; totalKind = "atLeast"; }
-  } else {
-    // Prices and the top ballot read a moment apart while picks are still
-    // coming in. Its own price still dates the total closely.
-    total = Math.round(count * topBucket.price);
-    totalKind = decisionTop ? "approx" : "atLeast";
-    // The options priced 4.2 that leave each corner's own price best explained.
-    unpicked = new Set(sides.flatMap((side, index) => {
-      const options = side.buckets.filter(b => b.price === UNPICKED && b !== topBucket);
-      // A corner nobody picked leaves the other priced at 1.00.
-      const target = side.price === UNPICKED && sides[1 - index].price <= 1 + HALF_CENT ? 0 : 1 / side.price;
-      let best: Bucket[] = [], miss = Infinity;
-      for (let mask = 0; mask < 1 << options.length; mask++) {
-        const dropped = options.filter((_b, index) => mask & (1 << index));
-        const share = side.buckets.reduce((sum, b) => sum + (dropped.includes(b) ? 0 : 1 / b.price), 0);
-        const off = Math.abs(share - target);
-        if (off < miss - 1e-9) { best = dropped; miss = off; }
-      }
-      return best;
-    }));
-  }
-  // A decision on top is one ballot, so its count is the published one.
-  const pinned = decisionTop && total > count ? all.indexOf(topBucket) : -1;
-  const counts = apportion(pinned < 0 ? total : total - count, all.map((b, index) => index === pinned || unpicked.has(b) ? 0 : 1 / b.price));
-  if (pinned >= 0) counts[pinned] = count;
-  const split = (side: 0 | 1): VerdictPickSplit => {
+  const split = (counts: number[], side: 0 | 1): VerdictPickSplit => {
     const out = { ko: 0, submission: 0, decision: 0 };
     all.forEach((b, index) => { if (b.side === side) out[b.method] = counts[index]; });
     return out;
   };
-  return { total, totalKind, f1: split(0), f2: split(1) };
+  if (solutions.length) {
+    const totals = solutions.map(s => s.total);
+    const least = totals[0], most = totals.at(-1)!;
+    // Totals within 0.2% of each other: the middle one. Wider: the least,
+    // the only one that is certain.
+    const total = (most - least) / least <= 0.002 ? totals[Math.floor(totals.length / 2)] : least;
+    const counts = assign(total, solutions[0].unpicked);
+    return { total, least, exact: least === most, fits: true, f1: split(counts, 0), f2: split(counts, 1) };
+  }
+  // Prices and the top ballot read a moment apart while picks are still
+  // coming in. Its own price still dates the total closely.
+  const total = Math.round(count * topBucket.price);
+  const least = Math.min(total, Math.floor(count * (topBucket.price - HALF_CENT)));
+  // The options priced 4.2 that leave each corner's own price best explained.
+  const unpicked = new Set(sides.flatMap((side, index) => {
+    const options = side.buckets.filter(b => b.price === UNPICKED && b !== topBucket);
+    // A corner nobody picked leaves the other priced at 1.00.
+    const target = side.price === UNPICKED && sides[1 - index].price <= 1 + HALF_CENT ? 0 : 1 / side.price;
+    let best: Bucket[] = [], miss = Infinity;
+    for (let mask = 0; mask < 1 << options.length; mask++) {
+      const dropped = options.filter((_b, index) => mask & (1 << index));
+      const share = side.buckets.reduce((sum, b) => sum + (dropped.includes(b) ? 0 : 1 / b.price), 0);
+      const off = Math.abs(share - target);
+      if (off < miss - 1e-9) { best = dropped; miss = off; }
+    }
+    return best;
+  }));
+  // A decision on top is one ballot, so its count is the published one.
+  const pinned = decisionTop && total > count ? all.indexOf(topBucket) : -1;
+  const counts = apportion(pinned < 0 ? total : total - count, all.map((b, index) => index === pinned || unpicked.has(b) ? 0 : 1 / b.price));
+  if (pinned >= 0) counts[pinned] = count;
+  return { total, least, exact: false, fits: false, f1: split(counts, 0), f2: split(counts, 1) };
 }
 
 const fighterName = (fighter: any) => cleanText(`${fighter?.fighterFirstName ?? ""} ${fighter?.fighterLastName ?? ""}`);
@@ -190,13 +213,25 @@ export function parseVerdictPickFight(json: any): VerdictPickFight | null {
   };
 }
 
-/** One bout from Verdict's public fight API; null when there is no such bout. */
-export async function fetchVerdictPickFight(eventId: number, fightNumber: number): Promise<VerdictPickFight | null> {
-  const response = await fetch(`${VERDICT}/api/v1/fight?eventID=${eventId}&fightNumber=${fightNumber}`, {
-    headers: { "user-agent": "ufc.sh data-quality importer (+https://ufc.sh)", accept: "application/json" },
-    signal: AbortSignal.timeout(20_000),
-  });
+/** One bout from Verdict's public fight API; null when there is no such bout.
+ * A dropped connection or a busy answer is tried once more, two seconds on. */
+export async function fetchVerdictPickFight(eventId: number, fightNumber: number, retry = true): Promise<VerdictPickFight | null> {
+  let response: Response;
+  try {
+    response = await fetch(`${VERDICT}/api/v1/fight?eventID=${eventId}&fightNumber=${fightNumber}`, {
+      headers: { "user-agent": "ufc.sh data-quality importer (+https://ufc.sh)", accept: "application/json" },
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (error) {
+    if (!retry) throw error;
+    await new Promise(resolve => setTimeout(resolve, 2_000));
+    return fetchVerdictPickFight(eventId, fightNumber, false);
+  }
   if (response.status === 404) return null;
+  if (retry && (response.status === 429 || response.status >= 500)) {
+    await new Promise(resolve => setTimeout(resolve, 2_000));
+    return fetchVerdictPickFight(eventId, fightNumber, false);
+  }
   if (!response.ok) throw new Error(`Verdict HTTP ${response.status}`);
   return parseVerdictPickFight(await response.json());
 }

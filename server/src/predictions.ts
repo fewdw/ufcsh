@@ -22,20 +22,31 @@ export type PredictionFight = {
   verdict_picks_json?: string | null;
 };
 type MethodSplit = Record<PredictionMethod, number>;
-/** Picks made on Verdict MMA, as the community charts count them. */
-export type ExternalPicks = { source: string; sourceUrl: string; total: number; totalKind: "exact" | "approx" | "atLeast"; f1: MethodSplit; f2: MethodSplit };
+/** Picks made on Verdict MMA, as the community charts count them, in this
+ * bout's corner order. `least` is the fewest picks Verdict's numbers allow and
+ * `exact` says `total` is the only one they allow. */
+export type ExternalPicks = {
+  source: string; sourceUrl: string; total: number; least: number; exact: boolean;
+  fetchedAt: number; final: boolean; f1: MethodSplit; f2: MethodSplit;
+};
 const METHODS: PredictionMethod[] = ["ko", "submission", "decision"];
-/** A stored Verdict split, or null unless every count is whole and they add up. */
-export function externalPicks(json: string | null | undefined): ExternalPicks | null {
+/** A stored Verdict split for this bout, or null unless every count is whole,
+ * they add up, and it was matched to these two fighters: a bout whose opponent
+ * changed since never shows the old matchup's picks. */
+export function externalPicks(json: string | null | undefined, bout?: { f1_id: string; f2_id: string }): ExternalPicks | null {
   let value: any;
   try { value = json ? JSON.parse(json) : null; } catch { return null; }
   const whole = (n: unknown) => Number.isSafeInteger(n) && (n as number) >= 0;
-  if (!value || !whole(value.total) || value.total < 1 || !["exact", "approx", "atLeast"].includes(value.totalKind)
-    || typeof value.sourceUrl !== "string" || ![value.f1, value.f2].every(side => METHODS.every(method => whole(side?.[method])))) return null;
-  const sum = METHODS.reduce((n, method) => n + value.f1[method] + value.f2[method], 0);
-  if (sum !== value.total) return null;
+  if (!value || !bout || !whole(value.total) || value.total < 1 || !whole(value.least) || value.least > value.total
+    || typeof value.sourceUrl !== "string" || !/^https:\/\/verdictmma\.com\//.test(value.sourceUrl)
+    || ![value.f1, value.f2].every(side => METHODS.every(method => whole(side?.[method])))) return null;
+  if (METHODS.reduce((n, method) => n + value.f1[method] + value.f2[method], 0) !== value.total) return null;
+  const same = value.f1Id === bout.f1_id && value.f2Id === bout.f2_id;
+  if (!same && !(value.f1Id === bout.f2_id && value.f2Id === bout.f1_id)) return null;
   const split = (side: any): MethodSplit => ({ ko: side.ko, submission: side.submission, decision: side.decision });
-  return { source: String(value.source ?? "Verdict MMA"), sourceUrl: value.sourceUrl, total: value.total, totalKind: value.totalKind, f1: split(value.f1), f2: split(value.f2) };
+  return { source: String(value.source ?? "Verdict MMA"), sourceUrl: value.sourceUrl, total: value.total, least: value.least,
+    exact: value.exact === true, fetchedAt: Number(value.fetchedAt) || 0, final: value.final === true,
+    f1: split(same ? value.f1 : value.f2), f2: split(same ? value.f2 : value.f1) };
 }
 /** `eventOpen` is false for cards further out than the predicting window. */
 export type PredictionContext = { fight: PredictionFight; bouts: PredictionFight[]; eventOpen?: boolean };
@@ -257,7 +268,7 @@ export class PredictionStore {
     };
     // Picks made on Verdict MMA join ours for who and how. They say nothing
     // about which round, so the round counts stay ours alone.
-    const external = externalPicks(bout?.verdict_picks_json);
+    const external = externalPicks(bout?.verdict_picks_json, bout);
     const local = rows.reduce((sum, row) => sum + row.n, 0);
     const total = local + (external?.total ?? 0);
     const fighters = tally(row => row.fighterId);

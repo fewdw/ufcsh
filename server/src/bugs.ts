@@ -1319,6 +1319,46 @@ function verdictPickErrors(): BugCheck {
   })));
 }
 
+/** The trust checks on Verdict's picks: a card still taking picks that the
+ * background pass has stopped reading, and a final split whose prices fit no
+ * total, the first sign Verdict changed how it prices. */
+function verdictPickDrift(): BugCheck {
+  const stale = db.prepare(`SELECT verdict_id, date, checked_at FROM verdict_pick_cards
+    WHERE final = 0 AND event_id IS NOT NULL AND date BETWEEN date('now', '-2 day') AND date('now', '+30 day')
+      AND checked_at < ? ORDER BY date`).all(Date.now() - 3 * 3_600_000) as { verdict_id: number; date: string; checked_at: number }[];
+  const loose = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, json_extract(f.verdict_picks_json, '$.sourceUrl') AS source_url
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE json_valid(f.verdict_picks_json) AND json_extract(f.verdict_picks_json, '$.final') = 1
+      AND json_extract(f.verdict_picks_json, '$.fits') = 0
+    ORDER BY e.date DESC
+  `).all() as (FightRow & { source_url: string })[];
+  return check({
+    id: "verdict-pick-drift",
+    group: "Missing data",
+    label: "Verdict picks that may be wrong",
+    description: "Open cards whose picks haven't been read for over three hours, so the Predict tab's Verdict counts are stale; and finished bouts whose Verdict prices fit no pick total, so their split is only proportional. Many of the second at once means Verdict changed how it prices picks and verdict-picks.ts needs updating.",
+    grade: recent([[7, "must"], [365, "minor"]]),
+  }, [
+    ...stale.map(card => ({
+      key: `verdict-picks-stale-${card.verdict_id}`,
+      title: `Verdict card ${card.verdict_id}`,
+      date: card.date,
+      facts: [["Last read", ago(card.checked_at)]] as [string, string][],
+      links: [{ label: "Verdict card", href: `https://verdictmma.com/event/${card.verdict_id}` }],
+      actions: [{ id: "verdict-picks" as const, label: "Read picks again", target: `card:${card.verdict_id}` }],
+    })),
+    ...loose.map(fight => {
+      const card = fight.source_url?.match(/\/event\/(\d+)\//)?.[1];
+      return fightItem(fight, {
+        facts: [["Problem", "Prices fit no pick total"]],
+        links: fight.source_url ? [{ label: "Verdict bout", href: fight.source_url }] : [],
+        actions: card ? [{ id: "verdict-picks" as const, label: "Read picks again", target: `card:${card}` }] : [],
+      });
+    }),
+  ]);
+}
+
 /** Tonight's safety net for `verdict-live.ts`: a read that goes wrong only
  * shows as a bout with no live state, on a card that otherwise imports fine. */
 function verdictLiveMissed(): BugCheck {
@@ -2398,6 +2438,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     invalidCommunityScores(),
     verdictImportErrors(),
     verdictPickErrors(),
+    verdictPickDrift(),
     verdictLiveMissed(),
     suspiciousOdds(),
     wrongFighterPages(),

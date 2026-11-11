@@ -17,29 +17,46 @@ charts, as a total (below).
 
 Verdict MMA has taken fan picks on every UFC main card since UFC 205 (November
 2016) and on prelims too since 2024. `verdict-picks.ts` stores them on the bout
-(`fights.verdict_picks_json`, in our corner order), and the community picks
-panel adds them to ours for winner and method, crediting Verdict under the
-charts. The round chart stays ufc.sh picks only: Verdict's picks name a round,
-but it never says which. A bout is matched only when both fighters' names
-agree, because Verdict keeps picks on bouts whose opponent has since changed.
+(`fights.verdict_picks_json`, in our corner order, with the two fighter ids it
+was matched to). The community picks panel adds them to ours for winner and
+method, then shows each community on its own under "Where the picks come
+from": Verdict's count, winner split and, while its picks are open, when it
+was last read; ufc.sh fans' count, winner split and round picks. The round
+chart is shown only for ufc.sh-only bouts: Verdict's picks name a round, but
+it never says which.
 
 Verdict publishes no counts. Its public `/api/v1/fight` prices every option as
 total ÷ picks on it, to two decimals (4.2 when nobody picked it), and names the
 most common exact ballot with its count. `verdictPickCounts`
-(`scrape/verdict-picks.ts`) finds the totals those prices allow:
+(`scrape/verdict-picks.ts`) finds every total those prices allow and gives each
+option a whole count inside the range its price allows, so the stored counts
+reproduce every published price. `least` is the smallest total allowed and
+`exact` says it is the only one: true for about 40% of bouts. A decision on top
+pins the total to within 0.2%; a finish on top leaves totals up to two or three
+times the least. The panel shows an exact total as is and any other as the
+least, to three figures rounded down, with a `+`. Percentages are within about
+0.3 points of the shares the prices state either way.
 
-- `exact`: one total fits (most smaller cards, and many large ones).
-- `approx`: a decision is the top ballot, which pins the total to within 0.2%;
-  or the prices were read mid-update and fit no total.
-- `atLeast`: a finish is the top ballot and several totals fit; the panel
-  shows the smallest with a `+`. The split is accurate either way.
+Trust over time:
 
-Cards still taking picks are found hourly on Verdict's events page and read
-hourly, every ten minutes from the day before, until the card is over. Every
-other card is read once by a walk over Verdict's event ids, one per 30 seconds;
-`npm run backfill:verdict-picks` does the whole archive in about ten minutes.
-A card Verdict added after it was fought took no picks and never clears stored
-ones. Failed reads are in Admin → Bugs → Verdict picks reads that failed.
+- A bout is matched only when both fighters' names agree, because Verdict keeps
+  picks on bouts whose opponent has since changed. A stored split is shown only
+  while the bout still has the two fighters it was matched to.
+- A card Verdict added after it was fought took no picks and never clears
+  stored ones.
+- Cards still taking picks are found hourly on Verdict's events page and read
+  hourly, every ten minutes from the day before, until the card is over; then
+  the split is final and not read again. The panel says when open picks were
+  last read.
+- Every other card is read once by a walk over Verdict's event ids, one per 30
+  seconds; `npm run backfill:verdict-picks` does the whole archive in about ten
+  minutes. Changing what is stored means bumping `FORMAT` in `verdict-picks.ts`:
+  every card is then read again.
+- A pass in which every read fails is reported to Admin's sync status. Admin →
+  Bugs lists failed reads ("Verdict picks reads that failed") and "Verdict
+  picks that may be wrong": open cards unread for three hours, and finished
+  bouts whose prices fit no total. Many of the latter at once means Verdict
+  changed how it prices picks.
 
 ## Closing picks
 
