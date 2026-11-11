@@ -99,6 +99,11 @@ test("an older calendar whose zone Google cannot give is synced without times, f
   assert.equal(store.status("u1").tz, "UTC", "a zone this runtime cannot read ends the lookup at UTC");
 
   forget();
+  state.zone = undefined as unknown as string;
+  await store.syncAll();
+  assert.equal(store.status("u1").tz, null, "an answer without a zone is asked again, not taken as UTC");
+  assert.match(String((db.prepare("SELECT error FROM google_calendars").get() as { error: string }).error), /^Time zone: /);
+
   state.fail = new GoogleError(403, "Insufficient Permission", "insufficientPermissions");
   await store.syncAll();
   assert.equal(store.status("u1").reconnect, true, "access taken back means reconnecting, as for any change");

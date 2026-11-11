@@ -233,7 +233,8 @@ export class GoogleCalendars {
         token ??= await this.token(user) ?? undefined;
         if (!token) return this.needsReconnect(user);
         const calendar = await this.request(token, "GET", `/calendars/${encodeURIComponent(row.calendar_id)}`);
-        zone = calendarZone(typeof calendar?.timeZone === "string" ? calendar.timeZone : null) ?? "UTC";
+        if (typeof calendar?.timeZone !== "string") throw new Error("Google named no time zone for the calendar");
+        zone = calendarZone(calendar.timeZone) ?? "UTC";
         this.db.prepare("UPDATE google_calendars SET zone = ? WHERE user_id = ? AND zone IS NULL").run(zone, user);
       } catch (error) {
         if (error instanceof GoogleError && (error.status === 401 || (error.status === 403 && /insufficient|forbidden/i.test(error.reason)))) return this.needsReconnect(user);

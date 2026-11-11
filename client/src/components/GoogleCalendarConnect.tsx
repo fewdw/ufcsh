@@ -166,7 +166,10 @@ export function GoogleCalendarConnect({ cards, from, tz, returning, onOptionsLoa
       {adding || signingIn ? <LoaderCircle className="h-5 w-5 shrink-0 animate-spin text-zinc-400" aria-hidden="true" /> : <GoogleLogo />}
       <span className="truncate">{adding || signingIn ? "Adding…" : status?.reconnect ? "Reconnect" : "Google"}</span>
     </button>;
-  const moved = connected && !adding && (status!.cards !== cards || status!.from !== from || knownZone(status!.tz) !== knownZone(tz));
+  // A calendar connected before zones were kept gets the reader's own zone on
+  // its own, so only picking another one is a change to send.
+  const zoneMoved = status?.tz ? knownZone(status.tz) !== knownZone(tz) : knownZone(tz) !== knownZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const moved = connected && !adding && (status!.cards !== cards || status!.from !== from || zoneMoved);
   const below = <>
     {connected && !adding ? <div className="mt-2 flex items-center gap-2 rounded-xl bg-zinc-50 py-1 pl-3 pr-1 text-xs text-zinc-600">
       <span className="min-w-0 flex-1 truncate" title={updatedAgo(status!.syncedAt)}>
