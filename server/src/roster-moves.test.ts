@@ -248,7 +248,9 @@ test("off-roster fighters with no recent bout are still read weekly, and namesak
 
     // A made-up namesake pair: the fighter and an invented fighter of the same name with a bout.
     const fighter = db.prepare(`SELECT fr.id, fr.name, fr.norm_name FROM fighters fr JOIN fights f ON fr.id IN (f.f1_id, f.f2_id)
-      WHERE fr.signee = 0 AND f.weight_class NOT IN ('Catch Weight', 'Open Weight', '') LIMIT 1`).get() as { id: string; name: string; norm_name: string };
+      WHERE fr.signee = 0 AND f.weight_class NOT IN ('Catch Weight', 'Open Weight', '')
+        AND NOT EXISTS (SELECT 1 FROM fighters o WHERE o.norm_name = fr.norm_name AND o.id != fr.id) LIMIT 1`).get() as { id: string; name: string; norm_name: string } | undefined;
+    if (!fighter) return;
     const expected = (db.prepare(`SELECT DISTINCT weight_class FROM fights WHERE ? IN (f1_id, f2_id)
       AND weight_class NOT IN ('Catch Weight', 'Open Weight', '')`).all(fighter.id) as { weight_class: string }[]).map(row => row.weight_class).sort();
     assert.deepEqual(await divisionsRead(fighter.id), [], "no namesake: no division check");

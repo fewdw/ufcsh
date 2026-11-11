@@ -477,6 +477,10 @@ test("finds a fighter's ufc.com page under a spelling that agrees, and a namesak
   assert.deepEqual(await scrapeAthleteStatus("Bruno Silva", known, load, ["Middleweight", "Light Heavyweight"]),
     { url: "https://www.ufc.com/athlete/bruno-silva-blindado", status: "not_fighting", height: null, reach: null });
   assert.equal((await scrapeAthleteStatus("Bruno Silva", known, load, ["Flyweight"]))?.status, "active");
+  // Found again with no page known: the direct page is read once.
+  read.length = 0;
+  assert.equal((await scrapeAthleteStatus("Bruno Silva", null, load, ["Middleweight"]))?.url, "https://www.ufc.com/athlete/bruno-silva-blindado");
+  assert.equal(read.filter(path => path === "/athlete/bruno-silva").length, 1);
   // A page showing no division is unread, not someone else's.
   const flyweight = site["/athlete/bruno-silva"];
   site["/athlete/bruno-silva"] = athlete("Bruno Silva", "", "Actif");

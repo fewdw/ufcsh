@@ -445,7 +445,7 @@ export async function scrapeAthleteStatus(name: string, knownUrl: string | null,
     // Namesakes are all listed under the one name; each page's division decides.
     const hrefs = divisions.length ? searchAthleteHrefs(html, name) : [parseSearchAthlete(html, name).href].filter((href): href is string => Boolean(href));
     for (const href of hrefs) {
-      if (href === knownUrl) continue;
+      if (href === knownUrl || href === direct) continue;
       const page = found(await read(href, true));
       if (page) return page;
     }

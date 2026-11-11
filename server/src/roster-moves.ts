@@ -234,8 +234,9 @@ export async function syncUfcStatuses(batch = 2, readStatus = scrapeAthleteStatu
     SELECT fr.id, fr.name, s.url, s.status, s.left_at,
       CASE WHEN EXISTS (SELECT 1 FROM fighters o WHERE o.norm_name = fr.norm_name AND o.id <> fr.id AND o.signee = 0
         AND EXISTS (SELECT 1 FROM fights x WHERE x.f1_id = o.id OR x.f2_id = o.id))
-      THEN (SELECT group_concat(DISTINCT f.weight_class) FROM fights f
-        WHERE (f.f1_id = fr.id OR f.f2_id = fr.id) AND f.weight_class NOT IN ('Catch Weight', 'Open Weight', '')) END AS divisions
+      -- With no division to tell them apart by, no page is theirs ('' matches none).
+      THEN coalesce((SELECT group_concat(DISTINCT f.weight_class) FROM fights f
+        WHERE (f.f1_id = fr.id OR f.f2_id = fr.id) AND f.weight_class NOT IN ('Catch Weight', 'Open Weight', '')), '') END AS divisions
     FROM fighters fr
     LEFT JOIN ufc_status s ON s.fighter_id = fr.id
     WHERE fr.signee = 0 AND (s.checked_at < ?3 OR (s.checked_at IS NULL OR s.checked_at < ?1)
