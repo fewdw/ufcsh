@@ -935,7 +935,7 @@ export default function FighterPage() {
 
   return (
     <>{statModal}
-    <div ref={pageScroll} className="h-full overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
+    <div ref={pageScroll} className="page-scroll h-full overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
       <div className="flex flex-col gap-3 p-3 pb-8 lg:h-full lg:pb-3">
         {error ? <RequestNotice onRetry={retry}>Couldn’t refresh this profile. Showing the last loaded data.</RequestNotice> : null}
         {/* Wide windows split the profile: who they are and where they rank on

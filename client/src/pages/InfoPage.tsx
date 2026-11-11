@@ -40,7 +40,7 @@ export default function InfoPage() {
     path: "/info",
   });
   return (
-    <div ref={scroll} className="h-full overflow-y-auto overflow-x-hidden">
+    <div ref={scroll} className="page-scroll h-full overflow-y-auto overflow-x-hidden">
       <div className="mx-auto grid w-full max-w-5xl gap-3 p-2 pb-12 sm:p-3 lg:grid-cols-[13rem_minmax(0,1fr)] lg:p-4">
         <nav aria-label="On this page" className="lg:sticky lg:top-4 lg:self-start">
           <div className={`${PANEL} px-3 py-3`}>
@@ -101,10 +101,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-11-10">November 10, 2026</time></p>
+            <p><time dateTime="2026-11-11">November 11, 2026</time></p>
             <ul>
-              <li>Faster matchup opening from the card, with visible bouts loaded ahead of time.</li>
-              <li>Full matchup comparison labels, with longer names wrapping onto another line.</li>
+              <li>Calendar events show estimated walkout times in your time zone, and the event link only once.</li>
+              <li>More accurate roster status for renamed fighters, fighters who share a name, and returns after a long break.</li>
+              <li>On phones, the parlay slip docks with the card navigation instead of covering it.</li>
             </ul>
           </Section>
         </div>

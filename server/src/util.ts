@@ -61,6 +61,25 @@ export function normName(name: string | null | undefined): string {
     .trim();
 }
 
+const NAME_SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv"]);
+const nameWords = (name: string) => normName(name).split(" ").filter(word => word && !NAME_SUFFIXES.has(word));
+
+/** Whether two spellings can name one person: the same words but for spacing
+ *  and suffixes ("Preston La Grange" and "LaGrange"), or the same first name
+ *  or its short form ("Zach" and "Zachary") with the shorter name's other
+ *  words in order inside the longer ("Jose Delgado" and "Jose Miguel
+ *  Delgado"). Callers add what tells namesakes apart. */
+export function namesAgree(a: string, b: string): boolean {
+  const [short, long] = [nameWords(a), nameWords(b)].sort((x, y) => x.length - y.length);
+  if (!short.length) return false;
+  if (short.join("") === long.join("")) return true;
+  const [first = "", ...rest] = short, [longFirst = "", ...longRest] = long;
+  if (!rest.length || givenName(first) !== givenName(longFirst)) return false;
+  let found = 0;
+  for (const word of longRest) if (word === rest[found]) found++;
+  return found === rest.length;
+}
+
 /** "michael venom page" -> "michael page": drops an embedded nickname. */
 export function firstLastName(name: string | null | undefined): string {
   const tokens = normName(name).split(" ").filter(Boolean);

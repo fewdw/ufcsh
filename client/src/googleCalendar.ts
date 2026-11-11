@@ -11,23 +11,31 @@ export type FeedStart = "early" | "main";
 const RETURN = "calendar";
 /** Back from signing in (still to ask Google), or back from Google. */
 export type Returning = "signin" | "google";
+/** A time zone name the browser knows, or null. */
+export function knownZone(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try { return new Intl.DateTimeFormat("en-US", { timeZone: value }).resolvedOptions().timeZone; }
+  catch { return null; }
+}
+
 /** This page again, marked to finish connecting with these options; one
- *  parameter (`calendar=google.ppv.main`), so no page reads it as its own. */
-export function returnUrl(cards: FeedCards, from: FeedStart, stage: Returning): string {
+ *  parameter (`calendar=google.ppv.main.America/New_York`), so no page reads it as its own. */
+export function returnUrl(cards: FeedCards, from: FeedStart, tz: string, stage: Returning): string {
   const url = new URL(window.location.href);
-  url.searchParams.set(RETURN, `${stage}.${cards}.${from}`);
+  url.searchParams.set(RETURN, `${stage}.${cards}.${from}.${tz}`);
   return url.toString();
 }
 /** The options a return from Google carries, taken off the address. */
-export function resumeGoogleCalendar(): { cards: FeedCards; from: FeedStart; stage: Returning } | null {
+export function resumeGoogleCalendar(): { cards: FeedCards; from: FeedStart; tz: string | null; stage: Returning } | null {
   const url = new URL(window.location.href);
-  const [stage, cards, from] = (url.searchParams.get(RETURN) ?? "").split(".");
+  const [stage, cards, from, ...zone] = (url.searchParams.get(RETURN) ?? "").split(".");
   if (stage !== "google" && stage !== "signin") return null;
   url.searchParams.delete(RETURN);
   window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
   return {
     cards: cards === "ppv" || cards === "fight_night" ? cards : "all",
     from: from === "main" ? "main" : "early",
+    tz: knownZone(zone.join(".")),
     stage,
   };
 }

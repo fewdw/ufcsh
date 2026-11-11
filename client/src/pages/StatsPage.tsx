@@ -982,7 +982,7 @@ export default function StatsPage() {
   if (!dashboard) return <div className="flex h-full items-center justify-center p-4 text-sm text-zinc-400">{error ? <RequestNotice onRetry={retry}>Couldn’t load statistics.</RequestNotice> : "No statistics yet."}</div>;
 
   return (
-    <div ref={pageScroll} className="h-full overflow-y-auto">
+    <div ref={pageScroll} className="page-scroll h-full overflow-y-auto">
       <main className="mx-auto max-w-[100rem] p-2 pb-8 sm:p-3">
         <h1 className="sr-only">UFC statistics and leaderboards</h1>
         <section className={`${shell} relative z-30 mb-2 px-2.5 py-2 sm:mb-3 sm:px-3`}>

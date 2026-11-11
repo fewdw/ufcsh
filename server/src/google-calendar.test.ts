@@ -37,7 +37,76 @@ test("connecting makes a UFC calendar of the reader's own and fills it with the 
     `POST /calendars/cal1%40group.calendar.google.com/events ufcsh${A}`,
     `POST /calendars/cal1%40group.calendar.google.com/events ufcsh${B}`,
   ]);
-  assert.deepEqual(store.status("u1"), { connected: true, cards: "all", from: "early", syncedAt: NOW, reconnect: false, cardCount: 2 });
+  assert.deepEqual(store.status("u1"), { connected: true, cards: "all", from: "early", tz: "America/Toronto", syncedAt: NOW, reconnect: false, cardCount: 2 });
+});
+
+test("the reader's time zone is kept, read back, and each pass builds the cards in it", async () => {
+  const db = new DatabaseSync(":memory:");
+  // A calendar connected before zones were kept.
+  db.exec(`CREATE TABLE scorers (user_id TEXT PRIMARY KEY); INSERT INTO scorers VALUES ('u1');
+    CREATE TABLE google_calendars (user_id TEXT PRIMARY KEY, calendar_id TEXT NOT NULL, cards TEXT NOT NULL, start TEXT NOT NULL,
+      created_at INTEGER NOT NULL, synced_at INTEGER, reconnect INTEGER NOT NULL DEFAULT 0, error TEXT, failing_since INTEGER);
+    INSERT INTO google_calendars (user_id, calendar_id, cards, start, created_at) VALUES ('u1', 'cal1', 'all', 'main', 1);`);
+  const asked: (string | null | undefined)[] = [];
+  const calls: string[] = [];
+  const store = new GoogleCalendars(db, async () => "token", async (_token, method, path) => {
+    calls.push(`${method} ${path}`);
+    return method === "GET" ? { timeZone: "America/Chicago" } : {};
+  }, (options) => {
+    asked.push(options.tz);
+    return [entry(A, 3)];
+  }, () => NOW);
+  assert.equal(store.status("u1").tz, null);
+  await store.syncAll();
+  assert.equal(store.status("u1").tz, "America/Chicago", "an older calendar takes the zone its Google calendar was made in");
+  await store.syncAll();
+  assert.equal(calls.filter((call) => call.startsWith("GET")).length, 1, "and asks Google for it once");
+  await store.connect("u1", { cards: "all", from: "main", tz: "America/New_York" }, "America/New_York");
+  assert.equal(store.status("u1").tz, "America/New_York", "a zone the reader picks replaces it");
+  await store.syncAll();
+  assert.deepEqual(asked, ["America/Chicago", "America/Chicago", "America/New_York", "America/New_York"]);
+  // An older page sends no zone of its own: its browser's zone is the reader's.
+  await store.connect("u1", { cards: "all", from: "main" }, "Europe/Paris");
+  assert.equal(store.status("u1").tz, "Europe/Paris");
+});
+
+test("an older calendar whose zone Google cannot give is synced without times, flagged, and asked again", async () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(`CREATE TABLE scorers (user_id TEXT PRIMARY KEY); INSERT INTO scorers VALUES ('u1');`);
+  const asked: (string | null | undefined)[] = [];
+  const state: { fail: GoogleError | null; zone: string; now: number } = { fail: new GoogleError(503, "backend"), zone: "Asia/Tokyo", now: NOW };
+  const store = new GoogleCalendars(db, async () => "token", async (_token, method) => {
+    if (method === "GET" && state.fail) throw state.fail;
+    return method === "GET" ? { timeZone: state.zone } : method === "POST" ? { id: "cal1" } : {};
+  }, (options) => { asked.push(options.tz); return [entry(A, 3)]; }, () => state.now);
+  const forget = () => db.prepare("UPDATE google_calendars SET zone = NULL").run();
+  await store.connect("u1", { cards: "all", from: "early" }, "UTC");
+  forget();
+  await store.syncAll();
+  state.now = NOW + 2 * 3_600_000;
+  await store.syncAll();
+  assert.equal(store.check().total, 1, "a lookup failing for an hour is on the Bugs board");
+  assert.match(String(store.check().items[0].facts.find(([name]) => name === "Error")?.[1]), /^Time zone: /);
+  state.fail = null;
+  await store.syncAll();
+  assert.deepEqual(asked.slice(1), [null, null, "Asia/Tokyo"]);
+  assert.equal(store.status("u1").tz, "Asia/Tokyo");
+  assert.equal((db.prepare("SELECT error FROM google_calendars").get() as { error: string | null }).error, null, "and cleared once read");
+
+  forget();
+  state.zone = "Mars/Olympus";
+  await store.syncAll();
+  assert.equal(store.status("u1").tz, "UTC", "a zone this runtime cannot read ends the lookup at UTC");
+
+  forget();
+  state.zone = undefined as unknown as string;
+  await store.syncAll();
+  assert.equal(store.status("u1").tz, null, "an answer without a zone is asked again, not taken as UTC");
+  assert.match(String((db.prepare("SELECT error FROM google_calendars").get() as { error: string }).error), /^Time zone: /);
+
+  state.fail = new GoogleError(403, "Insufficient Permission", "insufficientPermissions");
+  await store.syncAll();
+  assert.equal(store.status("u1").reconnect, true, "access taken back means reconnecting, as for any change");
 });
 
 test("a pass sends only what changed: new times updated, a dropped card removed, an old card left as a record", async () => {
@@ -106,7 +175,7 @@ test("without Google access nothing is made; removing takes the calendar out of 
   fail.set("DELETE /calendars/cal1%40group.calendar.google.com", new GoogleError(400, "Bad Request", "badRequest"));
   await store.disconnect("u1");
   assert.equal(store.status("u1").connected, false);
-  assert.deepEqual(store.status("u1"), { connected: false, cards: null, from: null, syncedAt: null, reconnect: false, cardCount: 0 });
+  assert.deepEqual(store.status("u1"), { connected: false, cards: null, from: null, tz: null, syncedAt: null, reconnect: false, cardCount: 0 });
 });
 
 test("a calendar Google keeps refusing reaches the Bugs board after an hour", async () => {
