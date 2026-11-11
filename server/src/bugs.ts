@@ -20,6 +20,7 @@ import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
+import { importVerdictPickCard } from "./verdict-picks.ts";
 import { deductionProblem, fightDeductionState, MMA_DECISIONS_BLOCKED, storedMedia, syncFightMediaScores, syncFightPointDeductions } from "./point-deductions.ts";
 import type { DeductionFight } from "./point-deduction-rules.ts";
 import { readCancelledBoardList, syncCancelledBouts } from "./cancelled-bouts.ts";
@@ -1298,6 +1299,26 @@ function verdictImportErrors(): BugCheck {
   ]);
 }
 
+/** Verdict MMA pick cards (`verdict-picks.ts`) whose last read failed. */
+function verdictPickErrors(): BugCheck {
+  const cards = db.prepare(`SELECT verdict_id, date, checked_at, error FROM verdict_pick_cards
+    WHERE error IS NOT NULL ORDER BY verdict_id DESC`).all() as { verdict_id: number; date: string | null; checked_at: number; error: string }[];
+  return check({
+    id: "verdict-pick-errors",
+    group: "Missing data",
+    label: "Verdict picks reads that failed",
+    description: "The last read of these Verdict cards' fan picks failed, so their bouts keep the picks of an earlier read, or none. Open cards are retried on their schedule and archive cards when the walk passes them; a retry here reads the card again now.",
+    grade: recent([[7, "must"], [365, "minor"]]),
+  }, cards.map(card => ({
+    key: `verdict-picks-${card.verdict_id}`,
+    title: `Verdict card ${card.verdict_id}`,
+    date: card.date ?? undefined,
+    facts: [["Error", card.error], ["Tried", ago(card.checked_at)]] as [string, string][],
+    links: [{ label: "Verdict card", href: `https://verdictmma.com/event/${card.verdict_id}` }],
+    actions: [{ id: "verdict-picks" as const, label: "Read picks again", target: `card:${card.verdict_id}` }],
+  })));
+}
+
 /** Tonight's safety net for `verdict-live.ts`: a read that goes wrong only
  * shows as a bout with no live state, on a card that otherwise imports fine. */
 function verdictLiveMissed(): BugCheck {
@@ -2376,6 +2397,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     fightsWithoutCommunityScores(),
     invalidCommunityScores(),
     verdictImportErrors(),
+    verdictPickErrors(),
     verdictLiveMissed(),
     suspiciousOdds(),
     wrongFighterPages(),
@@ -2470,7 +2492,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "event-crew" | "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "polymarket-data" | "deductions" | "media" | "antidoping" | "pay";
+export type BugActionId = "event-crew" | "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "verdict-picks" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "polymarket-data" | "deductions" | "media" | "antidoping" | "pay";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -2539,6 +2561,13 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
         ? (db.prepare("SELECT error FROM verdict_events WHERE verdict_id = ?").get(ids[0]) as { error: string | null } | undefined)?.error
         : (db.prepare("SELECT verdict_error AS error FROM fights WHERE id = ?").get(target) as { error: string | null } | undefined)?.error;
       return { ok: !error, message: error ? `Still failing: ${error}` : "Read again without errors." };
+    }
+    case "verdict-picks": {
+      const id = Number(target.slice(5));
+      try {
+        const result = await importVerdictPickCard(id);
+        return { ok: true, message: `Read ${result.bouts} bouts: ${result.matched} matched ours, ${result.stored} updated.` };
+      } catch (error) { return { ok: false, message: `Still failing: ${String(error)}` }; }
     }
     case "deductions": {
       const items = await syncFightPointDeductions(target);

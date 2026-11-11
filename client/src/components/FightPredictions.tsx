@@ -5,7 +5,7 @@ import { accountsEnabled, useAccount, useAuth } from "../auth";
 import { recallMine, rememberMine, useSessionUser } from "../profile";
 import { lastName } from "../format";
 import { METHOD_LABEL, predictionLabel, predictionPoints, sharePct } from "../predictions";
-import type { MyPrediction, PredictionDistribution, PredictionMethod, PredictionSummary } from "../predictions";
+import type { ExternalPicks, MyPrediction, PredictionDistribution, PredictionMethod, PredictionSummary } from "../predictions";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 import { BUTTON_PRIMARY_LARGE } from "../ui";
 
@@ -40,7 +40,10 @@ const SHADES: Record<string, [string, string]> = {
   ko: ["#1e40af", "#991b1b"], submission: ["#3b82f6", "#ef4444"],
   decision: ["#93c5fd", "#fca5a5"], none: ["#dbeafe", "#fee2e2"],
 };
-const picksWord = (count: number) => `${count} ${count === 1 ? "pick" : "picks"}`;
+const picksWord = (count: number) => `${count.toLocaleString()} ${count === 1 ? "pick" : "picks"}`;
+/** A count read off Verdict's prices may be a close estimate or a floor. */
+const countText = (count: number, kind?: ExternalPicks["totalKind"]) =>
+  `${kind === "approx" ? "~" : ""}${count.toLocaleString()}${kind === "atLeast" ? "+" : ""}`;
 
 /** A full pie from twelve o'clock: red's slices run clockwise from the top,
  *  blue's counter-clockwise, so the two corners meet at twelve and the split
@@ -118,23 +121,28 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
   const methods = distribution.methods;
   // Only picks that say when: a named round, or the distance (D). A finish
   // with no round named says nothing about when, so it is left out.
-  const decisions = (methods?: { method: PredictionMethod | null; count: number }[]) =>
-    methods?.find(entry => entry.method === "decision")?.count ?? 0;
+  // Verdict's picks name no round, so the chart counts only picks made here.
+  const external = distribution.external ?? null;
+  const decisions = (methods?: { method: PredictionMethod | null; count: number }[], outside = 0) =>
+    (methods?.find(entry => entry.method === "decision")?.count ?? 0) - outside;
   const rounds = [
     ...distribution.rounds.filter(entry => entry.round != null).map(entry => ({
       key: `r${entry.round}`, label: `Round ${entry.round}`, short: `${entry.round}`, count: entry.count,
       sides: distribution.fighters.map(side => side.rounds?.find(pick => pick.round === entry.round)?.count ?? 0),
     })),
-    { key: "decision", label: "Decision", short: "D", count: decisions(distribution.methods),
-      sides: distribution.fighters.map(side => decisions(side.methods)) },
+    { key: "decision", label: "Decision", short: "D",
+      count: decisions(distribution.methods, external ? external.f1.decision + external.f2.decision : 0),
+      sides: distribution.fighters.map((side, index) => decisions(side.methods, external?.[index === 0 ? "f1" : "f2"].decision)) },
   ];
   const timed = rounds.reduce((sum, entry) => sum + entry.count, 0);
-  const roundsKnown = scheduledRounds === 3 || scheduledRounds === 5;
+  const roundsKnown = (scheduledRounds === 3 || scheduledRounds === 5) && (!external || timed > 0);
   const byFighter = Boolean(f1?.methods && f2?.methods);
 
   return (
     <section className={PANEL_SHELL}>
-      <PanelHeading title="Community picks" divider={false} aside={<span className="text-xs tabular-nums text-zinc-500">{picksWord(total)}</span>} />
+      <PanelHeading title="Community picks" divider={false} aside={<span className="text-xs tabular-nums text-zinc-500">
+        {countText(total, external?.totalKind)} {total === 1 ? "pick" : "picks"}
+      </span>} />
       <div className={`grid gap-3 px-4 pb-4 sm:gap-6 sm:px-5 ${roundsKnown ? "grid-cols-3" : "grid-cols-2"}`}>
         <div className="flex min-w-0 flex-col items-center">
           <h3 className={SECTION_LABEL}>Winner</h3>
@@ -158,9 +166,13 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
           <div className="mt-1 flex justify-center gap-1.5 text-[10px] leading-none text-zinc-500" aria-hidden="true">
             {rounds.map(entry => <span key={entry.key} className="w-[15px] text-center">{entry.short}</span>)}
           </div>
-          <p className="mt-2 text-center text-[9px] leading-tight text-zinc-500">D = decision</p>
+          <p className="mt-2 text-center text-[9px] leading-tight text-zinc-500">{external ? "ufc.sh picks · " : ""}D = decision</p>
         </div> : null}
       </div>
+      {external ? <p className="-mt-1 px-4 pb-3 text-[11px] leading-4 text-zinc-500 sm:px-5">
+        Includes {countText(external.total, external.totalKind)} picks from{" "}
+        <a href={external.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-700 dark:decoration-zinc-600">{external.source}</a>
+      </p> : null}
     </section>
   );
 }

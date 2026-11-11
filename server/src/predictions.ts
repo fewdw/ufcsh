@@ -18,7 +18,25 @@ export type PredictionFight = {
    *  estimated start. */
   early_prelims_at?: number | null; prelims_at?: number | null; main_card_at?: number | null;
   title_type?: string | null;
+  /** Verdict MMA's fans' picks (verdict-picks.ts), in our corner order. */
+  verdict_picks_json?: string | null;
 };
+type MethodSplit = Record<PredictionMethod, number>;
+/** Picks made on Verdict MMA, as the community charts count them. */
+export type ExternalPicks = { source: string; sourceUrl: string; total: number; totalKind: "exact" | "approx" | "atLeast"; f1: MethodSplit; f2: MethodSplit };
+const METHODS: PredictionMethod[] = ["ko", "submission", "decision"];
+/** A stored Verdict split, or null unless every count is whole and they add up. */
+export function externalPicks(json: string | null | undefined): ExternalPicks | null {
+  let value: any;
+  try { value = json ? JSON.parse(json) : null; } catch { return null; }
+  const whole = (n: unknown) => Number.isSafeInteger(n) && (n as number) >= 0;
+  if (!value || !whole(value.total) || value.total < 1 || !["exact", "approx", "atLeast"].includes(value.totalKind)
+    || typeof value.sourceUrl !== "string" || ![value.f1, value.f2].every(side => METHODS.every(method => whole(side?.[method])))) return null;
+  const sum = METHODS.reduce((n, method) => n + value.f1[method] + value.f2[method], 0);
+  if (sum !== value.total) return null;
+  const split = (side: any): MethodSplit => ({ ko: side.ko, submission: side.submission, decision: side.decision });
+  return { source: String(value.source ?? "Verdict MMA"), sourceUrl: value.sourceUrl, total: value.total, totalKind: value.totalKind, f1: split(value.f1), f2: split(value.f2) };
+}
 /** `eventOpen` is false for cards further out than the predicting window. */
 export type PredictionContext = { fight: PredictionFight; bouts: PredictionFight[]; eventOpen?: boolean };
 type Pick = {
@@ -237,7 +255,11 @@ export class PredictionStore {
       for (const row of rows) counts.set(key(row), (counts.get(key(row)) ?? 0) + row.n);
       return counts;
     };
-    const total = rows.reduce((sum, row) => sum + row.n, 0);
+    // Picks made on Verdict MMA join ours for who and how. They say nothing
+    // about which round, so the round counts stay ours alone.
+    const external = externalPicks(bout?.verdict_picks_json);
+    const local = rows.reduce((sum, row) => sum + row.n, 0);
+    const total = local + (external?.total ?? 0);
     const fighters = tally(row => row.fighterId);
     const methods = tally(row => row.method as PredictionMethod | null);
     const rounds = tally(row => row.round);
@@ -247,15 +269,19 @@ export class PredictionStore {
     // that show both corners at once.
     const calls = tally(row => `${row.fighterId}|${row.method ?? ""}`);
     const finishes = tally(row => `${row.fighterId}|${row.round ?? ""}`);
-    const side = (fighterId: string, name: string) => ({
-      fighterId, name, count: fighters.get(fighterId) ?? 0,
-      methods: order.map(method => ({ method, count: calls.get(`${fighterId}|${method ?? ""}`) ?? 0 })),
+    const extra = (split: MethodSplit | undefined, method: PredictionMethod | null) => split && method ? split[method] : 0;
+    const side = (fighterId: string, name: string, split?: MethodSplit) => ({
+      fighterId, name, count: (fighters.get(fighterId) ?? 0) + METHODS.reduce((n, method) => n + extra(split, method), 0),
+      methods: order.map(method => ({ method, count: (calls.get(`${fighterId}|${method ?? ""}`) ?? 0) + extra(split, method) })),
       rounds: roundOrder.map(round => ({ round, count: finishes.get(`${fighterId}|${round ?? ""}`) ?? 0 })),
     });
     return {
       total,
-      fighters: [side(bout?.f1_id ?? "", bout?.f1_name ?? ""), side(bout?.f2_id ?? "", bout?.f2_name ?? "")],
-      methods: order.map(method => ({ method, count: methods.get(method) ?? 0 })),
+      /** Picks made here: all the round counts cover. */
+      local,
+      external,
+      fighters: [side(bout?.f1_id ?? "", bout?.f1_name ?? "", external?.f1), side(bout?.f2_id ?? "", bout?.f2_name ?? "", external?.f2)],
+      methods: order.map(method => ({ method, count: (methods.get(method) ?? 0) + extra(external?.f1, method) + extra(external?.f2, method) })),
       // Rounds only mean anything for a finish, so the bucket for "no round
       // named" counts the picks that could have named one and did not.
       rounds: roundOrder.map(round => ({ round, count: rounds.get(round) ?? 0 })),

@@ -12,9 +12,15 @@ export type PredictionResult = {
   /** What a pick is worth just for being made, right or wrong. */
   entry: number; fighter: number; method: number; round: number; reason: string | null;
 };
+type MethodSplit = Record<PredictionMethod, number>;
+/** Picks made on Verdict MMA, counted in with ours for who and how. */
+export type ExternalPicks = { source: string; sourceUrl: string; total: number; totalKind: "exact" | "approx" | "atLeast"; f1: MethodSplit; f2: MethodSplit };
 /** How everyone has called this bout, for the community charts. */
 export type PredictionDistribution = {
   total: number;
+  /** Picks made here, the only ones the round counts cover. */
+  local?: number;
+  external?: ExternalPicks | null;
   fighters: { fighterId: string; name: string; count: number; methods?: { method: PredictionMethod | null; count: number }[]; rounds?: { round: number | null; count: number }[] }[];
   methods: { method: PredictionMethod | null; count: number }[];
   rounds: { round: number | null; count: number }[];

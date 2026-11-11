@@ -9,8 +9,37 @@ saving. A fighter without a usable moneyline cannot be picked until odds arrive.
 
 One prediction is stored per user and fight in `scoring.db`, alongside their
 scorecards. Edits replace the previous pick. Removed picks retain a revision
-tombstone so a stale tab cannot restore them. No prediction data is imported or
-generated on behalf of users.
+tombstone so a stale tab cannot restore them. No prediction is imported or
+generated on behalf of a user; Verdict MMA's picks join only the community
+charts, as a total (below).
+
+## Verdict MMA picks
+
+Verdict MMA has taken fan picks on every UFC main card since UFC 205 (November
+2016) and on prelims too since 2024. `verdict-picks.ts` stores them on the bout
+(`fights.verdict_picks_json`, in our corner order), and the community picks
+panel adds them to ours for winner and method, crediting Verdict under the
+charts. The round chart stays ufc.sh picks only: Verdict's picks name a round,
+but it never says which. A bout is matched only when both fighters' names
+agree, because Verdict keeps picks on bouts whose opponent has since changed.
+
+Verdict publishes no counts. Its public `/api/v1/fight` prices every option as
+total ÷ picks on it, to two decimals (4.2 when nobody picked it), and names the
+most common exact ballot with its count. `verdictPickCounts`
+(`scrape/verdict-picks.ts`) finds the totals those prices allow:
+
+- `exact`: one total fits (most smaller cards, and many large ones).
+- `approx`: a decision is the top ballot, which pins the total to within 0.2%;
+  or the prices were read mid-update and fit no total.
+- `atLeast`: a finish is the top ballot and several totals fit; the panel
+  shows the smallest with a `+`. The split is accurate either way.
+
+Cards still taking picks are found hourly on Verdict's events page and read
+hourly, every ten minutes from the day before, until the card is over. Every
+other card is read once by a walk over Verdict's event ids, one per 30 seconds;
+`npm run backfill:verdict-picks` does the whole archive in about ten minutes.
+A card Verdict added after it was fought took no picks and never clears stored
+ones. Failed reads are in Admin → Bugs → Verdict picks reads that failed.
 
 ## Closing picks
 
