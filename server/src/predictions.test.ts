@@ -273,7 +273,7 @@ test("Verdict MMA's picks join ours for who and how, never for which round", t =
   const { bouts, store } = fixture(t);
   const bout = bouts[0];
   store.save(bout.id, "local-fan", pick(bout));
-  const verdict = { source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/1", total: 100, least: 100, exact: true,
+  const verdict = { format: 3, source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/1", total: 100, least: 100, exact: true,
     fits: true, fetchedAt: 1, final: true, f1Id: bout.f1_id, f2Id: bout.f2_id,
     f1: { ko: 10, submission: 5, decision: 45 }, f2: { ko: 20, submission: 0, decision: 20 } };
   bout.verdict_picks_json = JSON.stringify(verdict);
@@ -294,6 +294,17 @@ test("Verdict MMA's picks join ours for who and how, never for which round", t =
   // Stored with the corners the other way round, it is turned to this bout's.
   bout.verdict_picks_json = JSON.stringify({ ...verdict, f1Id: bout.f2_id, f2Id: bout.f1_id, f1: verdict.f2, f2: verdict.f1 });
   assert.deepEqual(store.summary(bout.id).distribution.fighters.map(side => side.count), [61, 40]);
+  // A split an older reader stored, or one whose prices fit no total, is not shown.
+  for (const stale of [{ format: 2 }, { fits: false }]) {
+    bout.verdict_picks_json = JSON.stringify({ ...verdict, ...stale });
+    assert.equal(store.summary(bout.id).total, 1);
+  }
+  // A split last read while picks were open is final once the bout is decided.
+  bout.verdict_picks_json = JSON.stringify({ ...verdict, final: false });
+  assert.equal(store.summary(bout.id).distribution.external?.final, false);
+  bout.f1_outcome = "win"; bout.f2_outcome = "loss";
+  assert.equal(store.summary(bout.id).distribution.external?.final, true);
+  bout.f1_outcome = null; bout.f2_outcome = null;
   // A new opponent on the same bout never inherits the old matchup's picks.
   bout.verdict_picks_json = JSON.stringify({ ...verdict, f2Id: "someone-else" });
   assert.equal(store.summary(bout.id).total, 1);

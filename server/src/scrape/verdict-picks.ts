@@ -16,7 +16,7 @@ export type VerdictPickSplit = { ko: number; submission: number; decision: numbe
  * `total` is what the counts add up to; `least` the fewest picks the prices
  * allow, and `exact` when that is the only total they allow. `fits` is false
  * when the prices fit no total at all (read mid-update, or Verdict changed how
- * it prices): the split is then proportional and the total an estimate.
+ * it prices): then there are no counts, and nothing is stored.
  */
 export type VerdictPicks = { total: number; least: number; exact: boolean; fits: boolean; f1: VerdictPickSplit; f2: VerdictPickSplit };
 export type VerdictPickBout = { eventId: number; fightNumber: number; f1Name: string; f2Name: string };
@@ -25,6 +25,8 @@ export type VerdictPickFight = VerdictPickBout & {
   date: string;
   /** 0 not started; 3 over, when the picks are final. */
   eventStatus: number;
+  /** Verdict's promotion for the card: "UFC", "UFCPrelims", "PFL"… */
+  association: string;
   /** Anyone picked this bout: cards Verdict added after the fact have none. */
   picked: boolean;
   picks: VerdictPicks | null;
@@ -45,17 +47,6 @@ const countsFor = (total: number, price: number): [number, number] => [
   Math.max(1, Math.ceil(total / (price + HALF_CENT) - 1e-9)),
   Math.floor(total / (price - HALF_CENT) + 1e-9),
 ];
-
-/** Whole counts that add up to `total` in proportion to `weights`. */
-function apportion(total: number, weights: number[]): number[] {
-  const sum = weights.reduce((a, b) => a + b, 0);
-  const raw = weights.map(weight => (weight / sum) * total);
-  const counts = raw.map(Math.floor);
-  const order = raw.map((value, index) => [value - counts[index], index] as const).sort((a, b) => b[0] - a[0]);
-  const short = total - counts.reduce((a, b) => a + b, 0);
-  for (let i = 0; i < short; i++) counts[order[i][1]] += 1;
-  return counts;
-}
 
 /**
  * The pick counts behind a bout's prices, in Verdict's corner order. Null when
@@ -161,29 +152,11 @@ export function verdictPickCounts(fight: any): VerdictPicks | null {
     const counts = assign(total, solutions[0].unpicked);
     return { total, least, exact: least === most, fits: true, f1: split(counts, 0), f2: split(counts, 1) };
   }
-  // Prices and the top ballot read a moment apart while picks are still
-  // coming in. Its own price still dates the total closely.
-  const total = Math.round(count * topBucket.price);
-  const least = Math.min(total, Math.floor(count * (topBucket.price - HALF_CENT)));
-  // The options priced 4.2 that leave each corner's own price best explained.
-  const unpicked = new Set(sides.flatMap((side, index) => {
-    const options = side.buckets.filter(b => b.price === UNPICKED && b !== topBucket);
-    // A corner nobody picked leaves the other priced at 1.00.
-    const target = side.price === UNPICKED && sides[1 - index].price <= 1 + HALF_CENT ? 0 : 1 / side.price;
-    let best: Bucket[] = [], miss = Infinity;
-    for (let mask = 0; mask < 1 << options.length; mask++) {
-      const dropped = options.filter((_b, index) => mask & (1 << index));
-      const share = side.buckets.reduce((sum, b) => sum + (dropped.includes(b) ? 0 : 1 / b.price), 0);
-      const off = Math.abs(share - target);
-      if (off < miss - 1e-9) { best = dropped; miss = off; }
-    }
-    return best;
-  }));
-  // A decision on top is one ballot, so its count is the published one.
-  const pinned = decisionTop && total > count ? all.indexOf(topBucket) : -1;
-  const counts = apportion(pinned < 0 ? total : total - count, all.map((b, index) => index === pinned || unpicked.has(b) ? 0 : 1 / b.price));
-  if (pinned >= 0) counts[pinned] = count;
-  return { total, least, exact: false, fits: false, f1: split(counts, 0), f2: split(counts, 1) };
+  // No total fits: prices and the top ballot read a moment apart while picks
+  // are still coming in, or Verdict changed how it prices. Nothing here is
+  // certain enough to show; the caller keeps what it had.
+  const none = { ko: 0, submission: 0, decision: 0 };
+  return { total: 0, least: 0, exact: false, fits: false, f1: none, f2: { ...none } };
 }
 
 const fighterName = (fighter: any) => cleanText(`${fighter?.fighterFirstName ?? ""} ${fighter?.fighterLastName ?? ""}`);
@@ -207,6 +180,7 @@ export function parseVerdictPickFight(json: any): VerdictPickFight | null {
     ...own,
     date: new Date(seconds * 1000).toISOString().slice(0, 10),
     eventStatus: Number(json?.event?.eventStatus ?? fight?.fighter1?.eventStatus ?? 0),
+    association: String(json?.event?.eventAssociation ?? fight?.fighter1?.eventAssociation ?? ""),
     picked: !!fight?.fightPoll?.fightBallots?.global,
     picks: verdictPickCounts(fight),
     card: card.length ? card : [own],

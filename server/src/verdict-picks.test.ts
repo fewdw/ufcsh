@@ -1,50 +1,120 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
-import { importVerdictPickCard } from "./verdict-picks.ts";
+import { importVerdictPickCard, rematchVerdictPicks } from "./verdict-picks.ts";
 
-test("Verdict picks land on the matching bout in our corner order and a pickless copy never clears them", async () => {
-  const fight = db.prepare(`SELECT f.id, f.f1_name, f.f2_name, e.date FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 1 AND e.date >= '2024-01-01' ORDER BY e.date DESC LIMIT 1`).get() as { id: string; f1_name: string; f2_name: string; date: string };
-  const person = (id: number, name: string) => {
-    const [first, ...rest] = name.split(" ");
-    return { fighterID: id, fighterFirstName: first, fighterLastName: rest.join(" ") };
-  };
-  // Verdict lists our second corner first.
-  const verdictBout = (eventId: number, picked: boolean) => ({
-    eventID: eventId, fightNumber: 2, roundsCount: 3, fighter1: person(1, fight.f2_name), fighter2: person(2, fight.f1_name),
-    fightPoll: picked ? {
-      fightBallots: { global: { fighterID: 2, fightVictoryTerms: 0, roundNumber: -1, count: 45 } },
-      rates: [[1, [5.71, 20, 26.67, 11.43]], [2, [1.21, 26.67, 4.44, 1.78]]].map(([fighterID, [multiplier, ko, sub, dec]]: any) => ({
-        fighterID, multiplier, subrates: [{ fightVictoryTerms: 2, multiplier: ko }, { fightVictoryTerms: 1, multiplier: sub }, { fightVictoryTerms: 0, multiplier: dec }],
-      })),
-    } : { fightBallots: { global: null }, rates: {} },
-  });
-  const stranger = (eventId: number) => ({ eventID: eventId, fightNumber: 3, fighter1: person(3, "Nobody Here"), fighter2: person(4, "Someone Else") });
-  const priorFetch = globalThis.fetch;
+type Fight = { id: string; event_id: string; f1_name: string; f2_name: string; f1_id: string; f2_id: string; date: string };
+const fight = () => db.prepare(`SELECT f.id, f.event_id, f.f1_name, f.f2_name, f.f1_id, f.f2_id, e.date FROM fights f JOIN events e ON e.id = f.event_id
+  WHERE e.complete = 1 AND e.date >= '2024-01-01' ORDER BY e.date DESC LIMIT 1`).get() as Fight;
+const person = (id: number, name: string) => {
+  const [first, ...rest] = name.split(" ");
+  return { fighterID: id, fighterFirstName: first, fighterLastName: rest.join(" ") };
+};
+const rates = (prices: [number, number[]][]) => prices.map(([fighterID, [multiplier, ko, sub, dec]]) => ({
+  fighterID, multiplier, subrates: [{ fightVictoryTerms: 2, multiplier: ko }, { fightVictoryTerms: 1, multiplier: sub }, { fightVictoryTerms: 0, multiplier: dec }],
+}));
+// RIZIN's Oshima–Kuziutina prices: exactly 80 picks, 45 on Verdict's second corner by decision.
+const picked = { fightBallots: { global: { fighterID: 2, fightVictoryTerms: 0, roundNumber: -1, count: 45 } },
+  rates: rates([[1, [5.71, 20, 26.67, 11.43]], [2, [1.21, 26.67, 4.44, 1.78]]]) };
+// The same prices with a top ballot read later, when more picks had come in: no total fits.
+const unfit = { ...picked, fightBallots: { global: { ...picked.fightBallots.global, count: 60 } } };
+const none = { fightBallots: { global: null }, rates: {} };
+
+/** Verdict, as `/api/v1/fight` answers: bout 2 is ours with our corners
+ * reversed (or another opponent), bout 3 is someone else's. */
+function mockVerdict(local: Fight, polls: Record<number, object>, opponent = local.f1_name, association = "UFC") {
+  const prior = globalThis.fetch;
   globalThis.fetch = async input => {
     const url = new URL(String(input));
     const eventId = Number(url.searchParams.get("eventID"));
     if (url.searchParams.get("fightNumber") !== "2") return new Response('{"message":"Fight not found"}', { status: 404 });
-    const own = verdictBout(eventId, eventId === 999999);
-    return Response.json({ fight: own, event: { eventDate: Date.parse(`${fight.date}T22:00:00Z`) / 1000, eventStatus: 3, fights: [stranger(eventId), own] } });
+    const own = { eventID: eventId, fightNumber: 2, roundsCount: 3, fighter1: person(1, local.f2_name), fighter2: person(2, opponent), fightPoll: polls[eventId] };
+    const stranger = { eventID: eventId, fightNumber: 3, fighter1: person(3, "Nobody Here"), fighter2: person(4, "Someone Else") };
+    return Response.json({ fight: own, event: { eventDate: Date.parse(`${local.date}T22:00:00Z`) / 1000, eventStatus: 3, eventAssociation: association, fights: [stranger, own] } });
   };
-  const ids = db.prepare("SELECT f1_id, f2_id FROM fights WHERE id = ?").get(fight.id) as { f1_id: string; f2_id: string };
+  return () => { globalThis.fetch = prior; };
+}
+const stored = (id: string) => {
+  const row = db.prepare("SELECT verdict_picks_json AS v FROM fights WHERE id = ?").get(id) as { v: string | null };
+  return row.v ? JSON.parse(row.v) : null;
+};
+
+test("Verdict picks land on the matching bout in our corner order and a pickless copy never clears them", async () => {
+  const local = fight();
+  const restore = mockVerdict(local, { 999999: picked, 999998: none });
   db.exec("BEGIN");
   try {
-    db.prepare("UPDATE fights SET verdict_picks_json = NULL WHERE id = ?").run(fight.id);
+    db.prepare("UPDATE fights SET verdict_picks_json = NULL WHERE id = ?").run(local.id);
     assert.deepEqual(await importVerdictPickCard(999999), { bouts: 2, matched: 1, stored: 1 });
-    const stored = () => JSON.parse((db.prepare("SELECT verdict_picks_json AS v FROM fights WHERE id = ?").get(fight.id) as { v: string }).v);
-    const { fetchedAt, ...rest } = stored();
+    const { fetchedAt, ...rest } = stored(local.id);
     assert.ok(fetchedAt > 0);
     assert.deepEqual(rest, {
-      source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/999999/fight/2", final: true, f1Id: ids.f1_id, f2Id: ids.f2_id,
+      format: 3, source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/999999/fight/2", final: true, f1Id: local.f1_id, f2Id: local.f2_id,
       total: 80, least: 80, exact: true, fits: true,
       f1: { ko: 3, submission: 18, decision: 45 }, f2: { ko: 4, submission: 3, decision: 7 },
     });
-    const card = db.prepare("SELECT date, final FROM verdict_pick_cards WHERE verdict_id = 999999").get() as { date: string; final: number };
-    assert.equal(card.final, 1);
+    assert.equal((db.prepare("SELECT final FROM verdict_pick_cards WHERE verdict_id = 999999").get() as { final: number }).final, 1);
     assert.equal((await importVerdictPickCard(999998)).stored, 0);
-    assert.equal(stored().total, 80);
-  } finally { globalThis.fetch = priorFetch; db.exec("ROLLBACK"); }
+    assert.equal(stored(local.id).total, 80);
+  } finally { restore(); db.exec("ROLLBACK"); }
+});
+
+test("a bout sharing one fighter and only a first name with ours is another matchup", async () => {
+  const local = fight();
+  // Ferguson–Johnson is not Ferguson–Chandler because both Michaels.
+  const restore = mockVerdict(local, { 999997: picked }, `${local.f1_name.split(" ")[0]} Unrelatedperson`);
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE fights SET verdict_picks_json = NULL WHERE id = ?").run(local.id);
+    assert.equal((await importVerdictPickCard(999997)).matched, 0);
+    assert.equal(stored(local.id), null);
+  } finally { restore(); db.exec("ROLLBACK"); }
+});
+
+test("another promotion's card is never matched to our bouts", async () => {
+  const local = fight();
+  const restore = mockVerdict(local, { 999994: picked }, local.f1_name, "PFL");
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE fights SET verdict_picks_json = NULL WHERE id = ?").run(local.id);
+    assert.deepEqual(await importVerdictPickCard(999994), { bouts: 2, matched: 0, stored: 0 });
+    assert.equal(stored(local.id), null);
+    assert.equal((db.prepare("SELECT final FROM verdict_pick_cards WHERE verdict_id = 999994").get() as { final: number }).final, 1);
+  } finally { restore(); db.exec("ROLLBACK"); }
+});
+
+test("prices that fit no total are never shown; a final read clears that bout's earlier split", async () => {
+  const local = fight();
+  const restore = mockVerdict(local, { 999996: picked });
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE fights SET verdict_picks_json = NULL WHERE id = ?").run(local.id);
+    await importVerdictPickCard(999996);
+    assert.equal(stored(local.id).total, 80);
+    restore();
+    const again = mockVerdict(local, { 999996: unfit });
+    try {
+      assert.equal((await importVerdictPickCard(999996)).stored, 1);
+      assert.equal(stored(local.id), null);
+      assert.equal((db.prepare("SELECT unfit FROM verdict_pick_cards WHERE verdict_id = 999996").get() as { unfit: number }).unfit, 1);
+    } finally { again(); }
+  } finally { restore(); db.exec("ROLLBACK"); }
+});
+
+test("a finished card read before our bout was loaded is matched and read when it is", async () => {
+  const local = fight();
+  const restore = mockVerdict(local, { 999995: picked });
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE fights SET verdict_picks_json = NULL WHERE id = ?").run(local.id);
+    db.prepare("UPDATE events SET date = '1990-01-01' WHERE id = ?").run(local.event_id);
+    assert.equal((await importVerdictPickCard(999995)).matched, 0);
+    assert.equal(await rematchVerdictPicks(), 0);
+    db.prepare("UPDATE events SET date = ? WHERE id = ?").run(local.date, local.event_id);
+    assert.equal(await rematchVerdictPicks(), 1);
+    assert.equal(stored(local.id).total, 80);
+    // Read once: a later pass fetches nothing more for it.
+    globalThis.fetch = async () => { throw new Error("no fetch expected"); };
+    assert.equal(await rematchVerdictPicks(), 0);
+  } finally { restore(); db.exec("ROLLBACK"); }
 });

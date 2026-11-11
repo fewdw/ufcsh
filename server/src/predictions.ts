@@ -30,14 +30,17 @@ export type ExternalPicks = {
   fetchedAt: number; final: boolean; f1: MethodSplit; f2: MethodSplit;
 };
 const METHODS: PredictionMethod[] = ["ko", "submission", "decision"];
+/** The shape `verdict-picks.ts` stores. Bumped when it changes: a split an
+ * older reader stored is not shown, and every card is read again. */
+export const VERDICT_PICKS_FORMAT = 3;
 /** A stored Verdict split for this bout, or null unless every count is whole,
  * they add up, and it was matched to these two fighters: a bout whose opponent
  * changed since never shows the old matchup's picks. */
-export function externalPicks(json: string | null | undefined, bout?: { f1_id: string; f2_id: string }): ExternalPicks | null {
+export function externalPicks(json: string | null | undefined, bout?: { f1_id: string; f2_id: string }, started = false): ExternalPicks | null {
   let value: any;
   try { value = json ? JSON.parse(json) : null; } catch { return null; }
   const whole = (n: unknown) => Number.isSafeInteger(n) && (n as number) >= 0;
-  if (!value || !bout || !whole(value.total) || value.total < 1 || !whole(value.least) || value.least > value.total
+  if (!value || !bout || value.format !== VERDICT_PICKS_FORMAT || value.fits !== true || !whole(value.total) || value.total < 1 || !whole(value.least) || value.least > value.total
     || typeof value.sourceUrl !== "string" || !/^https:\/\/verdictmma\.com\//.test(value.sourceUrl)
     || ![value.f1, value.f2].every(side => METHODS.every(method => whole(side?.[method])))) return null;
   if (METHODS.reduce((n, method) => n + value.f1[method] + value.f2[method], 0) !== value.total) return null;
@@ -45,7 +48,9 @@ export function externalPicks(json: string | null | undefined, bout?: { f1_id: s
   if (!same && !(value.f1Id === bout.f2_id && value.f2Id === bout.f1_id)) return null;
   const split = (side: any): MethodSplit => ({ ko: side.ko, submission: side.submission, decision: side.decision });
   return { source: String(value.source ?? "Verdict MMA"), sourceUrl: value.sourceUrl, total: value.total, least: value.least,
-    exact: value.exact === true, fetchedAt: Number(value.fetchedAt) || 0, final: value.final === true,
+    // Picks lock when the card starts, so a bout under way or over is final
+    // even if its last read came before Verdict said so.
+    exact: value.exact === true, fetchedAt: Number(value.fetchedAt) || 0, final: value.final === true || started,
     f1: split(same ? value.f1 : value.f2), f2: split(same ? value.f2 : value.f1) };
 }
 /** `eventOpen` is false for cards further out than the predicting window. */
@@ -268,7 +273,7 @@ export class PredictionStore {
     };
     // Picks made on Verdict MMA join ours for who and how. They say nothing
     // about which round, so the round counts stay ours alone.
-    const external = externalPicks(bout?.verdict_picks_json, bout);
+    const external = externalPicks(bout?.verdict_picks_json, bout, !!bout && (fightIsComplete(bout) || fightIsUnderway(bout)));
     const local = rows.reduce((sum, row) => sum + row.n, 0);
     const total = local + (external?.total ?? 0);
     const fighters = tally(row => row.fighterId);

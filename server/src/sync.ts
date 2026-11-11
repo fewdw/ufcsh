@@ -2132,7 +2132,7 @@ export function startScheduler(): void {
   setInterval(() => void guarded("verdict_scorecards", async () => { await syncVerdictScorecards(); }), 30_000);
   // Verdict MMA's fans' picks: cards still taking them, and a walk through
   // the archive one card at a time (verdict-picks.ts).
-  setInterval(() => void guarded("verdict_picks", () => syncVerdictPicks()), 30_000);
+  setInterval(() => void guarded("verdict_picks", async () => await syncVerdictPicks() || NOT_DUE), 30_000);
   // The bout being fought on Verdict: its rounds open ours, its fans' average
   // joins the Score tab (verdict-live.ts). Idle unless a card is on today.
   setInterval(() => void guarded("verdict_live", () => syncVerdictLive()), VERDICT_LIVE_MS);

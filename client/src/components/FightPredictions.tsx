@@ -53,7 +53,7 @@ function countLabel(local: number, external: ExternalPicks | null): string {
   const step = 10 ** Math.max(0, Math.floor(Math.log10(least)) - 2);
   return `${(Math.floor(least / step) * step).toLocaleString()}+ picks`;
 }
-/** When Verdict's still-open picks were last read. */
+/** When Verdict's not-yet-final picks were last read. */
 function updatedAgo(at: number, now = Date.now()): string {
   const minutes = Math.max(0, Math.round((now - at) / 60_000));
   return minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min ago` : minutes < 2_880 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1_440)} days ago`;
@@ -226,7 +226,7 @@ function CommunityPicks({ distribution, scheduledRounds, open }: { distribution:
         <ul>
           <SourceRow name={external.source} href={external.sourceUrl} count={countLabel(0, external)}
             split={[sum(external.f1), sum(external.f2)]}
-            detail={external.final ? null : `Picks still open there · updated ${updatedAgo(external.fetchedAt)}`} />
+            detail={external.final ? null : `Not final yet · read ${updatedAgo(external.fetchedAt)}`} />
           {local || open ? <SourceRow name="ufc.sh fans" count={local ? picksWord(local) : "No picks yet"}
             split={local ? localSplit : null} detail={when ? `When: ${when}` : null} /> : null}
         </ul>

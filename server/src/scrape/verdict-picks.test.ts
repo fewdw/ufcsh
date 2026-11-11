@@ -50,6 +50,11 @@ test("a finish on top only bounds the total from below", () => {
   assert.deepEqual(picks && [picks.total, picks.least, picks.exact], [4039, 4039, false]);
 });
 
+test("prices whose top ballot was read later fit no total and give no counts", () => {
+  const picks = verdictPickCounts(bout([2, 0, -1, 60], [5.71, 20, 26.67, 11.43], [1.21, 26.67, 4.44, 1.78]));
+  assert.deepEqual(picks && [picks.fits, picks.total, picks.least], [false, 0, 0]);
+});
+
 test("bouts without picks or with another sport's methods give no split", () => {
   const plain = bout([1, 0, -1, 5], [2, 4, 8, 8], [2, 4, 8, 8]);
   assert.equal(verdictPickCounts({ ...plain, fightPoll: { fightBallots: { global: null }, rates: {} } }), null);
