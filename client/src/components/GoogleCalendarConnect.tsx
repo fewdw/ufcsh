@@ -3,7 +3,7 @@ import { Check, LoaderCircle } from "lucide-react";
 import { useAccount, useAuth } from "../auth";
 import { storeLocal } from "../preferences";
 import { GoogleLogo } from "./calendarLogos";
-import { CALENDAR_TILE, GOOGLE_CALENDAR_SCOPE, returnUrl, type FeedCards, type FeedStart, type Returning } from "../googleCalendar";
+import { CALENDAR_TILE, GOOGLE_CALENDAR_SCOPE, knownZone, returnUrl, type FeedCards, type FeedStart, type Returning } from "../googleCalendar";
 
 /**
  * Connect Google Calendar: the server makes a calendar named UFC in the
@@ -14,11 +14,11 @@ import { CALENDAR_TILE, GOOGLE_CALENDAR_SCOPE, returnUrl, type FeedCards, type F
  * the return address and `resumeGoogleCalendar` finishes the job.
  */
 
-type Status = { connected: boolean; cards: FeedCards | null; from: FeedStart | null; syncedAt: number | null; reconnect: boolean; cardCount: number };
+type Status = { connected: boolean; cards: FeedCards | null; from: FeedStart | null; tz?: string | null; syncedAt: number | null; reconnect: boolean; cardCount: number };
 
 const SMALL_BUTTON = "inline-flex h-8 shrink-0 items-center rounded-lg px-2.5 text-xs font-medium transition";
 
-type OptionsLoaded = (cards: FeedCards, from: FeedStart) => void;
+type OptionsLoaded = (cards: FeedCards, from: FeedStart, tz: string | null) => void;
 
 /** The server's last answer for this account, kept in this browser so the
  *  dialog opens showing the calendar as it was rather than filling it in a
@@ -60,10 +60,10 @@ function useGoogleCalendar(onOptionsLoaded: OptionsLoaded) {
     if (!isLoaded || !userId) { setStatus(null); return; }
     const saved = remembered(userId);
     setStatus(saved);
-    if (saved?.connected && saved.cards && saved.from) onOptionsLoaded(saved.cards, saved.from);
+    if (saved?.connected && saved.cards && saved.from) onOptionsLoaded(saved.cards, saved.from, saved.tz ?? null);
     let active = true;
     void call("GET").then((saved) => {
-      if (active && saved.connected && saved.cards && saved.from) onOptionsLoaded(saved.cards, saved.from);
+      if (active && saved.connected && saved.cards && saved.from) onOptionsLoaded(saved.cards, saved.from, saved.tz ?? null);
     }).catch(() => {});
     return () => { active = false; };
   }, [isLoaded, userId, call, onOptionsLoaded]);
@@ -76,7 +76,7 @@ function useGoogleCalendar(onOptionsLoaded: OptionsLoaded) {
     if (userId && status) storeLocal(rememberedKey(userId), JSON.stringify(status));
   }, [userId, status]);
 
-  const connect = useCallback(async (cards: FeedCards, from: FeedStart, returning = false) => {
+  const connect = useCallback(async (cards: FeedCards, from: FeedStart, tz: string, returning = false) => {
     if (!user) return;
     setBusy(true);
     setAdding(true);
@@ -84,12 +84,12 @@ function useGoogleCalendar(onOptionsLoaded: OptionsLoaded) {
     let leaving = false;
     try {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const result = await call("PUT", { cards, from, timeZone });
+      const result = await call("PUT", { cards, from, tz, timeZone });
       if (result.needsGoogle) {
         if (returning) setError("Google didn't give UFC.sh access to add the calendar. Try again and allow it.");
         else {
           const account = user.externalAccounts.find((external) => external.provider === "google");
-          await toGoogle(account ?? null, cards, from);
+          await toGoogle(account ?? null, cards, from, tz);
           leaving = true;
         }
       }
@@ -100,8 +100,8 @@ function useGoogleCalendar(onOptionsLoaded: OptionsLoaded) {
       setAdding(leaving);
     }
 
-    async function toGoogle(external: NonNullable<typeof user>["externalAccounts"][number] | null, c: FeedCards, f: FeedStart) {
-      const redirectUrl = returnUrl(c, f, "google");
+    async function toGoogle(external: NonNullable<typeof user>["externalAccounts"][number] | null, c: FeedCards, f: FeedStart, z: string) {
+      const redirectUrl = returnUrl(c, f, z, "google");
       const next = external
         ? await external.reauthorize({ additionalScopes: [GOOGLE_CALENDAR_SCOPE], redirectUrl })
         : await user!.createExternalAccount({ strategy: "oauth_google", redirectUrl, additionalScopes: [GOOGLE_CALENDAR_SCOPE] });
@@ -131,8 +131,8 @@ function updatedAgo(at: number | null): string {
 /** Google's button in the subscription's row of apps, and what goes under the
  *  row: the connected calendar, with a way to move it to the options above or
  *  take it out. */
-export function GoogleCalendarConnect({ cards, from, returning, onOptionsLoaded, children }: {
-  cards: FeedCards; from: FeedStart; returning: Returning | null; onOptionsLoaded: OptionsLoaded;
+export function GoogleCalendarConnect({ cards, from, tz, returning, onOptionsLoaded, children }: {
+  cards: FeedCards; from: FeedStart; tz: string; returning: Returning | null; onOptionsLoaded: OptionsLoaded;
   children: (google: ReactNode, below: ReactNode) => ReactNode;
 }) {
   const { signInWithGoogle } = useAccount();
@@ -142,8 +142,8 @@ export function GoogleCalendarConnect({ cards, from, returning, onOptionsLoaded,
   useEffect(() => {
     if (!returning || resumed.current || !signedIn) return;
     resumed.current = true;
-    void connect(cards, from, returning === "google");
-  }, [returning, signedIn, connect, cards, from]);
+    void connect(cards, from, tz, returning === "google");
+  }, [returning, signedIn, connect, cards, from, tz]);
 
   const connected = Boolean(status?.connected && !status.reconnect);
   const google = connected && !adding
@@ -158,15 +158,18 @@ export function GoogleCalendarConnect({ cards, from, returning, onOptionsLoaded,
     </a>
     : <button type="button" disabled={adding || signingIn} className={CALENDAR_TILE}
       onClick={() => {
-        if (signedIn) return void connect(cards, from);
+        if (signedIn) return void connect(cards, from, tz);
         // Signed out: straight to Google to sign in, then back here to add it.
         setSigningIn(true);
-        signInWithGoogle(returnUrl(cards, from, "signin")).catch(() => setSigningIn(false));
+        signInWithGoogle(returnUrl(cards, from, tz, "signin")).catch(() => setSigningIn(false));
       }}>
       {adding || signingIn ? <LoaderCircle className="h-5 w-5 shrink-0 animate-spin text-zinc-400" aria-hidden="true" /> : <GoogleLogo />}
       <span className="truncate">{adding || signingIn ? "Adding…" : status?.reconnect ? "Reconnect" : "Google"}</span>
     </button>;
-  const moved = connected && !adding && (status!.cards !== cards || status!.from !== from);
+  // A calendar connected before zones were kept gets the reader's own zone on
+  // its own, so only picking another one is a change to send.
+  const zoneMoved = status?.tz ? knownZone(status.tz) !== knownZone(tz) : knownZone(tz) !== knownZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const moved = connected && !adding && (status!.cards !== cards || status!.from !== from || zoneMoved);
   const below = <>
     {connected && !adding ? <div className="mt-2 flex items-center gap-2 rounded-xl bg-zinc-50 py-1 pl-3 pr-1 text-xs text-zinc-600">
       <span className="min-w-0 flex-1 truncate" title={updatedAgo(status!.syncedAt)}>
@@ -179,7 +182,7 @@ export function GoogleCalendarConnect({ cards, from, returning, onOptionsLoaded,
     </div> : status?.reconnect ? <p className="mt-2 text-[11px] leading-4 text-zinc-500">
       Google stopped letting UFC.sh update your UFC calendar. Reconnect to keep it current.
     </p> : null}
-    {moved ? <button type="button" disabled={busy} onClick={() => void connect(cards, from)}
+    {moved ? <button type="button" disabled={busy} onClick={() => void connect(cards, from, tz)}
       className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-900 text-xs font-medium text-white transition hover:bg-zinc-700 disabled:opacity-60">
       {busy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}
       Use these options in Google

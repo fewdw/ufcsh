@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
 import {
-  calendarEntry, calendarFeed, calendarOptions, calendarQuery, eventCalendarFile, foldLine, googleCalendarUrl,
+  calendarEntry, calendarFeed, calendarOptions, calendarQuery, calendarZone, eventCalendarFile, foldLine, googleCalendarUrl,
   type EventRow, type FightRow,
 } from "./calendar.ts";
 
@@ -34,6 +34,37 @@ test("a card starts at the chosen section and lists its bouts from the main card
   assert.match(calendarEntry(event(fullTimes), split, "early")!.description, /Early prelims\nRed 4 vs\. Blue 4/);
 });
 
+test("with the reader's time zone, each bout carries its estimated walkout there", () => {
+  // Main card at 02:00 UTC in November: 9 PM in New York (EST), 2 AM in
+  // London, 12:30 PM in Adelaide (summer time).
+  const main = Date.UTC(2099, 10, 15, 2);
+  const late = { early_prelims_at: main - 4 * HOUR, prelims_at: main - 2 * HOUR, main_card_at: main };
+  const entry = calendarEntry(event(late), split, "prelims", null, "America/New_York")!;
+  assert.equal(entry.description, [
+    // Red 1 opens the main card; the five-round main event follows 30 minutes later.
+    "Main card\nRed 0 vs. Blue 0 (9:30PM EST)\nRed 1 vs. Blue 1 (9:00PM EST)",
+    // Two hours for two bouts: 30 minutes each, from 7 PM.
+    "Prelims\nRed 2 vs. Blue 2 (7:30PM EST)\nRed 3 vs. Blue 3 (7:00PM EST)",
+    "https://ufc.sh/events/face0000000000c1",
+  ].join("\n\n"));
+  assert.match(calendarEntry(event(late), split, "main", null, "Australia/Adelaide")!.description, /Red 1 vs\. Blue 1 \(12:30PM GMT\+10:30\)/);
+  assert.match(calendarEntry(event(late), split, "main", null, "Europe/London")!.description, /Red 1 vs\. Blue 1 \(2:00AM GMT\)/);
+  assert.doesNotMatch(calendarEntry(event(late), split, "main")!.description, /\(/, "no zone, no times");
+  assert.doesNotMatch(calendarEntry({ ...event(late), complete: 1 }, split, "main", null, "America/New_York")!.description, /EST/,
+    "a card that is over keeps its bouts without estimates");
+  const unplaced = calendarEntry(event(late), [fight(0, "main"), fight(1, null)], "main", null, "America/New_York")!;
+  assert.doesNotMatch(unplaced.description, /EST/, "no estimate while a bout is unplaced, as on the event page");
+});
+
+test("only time zones the runtime knows are accepted, by their canonical name", () => {
+  assert.equal(calendarZone("America/New_York"), "America/New_York");
+  assert.equal(calendarZone("america/new_york"), "America/New_York");
+  assert.equal(calendarZone("UTC"), "UTC");
+  assert.equal(calendarZone("Mars/Olympus"), null);
+  assert.equal(calendarZone(""), null);
+  assert.equal(calendarZone(null), null);
+});
+
 test("a section without a start time starts the card at the next one; no time at all leaves it out", () => {
   const noEarly = { prelims_at: EARLY + 2 * HOUR, main_card_at: EARLY + 4 * HOUR };
   assert.equal(calendarEntry(event(noEarly), split, "early")!.start, EARLY + 2 * HOUR);
@@ -60,6 +91,8 @@ test("feed options keep one address per feed, unknown values falling back", () =
   assert.equal(calendarQuery(calendarOptions(new URLSearchParams("cards=all&from=early"))), "");
   assert.equal(calendarQuery(calendarOptions(new URLSearchParams("from=main&cards=ppv&x=1"))), "cards=ppv&from=main");
   assert.equal(calendarQuery(calendarOptions(new URLSearchParams("cards=nope&from=late"))), "");
+  assert.equal(calendarQuery(calendarOptions(new URLSearchParams("from=main&tz=america/new_york"))), "from=main&tz=America%2FNew_York");
+  assert.equal(calendarQuery(calendarOptions(new URLSearchParams("tz=Nowhere/Else"))), "");
 });
 
 test("the feed is a UFC calendar with each timed card once, filtered by tier", t => {
@@ -85,6 +118,9 @@ test("the feed is a UFC calendar with each timed card once, filtered by tier", t
   assert.match(feed, new RegExp(`UID:event-${ids.ppv}@ufc.sh\\r\\nDTSTAMP:\\d{8}T\\d{6}Z\\r\\nDTSTART:20991025T000000Z`), "starts at the prelims");
   assert.match(feed, /SUMMARY:UFC 999: Alpha\\, the Great vs\. Beta/);
   assert.match(feed, new RegExp(`UID:event-${ids.night}@`));
+  assert.doesNotMatch(feed, /\r\nURL:/, "the link is in the description only, so Apple Calendar shows it once");
+  assert.match(calendarFeed(calendarOptions(new URLSearchParams("tz=America/New_York"))), /Alpha vs\. Beta \(10:00PM EDT\)/,
+    "with a zone, the feed's bouts carry walkout times");
   assert.doesNotMatch(feed, new RegExp(ids.untimed), "a card without a start time waits for one");
 
   const ppv = calendarFeed(calendarOptions(new URLSearchParams("cards=ppv")));
@@ -100,6 +136,9 @@ test("a single card is a file of its own and a filled-in Google Calendar event",
   const file = eventCalendarFile(entry, EARLY);
   assert.match(file, /UID:card-face0000000000c1@ufc\.sh/);
   assert.doesNotMatch(file, /X-WR-CALNAME/, "a file adds to a calendar the reader picks, not one of its own");
+  const unfolded = file.replace(/\r\n /g, "");
+  assert.equal(unfolded.split("https://ufc.sh/events/face0000000000c1").length - 1, 1, "the link appears once, in the description");
+  assert.doesNotMatch(unfolded, /\r\nURL:/);
   const url = new URL(googleCalendarUrl(entry));
   assert.equal(url.searchParams.get("dates"), "20991025T020000Z/20991025T031000Z");
   assert.equal(url.searchParams.get("text"), "UFC 999: Alpha vs. Beta");

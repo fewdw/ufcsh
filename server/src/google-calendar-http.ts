@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { RateLimiter, clientAddress } from "./api-policy.ts";
-import { calendarOptions } from "./calendar.ts";
+import { calendarOptions, calendarZone } from "./calendar.ts";
 import { GoogleError, type GoogleCalendars } from "./google-calendar.ts";
 import { authenticateScorer, scoringOrigins } from "./scoring-http.ts";
 import { ScoringError } from "./scoring.ts";
@@ -9,11 +9,7 @@ import { reportFailure } from "./request-failures.ts";
 const MAX_BODY = 1024;
 
 /** A time zone the browser named, or UTC. */
-function timeZoneOf(value: unknown): string {
-  if (typeof value !== "string" || value.length > 64) return "UTC";
-  try { return new Intl.DateTimeFormat("en", { timeZone: value }).resolvedOptions().timeZone; }
-  catch { return "UTC"; }
-}
+const timeZoneOf = (value: unknown): string => (typeof value === "string" ? calendarZone(value) : null) ?? "UTC";
 
 /** `/api/calendar/google`: the reader's connected UFC calendar. GET reads it,
  *  PUT connects it or changes its options, DELETE removes it from Google. */
@@ -53,7 +49,10 @@ export function createGoogleCalendarHandler(store: GoogleCalendars, ensureAccoun
       const params = new URLSearchParams();
       for (const key of ["cards", "from"]) if (typeof body[key] === "string") params.set(key, body[key] as string);
       ensureAccount(user);
-      const granted = await store.connect(user, calendarOptions(params), timeZoneOf(body.timeZone));
+      // The zone is kept as the browser spelled it (when valid), so the page
+      // can tell it apart from a new pick whatever alias its engine uses.
+      const tz = typeof body.tz === "string" && calendarZone(body.tz) ? body.tz : null;
+      const granted = await store.connect(user, { ...calendarOptions(params), tz }, timeZoneOf(body.timeZone));
       if (!granted) return send({ ...store.status(user), error: "Allow UFC.sh to add a calendar in Google first.", needsGoogle: true }, 403), true;
       send(store.status(user));
     } catch (error) {
