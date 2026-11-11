@@ -101,10 +101,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-11-10">November 10, 2026</time></p>
+            <p><time dateTime="2026-11-11">November 11, 2026</time></p>
             <ul>
-              <li>Faster matchup opening from the card, with visible bouts loaded ahead of time.</li>
-              <li>Full matchup comparison labels, with longer names wrapping onto another line.</li>
+              <li>Calendar events show estimated walkout times in your time zone, and the event link only once.</li>
+              <li>More accurate roster status for renamed fighters, fighters who share a name, and returns after a long break.</li>
+              <li>On phones, the parlay slip docks with the card navigation instead of covering it.</li>
             </ul>
           </Section>
         </div>
