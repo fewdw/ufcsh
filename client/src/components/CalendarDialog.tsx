@@ -8,7 +8,7 @@ import { accountsEnabled } from "../auth";
 import { segmentedIdle, segmentedSelected } from "./segmented";
 import { AppleLogo, GoogleLogo, OutlookLogo } from "./calendarLogos";
 import { GoogleCalendarConnect } from "./GoogleCalendarConnect";
-import { CALENDAR_TILE, resumeGoogleCalendar, type FeedCards as Cards, type FeedStart, type Returning } from "../googleCalendar";
+import { CALENDAR_TILE, knownZone, resumeGoogleCalendar, type FeedCards as Cards, type FeedStart, type Returning } from "../googleCalendar";
 
 /**
  * Cards in the reader's calendar app. One card, from the section they choose,
@@ -54,8 +54,7 @@ function feedPath(cards: Cards, from: FeedStart, tz: string): string {
   if (cards !== "all") params.set("cards", cards);
   if (from !== "early") params.set("from", from);
   params.set("tz", tz);
-  const query = params.toString();
-  return `/cal/ufc.ics${query ? `?${query}` : ""}`;
+  return `/cal/ufc.ics?${params}`;
 }
 
 function Segmented<T extends string>({ label, value, options, onChange }: {
@@ -102,17 +101,13 @@ function Actions({ google, apple, outlook }: { google: ReactNode; apple: ReactNo
 }
 
 function CardPanel({ event, onSubscribe }: { event: CalendarEvent; onSubscribe: () => void }) {
-  // Walkout times in the calendar entry are written in this zone, the reader's
-  // own unless they pick another; it is not remembered.
-  const [own] = useState(localZone);
-  const [zone, setZone] = useState(own);
   // Only the sections this card has times for; without early prelims the
   // prelims are its full card.
   const options = ORDER.filter((segment) => startOf(event.schedule, segment) != null)
     .map((segment, index) => ({
       value: segment,
       label: index === 0 ? "Full card" : START_OPTIONS.find((option) => option.value === segment)!.label,
-      detail: clockTimeWithZone(startOf(event.schedule, segment), zone),
+      detail: clockTimeWithZone(startOf(event.schedule, segment)),
     }));
   const remembered = readPreference<CardSegment>("calendar:from", "early", parseStart);
   const [from, setFrom] = useState<CardSegment>(() =>
@@ -122,14 +117,13 @@ function CardPanel({ event, onSubscribe }: { event: CalendarEvent; onSubscribe: 
     writePreference("calendar:from", value === options[0]?.value ? "early" : value, "early");
   };
   const start = startOf(event.schedule, from);
-  const day = start == null ? null : new Date(start).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: zone });
-  const query = `?${new URLSearchParams({ from, tz: zone })}`;
+  const day = start == null ? null : new Date(start).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const query = `?from=${from}`;
   const file = `/cal/events/${event.id}.ics${query}`;
   return <div className="space-y-4 px-5 py-4">
     {options.length > 1 ? <Segmented label="Include" value={from} options={options} onChange={choose} /> : null}
-    <ZonePicker value={zone} own={own} onChange={setZone} />
     {start != null ? <p className="text-xs text-zinc-500">
-      Starts <span className="font-medium text-zinc-800">{day}, {clockTimeWithZone(start, zone)}</span>, with every bout and its estimated walkout time listed in the event.
+      Starts <span className="font-medium text-zinc-800">{day}, {clockTimeWithZone(start)}</span>, with every bout listed in the event.
     </p> : null}
     <div>
       <Actions
@@ -168,7 +162,8 @@ function SubscribePanel({ resume }: { resume?: Resume }) {
     if (resume || edited.current) return;
     setCards(savedCards);
     setFrom(savedFrom);
-    if (savedTz) setTz(savedTz);
+    const zone = knownZone(savedTz);
+    if (zone) setTz(zone);
   }, [resume]);
   const [copied, setCopied] = useState(false);
   const input = useRef<HTMLInputElement>(null);

@@ -120,8 +120,8 @@ export class GoogleCalendars {
         PRIMARY KEY (user_id, event_id)
       );
     `);
-    // The zone walkout times are written in; calendars connected before it
-    // have none, and so no times until the reader picks one.
+    // The zone walkout times are written in. A calendar connected before it
+    // has none until its first pass reads its Google calendar's zone.
     if (!(db.prepare("PRAGMA table_info(google_calendars)").all() as { name: string }[]).some((column) => column.name === "zone")) {
       db.exec("ALTER TABLE google_calendars ADD COLUMN zone TEXT");
     }
@@ -224,19 +224,24 @@ export class GoogleCalendars {
     const row = this.row(user);
     if (!row) return;
     let zone = row.zone;
+    let lookupFailed: string | null = null;
     if (zone == null) {
       // Connected before zones were kept: its Google calendar was made in the
-      // reader's browser zone, so walkout times are written in that, once.
-      token ??= await this.token(user) ?? undefined;
-      if (!token) return this.needsReconnect(user);
+      // reader's browser zone, so walkout times are written in that, read
+      // once. One Google can name but this runtime cannot is UTC.
       try {
-        zone = calendarZone((await this.request(token, "GET", `/calendars/${encodeURIComponent(row.calendar_id)}`))?.timeZone ?? null);
+        token ??= await this.token(user) ?? undefined;
+        if (!token) return this.needsReconnect(user);
+        const calendar = await this.request(token, "GET", `/calendars/${encodeURIComponent(row.calendar_id)}`);
+        zone = calendarZone(typeof calendar?.timeZone === "string" ? calendar.timeZone : null) ?? "UTC";
+        this.db.prepare("UPDATE google_calendars SET zone = ? WHERE user_id = ? AND zone IS NULL").run(zone, user);
       } catch (error) {
-        if (error instanceof GoogleError && error.status === 401) return this.needsReconnect(user);
+        if (error instanceof GoogleError && (error.status === 401 || (error.status === 403 && /insufficient|forbidden/i.test(error.reason)))) return this.needsReconnect(user);
         if (error instanceof GoogleError && error.status === 404) return this.forget(user);
-        // Anything else: without times this pass, asked again on the next.
+        // Anything else: synced without times this pass, asked again on the
+        // next, and on the Bugs board if it goes on for an hour.
+        lookupFailed = `Time zone: ${error instanceof Error ? error.message : String(error)}`;
       }
-      if (zone) this.db.prepare("UPDATE google_calendars SET zone = ? WHERE user_id = ? AND zone IS NULL").run(zone, user);
     }
     const options: CalendarOptions = { cards: row.cards, from: row.start, tz: zone };
     const key = calendarQuery(options);
@@ -257,7 +262,7 @@ export class GoogleCalendars {
     const aged = [...sent.values()].filter((r) => !wanted.has(r.event_id) && r.date < kept);
     for (const r of aged) this.db.prepare("DELETE FROM google_calendar_events WHERE user_id = ? AND event_id = ?").run(user, r.event_id);
     if (!changed.length && !removed.length) {
-      this.settled(user);
+      this.settled(user, lookupFailed);
       return;
     }
 
@@ -288,20 +293,28 @@ export class GoogleCalendars {
         }),
       ];
       await runLimited(tasks, PARALLEL);
-      this.settled(user);
+      this.settled(user, lookupFailed);
     } catch (error) {
       if (error instanceof GoogleError && error.status === 401) return this.needsReconnect(user);
       if (error instanceof GoogleError && error.status === 403 && /insufficient|forbidden/i.test(error.reason)) return this.needsReconnect(user);
       // The reader deleted the UFC calendar in Google: theirs to remove.
       if (error instanceof GoogleError && error.status === 404) return this.forget(user);
-      const message = error instanceof Error ? error.message : String(error);
-      this.db.prepare("UPDATE google_calendars SET error = ?, failing_since = COALESCE(failing_since, ?) WHERE user_id = ?").run(message.slice(0, 300), now, user);
+      this.failing(user, error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
 
-  private settled(user: string) {
-    this.db.prepare("UPDATE google_calendars SET synced_at = ?, error = NULL, failing_since = NULL WHERE user_id = ?").run(this.now(), user);
+  private failing(user: string, message: string) {
+    this.db.prepare("UPDATE google_calendars SET error = ?, failing_since = COALESCE(failing_since, ?) WHERE user_id = ?").run(message.slice(0, 300), this.now(), user);
+  }
+
+  /** A pass that went through; one that could not read the zone still counts
+   *  as failing, so the Bugs board shows it. */
+  private settled(user: string, problem: string | null = null) {
+    if (problem) {
+      this.db.prepare("UPDATE google_calendars SET synced_at = ? WHERE user_id = ?").run(this.now(), user);
+      this.failing(user, problem);
+    } else this.db.prepare("UPDATE google_calendars SET synced_at = ?, error = NULL, failing_since = NULL WHERE user_id = ?").run(this.now(), user);
   }
 
   private needsReconnect(user: string) {

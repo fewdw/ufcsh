@@ -50,6 +50,8 @@ test("with the reader's time zone, each bout carries its estimated walkout there
   assert.match(calendarEntry(event(late), split, "main", null, "Australia/Adelaide")!.description, /Red 1 vs\. Blue 1 \(12:30PM GMT\+10:30\)/);
   assert.match(calendarEntry(event(late), split, "main", null, "Europe/London")!.description, /Red 1 vs\. Blue 1 \(2:00AM GMT\)/);
   assert.doesNotMatch(calendarEntry(event(late), split, "main")!.description, /\(/, "no zone, no times");
+  assert.doesNotMatch(calendarEntry({ ...event(late), complete: 1 }, split, "main", null, "America/New_York")!.description, /EST/,
+    "a card that is over keeps its bouts without estimates");
   const unplaced = calendarEntry(event(late), [fight(0, "main"), fight(1, null)], "main", null, "America/New_York")!;
   assert.doesNotMatch(unplaced.description, /EST/, "no estimate while a bout is unplaced, as on the event page");
 });

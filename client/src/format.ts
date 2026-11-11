@@ -185,18 +185,12 @@ export function clockTime(timestamp: number | null | undefined): string | null {
   return Number.isNaN(date.getTime()) ? null : CLOCK.format(date);
 }
 
-/** A start time in the reader's own zone, or in `timeZone` when given, named:
- *  "9 PM EDT", "8:30 PM GMT+1". */
-export function clockTimeWithZone(timestamp: number | null | undefined, timeZone?: string): string | null {
+/** A start time in the reader's own zone, named: "9 PM EDT", "8:30 PM GMT+1". */
+export function clockTimeWithZone(timestamp: number | null | undefined): string | null {
   if (timestamp == null || !Number.isFinite(timestamp) || timestamp <= 0) return null;
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return null;
-  if (!timeZone) return (date.getMinutes() !== 0 ? CLOCK_ZONE : HOUR_ZONE).format(date);
-  const parts = new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit", timeZoneName: "short", timeZone }).formatToParts(date);
-  // On the hour, the minutes are left out, as in the reader's own zone.
-  return parts.some((part) => part.type === "minute" && part.value === "00")
-    ? new Intl.DateTimeFormat([], { hour: "numeric", timeZoneName: "short", timeZone }).format(date)
-    : parts.map((part) => part.value).join("");
+  return (date.getMinutes() !== 0 ? CLOCK_ZONE : HOUR_ZONE).format(date);
 }
 
 /** How long until something starts: "2h 05m", "12m", "40s". Null once it has.

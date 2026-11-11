@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { RateLimiter, clientAddress } from "./api-policy.ts";
-import { calendarOptions } from "./calendar.ts";
+import { calendarOptions, calendarZone } from "./calendar.ts";
 import { GoogleError, type GoogleCalendars } from "./google-calendar.ts";
 import { authenticateScorer, scoringOrigins } from "./scoring-http.ts";
 import { ScoringError } from "./scoring.ts";
@@ -9,11 +9,7 @@ import { reportFailure } from "./request-failures.ts";
 const MAX_BODY = 1024;
 
 /** A time zone the browser named, or UTC. */
-function timeZoneOf(value: unknown): string {
-  if (typeof value !== "string" || value.length > 64) return "UTC";
-  try { return new Intl.DateTimeFormat("en", { timeZone: value }).resolvedOptions().timeZone; }
-  catch { return "UTC"; }
-}
+const timeZoneOf = (value: unknown): string => (typeof value === "string" ? calendarZone(value) : null) ?? "UTC";
 
 /** `/api/calendar/google`: the reader's connected UFC calendar. GET reads it,
  *  PUT connects it or changes its options, DELETE removes it from Google. */

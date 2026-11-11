@@ -75,6 +75,8 @@ export function calendarQuery(options: CalendarOptions): string {
 export type EventRow = {
   id: string; name: string; date: string; location: string;
   main_card_at: number | null; prelims_at: number | null; early_prelims_at: number | null;
+  /** Set once the card is over: its estimates are then no longer worth showing. */
+  complete?: number | null;
 };
 export type FightRow = {
   event_id: string; ord: number; segment: string | null; card_pos: number | null;
@@ -109,8 +111,9 @@ export function calendarEntry(event: EventRow, fights: FightRow[], from: CardSeg
   }
   const card = cardOrder(fights);
   // Walkouts are estimated, as on the event page, only once every bout is
-  // placed: an unplaced bout could move either broadcast window.
-  const scheduled = timeZone && fights.every((fight) => fight.segment) ? fights.map(scheduledBout) : null;
+  // placed (an unplaced bout could move either broadcast window) and until
+  // the card is over, when an estimate would read as the time it happened.
+  const scheduled = timeZone && !event.complete && fights.every((fight) => fight.segment) ? fights.map(scheduledBout) : null;
   const bout = (fight: FightRow) => {
     const walkout = scheduled ? estimatedStart(scheduled, Number(fight.ord) || 0, times) : null;
     return `${fight.f1_name} vs. ${fight.f2_name}${walkout != null ? ` (${walkoutTime(walkout, timeZone!)})` : ""}`;
@@ -149,7 +152,7 @@ export function calendarEntry(event: EventRow, fights: FightRow[], from: CardSeg
   };
 }
 
-const EVENT_COLUMNS = "id, name, date, location, main_card_at, prelims_at, early_prelims_at";
+const EVENT_COLUMNS = "id, name, date, location, main_card_at, prelims_at, early_prelims_at, complete";
 const FIGHT_COLUMNS = "event_id, ord, segment, card_pos, f1_name, f2_name, scheduled_rounds, title_type";
 
 /** The feed's cards as entries, in date order. */

@@ -3,7 +3,7 @@ import { Check, LoaderCircle } from "lucide-react";
 import { useAccount, useAuth } from "../auth";
 import { storeLocal } from "../preferences";
 import { GoogleLogo } from "./calendarLogos";
-import { CALENDAR_TILE, GOOGLE_CALENDAR_SCOPE, returnUrl, type FeedCards, type FeedStart, type Returning } from "../googleCalendar";
+import { CALENDAR_TILE, GOOGLE_CALENDAR_SCOPE, knownZone, returnUrl, type FeedCards, type FeedStart, type Returning } from "../googleCalendar";
 
 /**
  * Connect Google Calendar: the server makes a calendar named UFC in the
@@ -166,7 +166,7 @@ export function GoogleCalendarConnect({ cards, from, tz, returning, onOptionsLoa
       {adding || signingIn ? <LoaderCircle className="h-5 w-5 shrink-0 animate-spin text-zinc-400" aria-hidden="true" /> : <GoogleLogo />}
       <span className="truncate">{adding || signingIn ? "Adding…" : status?.reconnect ? "Reconnect" : "Google"}</span>
     </button>;
-  const moved = connected && !adding && (status!.cards !== cards || status!.from !== from || (status!.tz ?? null) !== tz);
+  const moved = connected && !adding && (status!.cards !== cards || status!.from !== from || knownZone(status!.tz) !== knownZone(tz));
   const below = <>
     {connected && !adding ? <div className="mt-2 flex items-center gap-2 rounded-xl bg-zinc-50 py-1 pl-3 pr-1 text-xs text-zinc-600">
       <span className="min-w-0 flex-1 truncate" title={updatedAgo(status!.syncedAt)}>
