@@ -455,9 +455,9 @@ test("finds a fighter's ufc.com page under a spelling that agrees, and a namesak
     "/athlete/zach-reese": athlete("Zachary Reese", "Poids moyens Division", "Actif"),
     "/athlete/jose-delgado": athlete("Jose Miguel Delgado", "Featherweight Division", "Active"),
     "/athlete/bruno-silva": athlete("Bruno Silva", "Poids mouche Division", "Actif"),
-    "/athlete/bruno-silva-0": athlete("Bruno Silva", "Poids moyens Division", "Ne se bat pas"),
+    "/athlete/bruno-silva-blindado": athlete("Bruno Silva", "Poids moyens Division", "Ne se bat pas"),
     "/athlete/mike-davis": athlete("Mike Davidson", "Lightweight Division", "Active"),
-    "/search?query=Bruno%20Silva": card("bruno-silva", "Bruno Silva"),
+    "/search?query=Bruno%20Silva": card("bruno-silva", "Bruno Silva") + card("bruno-silva-blindado", "Bruno Silva") + card("bruno-souza", "Bruno Souza"),
   };
   const read: string[] = [];
   const load = async (url: string) => {
@@ -471,17 +471,24 @@ test("finds a fighter's ufc.com page under a spelling that agrees, and a namesak
   // Someone else's page under the slug is never read as theirs.
   assert.equal(await scrapeAthleteStatus("Mike Davis", null, load), null);
 
-  // A namesake's page found before is dropped for their own.
-  assert.deepEqual(await scrapeAthleteStatus("Bruno Silva", "https://www.ufc.com/athlete/bruno-silva", load, "Middleweight"),
-    { url: "https://www.ufc.com/athlete/bruno-silva-0", status: "not_fighting", height: null, reach: null });
-  assert.equal((await scrapeAthleteStatus("Bruno Silva", "https://www.ufc.com/athlete/bruno-silva", load, "Flyweight"))?.status, "active");
+  // A namesake's page found before is dropped for their own, the second
+  // search card under the name.
+  const known = "https://www.ufc.com/athlete/bruno-silva";
+  assert.deepEqual(await scrapeAthleteStatus("Bruno Silva", known, load, ["Middleweight", "Light Heavyweight"]),
+    { url: "https://www.ufc.com/athlete/bruno-silva-blindado", status: "not_fighting", height: null, reach: null });
+  assert.equal((await scrapeAthleteStatus("Bruno Silva", known, load, ["Flyweight"]))?.status, "active");
+  // A page showing no division is unread, not someone else's.
+  const flyweight = site["/athlete/bruno-silva"];
+  site["/athlete/bruno-silva"] = athlete("Bruno Silva", "", "Actif");
+  assert.equal(await scrapeAthleteStatus("Bruno Silva", known, load, ["Flyweight"]), null);
+  site["/athlete/bruno-silva"] = flyweight;
   // With no page of their own, the namesake's status is not kept.
-  delete site["/athlete/bruno-silva-0"];
-  assert.deepEqual(await scrapeAthleteStatus("Bruno Silva", "https://www.ufc.com/athlete/bruno-silva", load, "Middleweight"),
+  delete site["/athlete/bruno-silva-blindado"];
+  assert.deepEqual(await scrapeAthleteStatus("Bruno Silva", known, load, ["Middleweight"]),
     { url: null, status: null, height: null, reach: null });
   // An unreachable known page is only unread: what it said before stands.
   read.length = 0;
-  assert.equal(await scrapeAthleteStatus("Bruno Silva", "https://www.ufc.com/athlete/gone", load, "Middleweight"), null);
+  assert.equal(await scrapeAthleteStatus("Bruno Silva", "https://www.ufc.com/athlete/gone", load, ["Middleweight"]), null);
   assert.deepEqual(read, ["/athlete/gone"]);
 });
 

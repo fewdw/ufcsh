@@ -228,15 +228,14 @@ export const DEPARTURE_DAYS = 30;
  *  is read about twice a day. "Recent" is a bout in the last three years,
  *  or last seen active however long they have been out; everyone else read
  *  before, weekly. A fighter who shares a name with another UFC fighter is
- *  told apart by their last division. */
+ *  told apart by the divisions they have fought in. */
 export async function syncUfcStatuses(batch = 2, readStatus = scrapeAthleteStatus): Promise<void> {
   const due = db.prepare(`
     SELECT fr.id, fr.name, s.url, s.status, s.left_at,
       CASE WHEN EXISTS (SELECT 1 FROM fighters o WHERE o.norm_name = fr.norm_name AND o.id <> fr.id AND o.signee = 0
         AND EXISTS (SELECT 1 FROM fights x WHERE x.f1_id = o.id OR x.f2_id = o.id))
-      THEN (SELECT f.weight_class FROM fights f JOIN events e ON e.id = f.event_id
-        WHERE (f.f1_id = fr.id OR f.f2_id = fr.id) AND f.weight_class NOT IN ('Catch Weight', 'Open Weight', '')
-        ORDER BY e.date DESC LIMIT 1) END AS division
+      THEN (SELECT group_concat(DISTINCT f.weight_class) FROM fights f
+        WHERE (f.f1_id = fr.id OR f.f2_id = fr.id) AND f.weight_class NOT IN ('Catch Weight', 'Open Weight', '')) END AS divisions
     FROM fighters fr
     LEFT JOIN ufc_status s ON s.fighter_id = fr.id
     WHERE fr.signee = 0 AND (s.checked_at < ?3 OR (s.checked_at IS NULL OR s.checked_at < ?1)
@@ -246,16 +245,16 @@ export async function syncUfcStatuses(batch = 2, readStatus = scrapeAthleteStatu
     ORDER BY s.checked_at IS NOT NULL, s.checked_at
     LIMIT ?2
   `).all(Date.now() - STATUS_EVERY_MS, batch, Date.now() - RETURN_EVERY_MS) as
-    { id: string; name: string; url: string | null; status: AthleteStatus | null; left_at: number | null; division: string | null }[];
+    { id: string; name: string; url: string | null; status: AthleteStatus | null; left_at: number | null; divisions: string | null }[];
   for (const fighter of due) {
     if (fighter.left_at && offRoster(fighter.status)) archiveRosterEvents([{ name: fighter.name, date: new Date(fighter.left_at).toISOString().slice(0, 10), kind: leftKind(fighter.status),
       reason: leftReason(fighter.status), source_url: fighter.url ?? "https://www.ufc.com/athletes/all", observed: true }]);
-    const found = await readStatus(fighter.name, fighter.url, undefined, fighter.division);
+    const found = await readStatus(fighter.name, fighter.url, undefined, fighter.divisions?.split(",") ?? []);
     // The page we had was a namesake's: what it said was never theirs, and
     // their own page reading otherwise is no change we watched happen.
     const wrongPage = Boolean(fighter.url) && found?.url === null;
     const fresh = wrongPage || Boolean(fighter.url && found?.url && found.url !== fighter.url);
-    const status = wrongPage ? null : found?.status ?? fighter.status;
+    const status = fresh ? found?.status ?? null : found?.status ?? fighter.status;
     // Only a change we watched happen dates a departure; a page already
     // reading "Not Fighting" the first time we look says nothing about when.
     const left = !fresh && fighter.status === "active" && offRoster(status);

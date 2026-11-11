@@ -406,20 +406,25 @@ export type AthleteStatusRead = Omit<AthletePage, "name"> & { url: string | null
 /** A fighter's status, from the page already found for them or else the one
  *  their name slugs to, then ufc.com's search. A page must give their name as
  *  written or a spelling that agrees ("Zach Reese" redirects to "Zachary
- *  Reese", "Jose Delgado" to "Jose Miguel Delgado"). With `division`, given
- *  when another UFC fighter shares the name, the page must also show that
- *  division: "bruno-silva" is the flyweight, the middleweight is under
- *  "bruno-silva-0". Null when no page could be read. A known page that turns
- *  out to be someone else's, with no other found, reads `url: null` and no
- *  status, so its status is not kept. */
-export async function scrapeAthleteStatus(name: string, knownUrl: string | null, loadHtml = fetchHtml, division: string | null = null): Promise<AthleteStatusRead | null> {
+ *  Reese", "Jose Delgado" to "Jose Miguel Delgado"). With `divisions`, given
+ *  when another UFC fighter shares the name, the page must also show one they
+ *  have fought in: "bruno-silva" is the flyweight, the middleweight is
+ *  "bruno-silva-blindado", both listed by the search under the one name. A
+ *  page showing no division is unread, not someone else's. Null when no page
+ *  could be read. A known page that turns out to be someone else's, with no
+ *  other found, reads `url: null` and no status, so its status is not kept. */
+export async function scrapeAthleteStatus(name: string, knownUrl: string | null, loadHtml = fetchHtml, divisions: string[] = []): Promise<AthleteStatusRead | null> {
   // A search hit or a page found before was already matched to the name.
   const read = async (url: string, matched = false): Promise<AthleteStatusRead | "other" | null> => {
     try {
       const html = await loadHtml(url, { timeoutMs: 30000, retries: 0 });
       const { name: shown, ...page } = parseAthleteStatus(html);
       if (!matched && !namesAgree(shown, name)) return "other";
-      if (division && parseAthleteDivision(html) !== division) return "other";
+      if (divisions.length) {
+        const division = parseAthleteDivision(html);
+        if (!division) return null;
+        if (!divisions.includes(division)) return "other";
+      }
       return { url, ...page };
     } catch {
       return null;
@@ -430,17 +435,15 @@ export async function scrapeAthleteStatus(name: string, knownUrl: string | null,
     const page = await read(knownUrl, true);
     if (page !== "other") return page;
   }
-  const slug = athleteSlug(name);
-  // ufc.com numbers a namesake's address: "bruno-silva-0".
-  for (const url of [slug, ...(division ? [`${slug}-0`, `${slug}-1`] : [])].map(path => `https://www.ufc.com/athlete/${path}`)) {
-    if (url === knownUrl) continue;
-    const page = found(await read(url));
+  const direct = `https://www.ufc.com/athlete/${athleteSlug(name)}`;
+  if (direct !== knownUrl) {
+    const page = found(await read(direct));
     if (page) return page;
   }
   try {
     const html = await loadHtml(`https://www.ufc.com/search?query=${encodeURIComponent(name)}`, { timeoutMs: 30000, retries: 0 });
     // Namesakes are all listed under the one name; each page's division decides.
-    const hrefs = division ? searchAthleteHrefs(html, name) : [parseSearchAthlete(html, name).href].filter((href): href is string => Boolean(href));
+    const hrefs = divisions.length ? searchAthleteHrefs(html, name) : [parseSearchAthlete(html, name).href].filter((href): href is string => Boolean(href));
     for (const href of hrefs) {
       if (href === knownUrl) continue;
       const page = found(await read(href, true));

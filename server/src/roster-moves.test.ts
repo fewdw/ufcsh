@@ -161,7 +161,7 @@ test("a fighter whose ufc.com page turns Retired has left the roster, and is bac
   }
 });
 
-test("a namesake's ufc.com page swapped for the fighter's own is no departure, and one found wrong drops its status", async () => {
+test("a namesake's ufc.com page swapped for the fighter's own is no change watched, and one found wrong drops its status", async () => {
   const fighter = db.prepare(`SELECT fr.id, fr.name FROM fighters fr JOIN fights f ON fr.id IN (f.f1_id, f.f2_id) JOIN events e ON e.id = f.event_id
     WHERE fr.signee = 0 AND e.date >= date('now', '-1 year') ORDER BY e.date DESC LIMIT 1`).get() as { id: string; name: string } | undefined;
   if (!fighter) return;
@@ -170,20 +170,42 @@ test("a namesake's ufc.com page swapped for the fighter's own is no departure, a
   try {
     db.exec("DELETE FROM ufc_status");
     db.prepare("INSERT INTO ufc_status (fighter_id, status, checked_at) SELECT id, 'active', ? FROM fighters WHERE id != ?").run(Date.now(), fighter.id);
-    db.prepare("INSERT INTO ufc_status (fighter_id, url, status, checked_at) VALUES (?, 'https://www.ufc.com/athlete/namesake', 'active', 1)").run(fighter.id);
-    const row = () => db.prepare("SELECT url, status, left_at FROM ufc_status WHERE fighter_id = ?").get(fighter.id) as { url: string | null; status: string | null; left_at: number | null };
+    db.prepare("INSERT INTO ufc_status (fighter_id, status, checked_at) VALUES (?, NULL, 1)").run(fighter.id);
+    const namesake = (status: string, leftAt: number | null = null) =>
+      db.prepare("UPDATE ufc_status SET url = 'https://www.ufc.com/athlete/namesake', status = ?, left_at = ?, checked_at = 1 WHERE fighter_id = ?").run(status, leftAt, fighter.id);
+    const row = () => ({ ...db.prepare("SELECT url, status, left_at FROM ufc_status WHERE fighter_id = ?").get(fighter.id) as object });
+    const reads = (url: string | null, status: "active" | "not_fighting" | null) => async () => ({ url, status, height: null, reach: null });
+    const returns = () => ufcSignings().filter(signing => signing.name === fighter.name);
+    const observedToday = () => fighterRosterEvents(fighter.id).filter(event => event.observed && event.date === new Date().toISOString().slice(0, 10));
 
-    // Their own page has read Not Fighting all along: nothing changed today.
-    await syncUfcStatuses(1, async () => ({ url: "https://www.ufc.com/athlete/own-0", status: "not_fighting", height: null, reach: null }));
-    assert.deepEqual({ ...row() }, { url: "https://www.ufc.com/athlete/own-0", status: "not_fighting", left_at: null });
+    // Their own page has read Not Fighting all along: nothing changed today,
+    // and the namesake's departure goes with its page.
+    namesake("active", Date.now() - 86_400_000);
+    await syncUfcStatuses(1, reads("https://www.ufc.com/athlete/own", "not_fighting"));
+    assert.deepEqual(row(), { url: "https://www.ufc.com/athlete/own", status: "not_fighting", left_at: null });
     assert.deepEqual(ufcDepartures(), []);
-    assert.ok(!fighterRosterEvents(fighter.id).some(event => event.observed && event.kind !== "signed" && event.date === new Date().toISOString().slice(0, 10)));
+
+    // Their own page reads Active where the namesake's read Not Fighting: no return.
+    namesake("not_fighting");
+    await syncUfcStatuses(1, reads("https://www.ufc.com/athlete/own", "active"));
+    assert.deepEqual(row(), { url: "https://www.ufc.com/athlete/own", status: "active", left_at: null });
+    assert.deepEqual(returns(), []);
+
+    // Their own page with no status readable yet keeps nothing of the
+    // namesake's, so its first status read is no departure either.
+    namesake("active");
+    await syncUfcStatuses(1, reads("https://www.ufc.com/athlete/own", null));
+    assert.deepEqual(row(), { url: "https://www.ufc.com/athlete/own", status: null, left_at: null });
+    db.prepare("UPDATE ufc_status SET checked_at = 1 WHERE fighter_id = ?").run(fighter.id);
+    await syncUfcStatuses(1, reads("https://www.ufc.com/athlete/own", "not_fighting"));
+    assert.deepEqual(ufcDepartures(), []);
 
     // A page shown to be someone else's, with none of their own, leaves no status behind.
-    db.prepare("UPDATE ufc_status SET status = 'active', checked_at = 1 WHERE fighter_id = ?").run(fighter.id);
-    await syncUfcStatuses(1, async () => ({ url: null, status: null, height: null, reach: null }));
-    assert.deepEqual({ ...row() }, { url: null, status: null, left_at: null });
-    assert.deepEqual(ufcSignings().filter(signing => signing.name === fighter.name), []);
+    namesake("active");
+    await syncUfcStatuses(1, reads(null, null));
+    assert.deepEqual(row(), { url: null, status: null, left_at: null });
+    assert.deepEqual(observedToday(), []);
+    assert.deepEqual(returns(), []);
   } finally {
     db.exec("DELETE FROM ufc_status; INSERT INTO ufc_status SELECT * FROM saved_ufc_status; DROP TABLE saved_ufc_status");
     for (const [key, value] of Object.entries(saved)) {
@@ -193,21 +215,28 @@ test("a namesake's ufc.com page swapped for the fighter's own is no departure, a
   }
 });
 
-test("off-roster fighters with no recent bout are still read weekly, and namesakes are told apart by division", async () => {
+test("off-roster fighters with no recent bout are still read weekly, and namesakes are read with every division they fought in", async () => {
   const old = db.prepare(`SELECT fr.id FROM fighters fr WHERE fr.signee = 0
     AND EXISTS (SELECT 1 FROM fights f WHERE fr.id IN (f.f1_id, f.f2_id))
     AND NOT EXISTS (SELECT 1 FROM fights f JOIN events e ON e.id = f.event_id WHERE fr.id IN (f.f1_id, f.f2_id) AND e.date >= date('now', '-3 years'))
     LIMIT 1`).get() as { id: string } | undefined;
-  const namesake = db.prepare(`SELECT fr.id FROM fighters fr WHERE fr.signee = 0
-    AND EXISTS (SELECT 1 FROM fights f JOIN events e ON e.id = f.event_id WHERE fr.id IN (f.f1_id, f.f2_id) AND f.weight_class NOT IN ('Catch Weight', 'Open Weight', ''))
-    AND EXISTS (SELECT 1 FROM fighters o WHERE o.norm_name = fr.norm_name AND o.id != fr.id AND o.signee = 0
-      AND EXISTS (SELECT 1 FROM fights x WHERE o.id IN (x.f1_id, x.f2_id))) LIMIT 1`).get() as { id: string } | undefined;
   db.exec("CREATE TEMP TABLE saved_ufc_status AS SELECT * FROM ufc_status");
+  // Everyone but `id` read just now; `id` long ago, as Active so it is due.
+  const onlyDue = (id: string, status = "active", checkedAt = 1) => {
+    db.exec("DELETE FROM ufc_status");
+    db.prepare("INSERT INTO ufc_status (fighter_id, status, checked_at) SELECT id, 'active', ? FROM fighters WHERE id != ?").run(Date.now(), id);
+    db.prepare("INSERT INTO ufc_status (fighter_id, status, checked_at) VALUES (?, ?, ?)").run(id, status, checkedAt);
+  };
+  const divisionsRead = async (id: string) => {
+    onlyDue(id);
+    const read: string[][] = [];
+    await syncUfcStatuses(1, async (_name, _url, _load, divisions) => { read.push(divisions ?? []); return null; });
+    assert.equal(read.length, 1);
+    return read[0];
+  };
   try {
     if (old) {
-      db.exec("DELETE FROM ufc_status");
-      db.prepare("INSERT INTO ufc_status (fighter_id, status, checked_at) SELECT id, 'active', ? FROM fighters WHERE id != ?").run(Date.now(), old.id);
-      db.prepare("INSERT INTO ufc_status (fighter_id, status, checked_at) VALUES (?, 'not_fighting', ?)").run(old.id, Date.now() - 3 * 86_400_000);
+      onlyDue(old.id, "not_fighting", Date.now() - 3 * 86_400_000);
       const read: string[] = [];
       const page = async (name: string) => { read.push(name); return null; };
       await syncUfcStatuses(1, page);
@@ -216,13 +245,20 @@ test("off-roster fighters with no recent bout are still read weekly, and namesak
       await syncUfcStatuses(1, page);
       assert.equal(read.length, 1, "read eight days ago: due");
     }
-    if (namesake) {
-      db.exec("DELETE FROM ufc_status");
-      db.prepare("INSERT INTO ufc_status (fighter_id, status, checked_at) SELECT id, 'active', ? FROM fighters WHERE id != ?").run(Date.now(), namesake.id);
-      const divisions: (string | null)[] = [];
-      await syncUfcStatuses(1, async (_name, _url, _load, division) => { divisions.push(division ?? null); return null; });
-      assert.equal(divisions.length, 1);
-      assert.ok(divisions[0], "a namesake is read with their division");
+
+    // A made-up namesake pair: the fighter and an invented fighter of the same name with a bout.
+    const fighter = db.prepare(`SELECT fr.id, fr.name, fr.norm_name FROM fighters fr JOIN fights f ON fr.id IN (f.f1_id, f.f2_id)
+      WHERE fr.signee = 0 AND f.weight_class NOT IN ('Catch Weight', 'Open Weight', '') LIMIT 1`).get() as { id: string; name: string; norm_name: string };
+    const expected = (db.prepare(`SELECT DISTINCT weight_class FROM fights WHERE ? IN (f1_id, f2_id)
+      AND weight_class NOT IN ('Catch Weight', 'Open Weight', '')`).all(fighter.id) as { weight_class: string }[]).map(row => row.weight_class).sort();
+    assert.deepEqual(await divisionsRead(fighter.id), [], "no namesake: no division check");
+    db.exec("SAVEPOINT namesake");
+    try {
+      db.prepare("INSERT INTO fighters (id, name, norm_name, signee) VALUES ('test-namesake', ?, ?, 0)").run(fighter.name, fighter.norm_name);
+      db.prepare("UPDATE fights SET f1_id = 'test-namesake' WHERE id = (SELECT id FROM fights WHERE f1_id != ? AND f2_id != ? LIMIT 1)").run(fighter.id, fighter.id);
+      assert.deepEqual((await divisionsRead(fighter.id)).sort(), expected);
+    } finally {
+      db.exec("ROLLBACK TO namesake; RELEASE namesake");
     }
   } finally {
     db.exec("DELETE FROM ufc_status; INSERT INTO ufc_status SELECT * FROM saved_ufc_status; DROP TABLE saved_ufc_status");
