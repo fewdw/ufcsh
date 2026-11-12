@@ -103,9 +103,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-11-11">November 11, 2026</time></p>
             <ul>
-              <li>Calendar events show estimated walkout times in your time zone, and the event link only once.</li>
-              <li>More accurate roster status for renamed fighters, fighters who share a name, and returns after a long break.</li>
-              <li>On phones, the parlay slip docks with the card navigation instead of covering it.</li>
+              <li>Community predictions include Verdict MMA fan picks for upcoming and past fights.</li>
+              <li>Predict shows picks and method pies alongside a round and decision chart.</li>
+              <li>Small nonzero prediction shares display &lt;1%.</li>
             </ul>
           </Section>
         </div>
