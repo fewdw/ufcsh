@@ -239,7 +239,7 @@ test("a cleared split stays cleared against an older read still in flight", asyn
   } finally { db.exec("ROLLBACK"); }
 });
 
-test("a card whose bout list is empty keeps none of its splits", async () => {
+test("a card whose bout list is empty keeps none of its splits once a second read agrees", async () => {
   const local = fight();
   db.exec("BEGIN");
   try {
@@ -248,7 +248,12 @@ test("a card whose bout list is empty keeps none of its splits", async () => {
     await importVerdictPickCard(999986, Date.now() - 1_000);
     restore();
     restore = mockVerdict(local, { 999986: picked }, local.f1_name, "UFC", { emptyList: true });
-    try { assert.equal((await importVerdictPickCard(999986)).bouts, 0); } finally { restore(); }
+    try {
+      // Believed on the second read, like a card none of whose bouts answers.
+      assert.equal((await importVerdictPickCard(999986, Date.now() - 500)).bouts, 0);
+      assert.equal(stored(local.id).total, 80);
+      await importVerdictPickCard(999986);
+    } finally { restore(); }
     assert.equal(stored(local.id), null);
   } finally { db.exec("ROLLBACK"); }
 });
@@ -341,6 +346,8 @@ test("a card that reads empty is believed only on the next read too", async () =
     assert.match((db.prepare("SELECT error FROM verdict_pick_cards WHERE verdict_id = 999977").get() as { error: string }).error, /no bouts/);
     await importVerdictPickCard(999977, t + 2_000);
     assert.equal(stored(local.id), null);
+    // Believed, the note clears: nothing is left for Admin to retry.
+    assert.equal((db.prepare("SELECT error FROM verdict_pick_cards WHERE verdict_id = 999977").get() as { error: string | null }).error, null);
   } finally { restore(); db.exec("ROLLBACK"); }
 });
 
@@ -354,4 +361,28 @@ test("a stray pick on a card from before UFC 205 is never shown", async () => {
     assert.equal((await importVerdictPickCard(999976)).stored, 0);
     assert.equal(stored(local.id), null);
   } finally { restore(); db.exec("ROLLBACK"); }
+});
+
+test("a newer failed attempt never stops an earlier successful read from retiring the card", async () => {
+  const local = fight();
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE fights SET verdict_picks_json = NULL WHERE id = ?").run(local.id);
+    const t = Date.now();
+    // C, started last, fails first.
+    globalThis.fetch = async () => new Response("nope", { status: 418 });
+    await assert.rejects(importVerdictPickCard(999975, t + 3_000));
+    // B, started second, sees the card retired.
+    let restore = mockVerdict(local, { 999975: picked }, local.f1_name, "UFC", { active: 0 });
+    await importVerdictPickCard(999975, t + 2_000);
+    restore();
+    // A, started first, sees it live: too old to write.
+    restore = mockVerdict(local, { 999975: picked });
+    await importVerdictPickCard(999975, t + 1_000);
+    restore();
+    assert.equal(stored(local.id), null);
+    const card = db.prepare("SELECT final, error, read_at FROM verdict_pick_cards WHERE verdict_id = 999975").get() as { final: number; error: string; read_at: number };
+    assert.deepEqual([card.final, card.read_at], [1, t + 2_000]);
+    assert.match(card.error, /418/);
+  } finally { db.exec("ROLLBACK"); }
 });

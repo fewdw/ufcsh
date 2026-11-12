@@ -115,13 +115,18 @@ const clearFrom = db.prepare(`UPDATE fights
  * flight can't put it back; nothing shows it. */
 const cleared = (sourceUrl: string, fetchedAt: number) => JSON.stringify({ cleared: 1, sourceUrl, fetchedAt });
 const cardUrl = (verdictId: number) => `${VERDICT}/event/${verdictId}/fight/%`;
+/** A successful read. What it found stands if no successful read started
+ * after it; its (lack of an) error only if no attempt at all did. */
 const record = db.prepare(`INSERT INTO verdict_pick_cards (verdict_id, date, event_id, final, checked_at, error, read_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?5)
-  ON CONFLICT(verdict_id) DO UPDATE SET date = COALESCE(excluded.date, verdict_pick_cards.date),
-    event_id = COALESCE(excluded.event_id, verdict_pick_cards.event_id), final = excluded.final,
-    checked_at = excluded.checked_at, error = excluded.error, read_at = excluded.read_at
-  WHERE excluded.checked_at >= verdict_pick_cards.checked_at`);
-/** Only the read that owns the card's latest `checked_at` writes its bouts. */
-const recordBouts = db.prepare("UPDATE verdict_pick_cards SET bouts_json = ?, empty = ?, unfit = ?, association = ? WHERE verdict_id = ? AND checked_at = ?");
+  ON CONFLICT(verdict_id) DO UPDATE SET
+    date = CASE WHEN excluded.read_at >= coalesce(verdict_pick_cards.read_at, 0) THEN COALESCE(excluded.date, verdict_pick_cards.date) ELSE verdict_pick_cards.date END,
+    event_id = CASE WHEN excluded.read_at >= coalesce(verdict_pick_cards.read_at, 0) THEN COALESCE(excluded.event_id, verdict_pick_cards.event_id) ELSE verdict_pick_cards.event_id END,
+    final = CASE WHEN excluded.read_at >= coalesce(verdict_pick_cards.read_at, 0) THEN excluded.final ELSE verdict_pick_cards.final END,
+    error = CASE WHEN excluded.checked_at >= verdict_pick_cards.checked_at THEN excluded.error ELSE verdict_pick_cards.error END,
+    checked_at = max(verdict_pick_cards.checked_at, excluded.checked_at),
+    read_at = max(coalesce(verdict_pick_cards.read_at, 0), excluded.read_at)`);
+/** Only the latest successful read writes the card's bouts. */
+const recordBouts = db.prepare("UPDATE verdict_pick_cards SET bouts_json = ?, empty = ?, unfit = ?, association = ? WHERE verdict_id = ? AND read_at = ?");
 /** A failed read: noted for Admin, but a final card stays final. */
 const recordError = db.prepare(`INSERT INTO verdict_pick_cards (verdict_id, final, checked_at, error) VALUES (?, 0, ?, ?)
   ON CONFLICT(verdict_id) DO UPDATE SET checked_at = excluded.checked_at, error = excluded.error
@@ -271,19 +276,21 @@ export async function importVerdictPickCard(verdictId: number, now = Date.now())
     let hints: number[] = [];
     try { hints = (JSON.parse(row?.bouts_json ?? "[]") as CardBout[]).map(bout => bout.fightNumber); } catch { /* none */ }
     const first = await firstBout(verdictId, hints);
-    if (!first) {
-      // No bouts: a card past the newest ones stays open to be found. One that
-      // had bouts and now reads empty is noted (Admin → Bugs) and believed
-      // only on the next read too; then its splits go, and once its date has
-      // passed it is final.
-      if (row?.date) {
-        if (!row.error?.startsWith(EMPTY)) {
-          recordError.run(verdictId, now, `${EMPTY} the card lists no bouts`);
-          return result;
-        }
-        clearFrom.run(cardUrl(verdictId), now, "[]", verdictId);
+    if (!first?.card.length) {
+      // No bouts (none answers, or Verdict lists none): a card past the newest
+      // ones stays open to be found. One that had bouts and now reads empty is
+      // noted (Admin → Bugs; read again daily, even an archive card) and
+      // believed only when the next read agrees: then its splits go, its bout
+      // list is emptied (so the note clears) and once its date has passed it
+      // is final.
+      const date = first?.date ?? row?.date ?? null;
+      if (hints.length && !row?.error?.startsWith(EMPTY)) {
+        recordError.run(verdictId, now, `${EMPTY} the card lists no bouts`);
+        return result;
       }
-      record.run(verdictId, null, null, row?.date && row.date < today ? 1 : 0, now, row?.date ? `${EMPTY} the card lists no bouts` : null);
+      if (hints.length) clearFrom.run(cardUrl(verdictId), now, "[]", verdictId);
+      record.run(verdictId, date, null, date && date < today ? 1 : 0, now, null);
+      if (hints.length) recordBouts.run("[]", 0, 0, first?.association ?? null, verdictId, now);
       return result;
     }
     result.bouts = first.card.length;
@@ -329,10 +336,10 @@ export async function importVerdictPickCard(verdictId: number, now = Date.now())
   return result;
 }
 
-const unreadCards = db.prepare(`SELECT verdict_id, date, bouts_json, unfit, checked_at FROM verdict_pick_cards
+const unreadCards = db.prepare(`SELECT verdict_id, date, bouts_json, unfit, read_at FROM verdict_pick_cards
   WHERE final = 1 AND empty = 0 AND date IS NOT NULL AND bouts_json LIKE '%"read":false%'`);
 /** Unless the card was read again meanwhile, which made its own list. */
-const setBouts = db.prepare("UPDATE verdict_pick_cards SET bouts_json = ?, unfit = ?, error = ? WHERE verdict_id = ? AND checked_at = ?");
+const setBouts = db.prepare("UPDATE verdict_pick_cards SET bouts_json = ?, unfit = ?, error = ? WHERE verdict_id = ? AND read_at IS ?");
 
 export type RematchResult = { stored: number; cards: number; failed: number; lastError: unknown };
 
@@ -345,7 +352,7 @@ export type RematchResult = { stored: number; cards: number; failed: number; las
  */
 export async function rematchVerdictPicks(now = Date.now()): Promise<RematchResult> {
   const result: RematchResult = { stored: 0, cards: 0, failed: 0, lastError: null };
-  for (const card of unreadCards.all() as { verdict_id: number; date: string; bouts_json: string; unfit: number; checked_at: number }[]) {
+  for (const card of unreadCards.all() as { verdict_id: number; date: string; bouts_json: string; unfit: number; read_at: number | null }[]) {
     let bouts: CardBout[];
     try { bouts = JSON.parse(card.bouts_json); } catch { continue; }
     const candidates = nearby.all(shiftDate(card.date, -1), shiftDate(card.date, 1)) as LocalBout[];
@@ -367,17 +374,18 @@ export async function rematchVerdictPicks(now = Date.now()): Promise<RematchResu
       error = `rematch: ${String(failure)}`.slice(0, 500);
       log(`verdict picks rematch ${card.verdict_id}: ${String(failure)}`);
     }
-    setBouts.run(JSON.stringify(bouts), unfit, error, card.verdict_id, card.checked_at);
+    setBouts.run(JSON.stringify(bouts), unfit, error, card.verdict_id, card.read_at);
   }
   return result;
 }
 
 /** Every card Verdict's events page carries (this week's and those still to
  * be fought, each half on its own id), with the date and status it gives. */
-async function listedCards(): Promise<Map<number, { date: string; status: number }>> {
+type Listed = { date: string; status: number; live: boolean };
+async function listedCards(): Promise<Map<number, Listed>> {
   const html = await fetchVerdictDocument("/events");
   const payload = html.match(/<script type="application\/json"[^>]*id="__NUXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)?.[1];
-  const cards = new Map<number, { date: string; status: number }>();
+  const cards = new Map<number, Listed>();
   if (!payload) return cards;
   const flat = JSON.parse(payload) as unknown[];
   const value = (index: unknown) => typeof index === "number" && index >= 0 ? flat[index] : index;
@@ -389,6 +397,8 @@ async function listedCards(): Promise<Map<number, { date: string; status: number
     cards.set(id, {
       date: Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString().slice(0, 10) : "",
       status: Number(value(entry.eventStatus) ?? 0),
+      // A live UFC card by the listing's own word: the same test a read applies.
+      live: /ufc|^tbd$/i.test(String(value(entry.eventAssociation) ?? "")) && Number(value(entry.eventActive) ?? 1) !== 0,
     });
   }
   return cards;
@@ -398,16 +408,19 @@ async function listedCards(): Promise<Map<number, { date: string; status: number
  * hourly, every ten minutes from the day before (picks pour in then and lock
  * when it starts). One not matched yet (still being announced, or a
  * placeholder Verdict dated years ahead) daily, hourly in its last week. */
-function everyFor(date: string, matched: boolean, now: number): number {
+export function everyFor(date: string, matched: boolean, now: number, emptied = false): number {
   const days = (Date.parse(`${date}T00:00:00Z`) - now) / 86_400_000;
+  // A card that just read empty waits a day for the read that confirms it.
+  if (emptied) return 24 * 60 * 60_000;
   if (days <= 1 && matched) return 10 * 60_000;
-  // Beyond a fortnight even a matched card is outside the Predict tab's window.
-  return days <= (matched ? 14 : 7) ? 60 * 60_000 : 24 * 60 * 60_000;
+  // The Predict tab takes picks for the next three cards, which can reach
+  // four weeks out; beyond five a matched card is read daily.
+  return days <= (matched ? 35 : 7) ? 60 * 60_000 : 24 * 60 * 60_000;
 }
 /** Cards still taking picks, and any whose final read was missed (an outage):
  * those are read until one succeeds, for a month. */
-const open = db.prepare(`SELECT verdict_id, date, event_id, checked_at FROM verdict_pick_cards
-  WHERE final = 0 AND date IS NOT NULL AND date >= date('now', '-30 day') ORDER BY date`);
+const open = db.prepare(`SELECT verdict_id, date, event_id, checked_at, error FROM verdict_pick_cards
+  WHERE final = 0 AND date IS NOT NULL AND (date >= date('now', '-30 day') OR error LIKE '${EMPTY}%') ORDER BY date`);
 
 /** A failure worth giving up on: anything but a dropped connection, a timeout,
  * a refusal (401/403), a rate limit or a server error, which pass. */
@@ -444,22 +457,23 @@ export async function syncVerdictPicks(now = Date.now()): Promise<boolean> {
     if (now - listedAt > 3_600_000) {
       listedAt = now;
       tried += 1;
-      const listed = await listedCards().catch((error) => { failure(error); log(`verdict picks listing: ${String(error)}`); return new Map<number, { date: string; status: number }>(); });
+      const listed = await listedCards().catch((error) => { failure(error); log(`verdict picks listing: ${String(error)}`); return new Map<number, Listed>(); });
       for (const [id, card] of listed) {
         const row = cardRow.get(id) as CardRow | undefined;
         // A final card Verdict lists again as not started (re-dated) reopens.
         // A final card Verdict lists again as not started reopens if it was
         // re-dated, or if it was set aside as not a live UFC card (Verdict
         // fixes a card's label or revives it in place).
-        const reopened = !!row?.final && card.status === 0 && card.date >= today && (card.date !== row.date || !!row.empty);
-        const stale = !!row && !row.final && row.checked_at < now - everyFor(row.date ?? card.date ?? today, !!row.event_id, now);
+        const reopened = !!row?.final && card.status === 0 && card.date >= today && (card.date !== row.date || (!!row.empty && card.live));
+        const stale = !!row && !row.final && row.checked_at < now - everyFor(row.date ?? card.date ?? today, !!row.event_id, now, !!row.error?.startsWith(EMPTY));
         if (!row || reopened || stale) due.push(id);
       }
       const newest = Math.max(0, ...listed.keys());
       if (newest > Number(getMeta("verdict_picks_newest") ?? 0)) setMeta("verdict_picks_newest", String(newest));
     }
-    for (const row of open.all() as { verdict_id: number; date: string; event_id: string | null; checked_at: number }[]) {
-      if (row.checked_at < now - everyFor(row.date, !!row.event_id, now) && !due.includes(row.verdict_id)) due.push(row.verdict_id);
+    for (const row of open.all() as { verdict_id: number; date: string; event_id: string | null; checked_at: number; error: string | null }[]) {
+      const every = everyFor(row.date, !!row.event_id, now, !!row.error?.startsWith(EMPTY));
+      if (row.checked_at < now - every && !due.includes(row.verdict_id)) due.push(row.verdict_id);
     }
     let stored = 0;
     for (const id of due) {

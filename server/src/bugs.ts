@@ -20,7 +20,7 @@ import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
-import { importVerdictPickCard } from "./verdict-picks.ts";
+import { everyFor as verdictPickEvery, importVerdictPickCard } from "./verdict-picks.ts";
 import { deductionProblem, fightDeductionState, MMA_DECISIONS_BLOCKED, storedMedia, syncFightMediaScores, syncFightPointDeductions } from "./point-deductions.ts";
 import type { DeductionFight } from "./point-deduction-rules.ts";
 import { readCancelledBoardList, syncCancelledBouts } from "./cancelled-bouts.ts";
@@ -1323,9 +1323,12 @@ function verdictPickErrors(): BugCheck {
  * background pass has stopped reading, and a final split whose prices fit no
  * total, the first sign Verdict changed how it prices. */
 function verdictPickDrift(): BugCheck {
-  const stale = db.prepare(`SELECT verdict_id, date, checked_at FROM verdict_pick_cards
+  // Overdue by more than three hours on the card's own schedule.
+  const now = Date.now();
+  const stale = (db.prepare(`SELECT verdict_id, date, checked_at, error FROM verdict_pick_cards
     WHERE final = 0 AND event_id IS NOT NULL AND date BETWEEN date('now', '-30 day') AND date('now', '+30 day')
-      AND checked_at < ? ORDER BY date`).all(Date.now() - 3 * 3_600_000) as { verdict_id: number; date: string; checked_at: number }[];
+    ORDER BY date`).all() as { verdict_id: number; date: string; checked_at: number; error: string | null }[])
+    .filter(card => card.checked_at < now - verdictPickEvery(card.date, true, now, !!card.error?.startsWith("empty:")) - 3 * 3_600_000);
   const unfit = db.prepare(`SELECT verdict_id, date, checked_at, unfit FROM verdict_pick_cards
     WHERE final = 1 AND unfit > 0 ORDER BY date DESC`).all() as { verdict_id: number; date: string; checked_at: number; unfit: number }[];
   const item = (card: { verdict_id: number; date: string; checked_at: number }, kind: string, facts: [string, string][]) => ({
@@ -1340,7 +1343,7 @@ function verdictPickDrift(): BugCheck {
     id: "verdict-pick-drift",
     group: "Missing data",
     label: "Verdict picks that may be wrong",
-    description: "Cards still taking picks (or whose final read was missed) that haven't been read for over three hours, so their bouts show stale Verdict picks; and finished cards with bouts whose Verdict prices fit no pick total, which show no Verdict picks. Many of the second at once means Verdict changed how it prices picks and verdict-picks.ts needs updating.",
+    description: "Cards still taking picks (or whose final read was missed) more than three hours overdue for a read on their schedule, so their bouts show stale Verdict picks; and finished cards with bouts whose Verdict prices fit no pick total, which show no Verdict picks. Many of the second at once means Verdict changed how it prices picks and verdict-picks.ts needs updating.",
     grade: recent([[7, "must"], [365, "minor"]]),
   }, [
     ...stale.map(card => item(card, "stale", [["Last read", ago(card.checked_at)]])),

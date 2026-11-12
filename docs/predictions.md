@@ -54,7 +54,8 @@ Trust over time:
   split from the larger poll is kept, whichever card is read (or finishes) last. A card that
   no longer lists one of our bouts (or lists no bouts at all) clears the split
   it stored there. A card that had bouts and reads empty is noted in Admin →
-  Bugs and believed only when the next read agrees. A response missing the
+  Bugs and read again a day later (an archive card too); only when that read
+  agrees are its splits cleared and the note dropped. A response missing the
   bout or its date is an error, never "no bouts".
 - A bout is matched only when both fighters' names agree (tier 1 of
   `alignment`, aliases included), or one does and the other is Verdict's own
@@ -84,9 +85,10 @@ Trust over time:
   the split is final and not read again. A card whose final read was missed is
   read until one succeeds, for a month. A card no bout of ours matches yet
   (still being announced, or a placeholder dated years ahead) is read daily,
-  hourly in its last week; a matched one daily until its last fortnight. A
-  final card Verdict lists again as not started reopens if it was re-dated or
-  set aside as not a live UFC card. A failed read never un-finals a card. The panel says when open picks were
+  hourly in its last week; a matched one daily until five weeks out (the
+  Predict tab takes picks for the next three cards, up to about four weeks).
+  A final card Verdict lists again as not started reopens if it was re-dated,
+  or if it was set aside and the listing now shows it as a live UFC card. A failed read never un-finals a card. The panel says when open picks were
   last read.
 - Every other card is read once by a walk over Verdict's event ids, one per 30
   seconds; `npm run backfill:verdict-picks` does the whole archive in about half an
@@ -102,7 +104,8 @@ Trust over time:
   loads) is reported to Admin's sync status; a pass that read nothing neither
   clears nor extends that. Admin →
   Bugs lists failed reads ("Verdict picks reads that failed") and "Verdict
-  picks that may be wrong": open cards unread for three hours, and finished
+  picks that may be wrong": open cards more than three hours overdue on their own
+  schedule, and finished
   cards with bouts whose prices fit no total. Many of the latter at once means
   Verdict changed how it prices picks.
 
