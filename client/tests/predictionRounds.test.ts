@@ -18,7 +18,7 @@ test("mixed communities retain Verdict decisions and leave unpublished finish ro
   };
   const rounds = predictionRoundShares(distribution);
   assert.deepEqual(rounds.map(round => [round.short, round.count, round.sides]), [
-    ["1", 0, [0, 0]], ["2", 1, [1, 0]], ["3", 1, [0, 1]], ["D", 66, [45, 21]], ["?", 37, [17, 20]],
+    ["1", 0, [0, 0]], ["2", 1, [1, 0]], ["3", 1, [0, 1]], ["DEC", 66, [45, 21]], ["?", 37, [17, 20]],
   ]);
   assert.equal(rounds.reduce((sum, round) => sum + round.count, 0), distribution.total);
 });
@@ -36,7 +36,7 @@ test("Verdict-only and local-only polls keep every pick, including bouts without
     };
     const rounds = predictionRoundShares(distribution);
     assert.equal(rounds.length, length + 1);
-    assert.deepEqual(rounds.at(-1), { key: "decision", label: "Decision", short: "D", sides: [4, 6], count: 10 });
+    assert.deepEqual(rounds.at(-1), { key: "decision", label: "Decision", short: "DEC", sides: [4, 6], count: 10 });
     assert.ok(rounds.slice(0, -1).every(round => round.count === 0));
   }
 });
@@ -46,6 +46,6 @@ test("winner-only picks remain unspecified instead of being called decisions", (
     fighters: [{ fighterId: "a", name: "A", count: 2, methods: [{ method: null, count: 2 }], rounds: [] }],
     methods: [{ method: null, count: 2 }], rounds: [],
   });
-  assert.equal(rounds.find(round => round.short === "D")?.count, 0);
+  assert.equal(rounds.find(round => round.short === "DEC")?.count, 0);
   assert.equal(rounds.find(round => round.short === "?")?.count, 2);
 });

@@ -130,7 +130,6 @@ function CommunityPicks({ distribution }: { distribution: PredictionDistribution
   const rounds = predictionRoundShares(distribution);
   const byFighter = distribution.fighters.every(side => side.methods);
   const local = distribution.local ?? total - (external?.total ?? 0);
-  const unspecified = rounds.some(round => round.key === "unspecified");
 
   return (
     <section className={PANEL_SHELL} aria-label="Community picks">
@@ -158,7 +157,6 @@ function CommunityPicks({ distribution }: { distribution: PredictionDistribution
           <div className="mt-1 flex justify-center gap-1.5 text-[10px] leading-none text-zinc-500" aria-hidden="true">
             {rounds.map(entry => <span key={entry.key} className="w-5 text-center">{entry.short}</span>)}
           </div>
-          <p className="mt-2 text-[10px] text-zinc-500">D = decision{unspecified ? " · ? = unspecified" : ""}</p>
         </div>
       </div>
     </section>

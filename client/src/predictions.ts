@@ -38,7 +38,7 @@ export function predictionRoundShares(distribution: PredictionDistribution) {
     key: `r${entry.round}`, label: `Round ${entry.round}`, short: `${entry.round}`,
     sides: distribution.fighters.map(side => side.rounds?.find(pick => pick.round === entry.round)?.count ?? 0),
   }));
-  rounds.push({ key: "decision", label: "Decision", short: "D",
+  rounds.push({ key: "decision", label: "Decision", short: "DEC",
     sides: distribution.fighters.map(side => side.methods?.find(entry => entry.method === "decision")?.count ?? 0) });
   const unspecified = distribution.fighters.map((side, index) =>
     Math.max(0, side.count - rounds.reduce((sum, round) => sum + round.sides[index], 0)));

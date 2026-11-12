@@ -21,7 +21,7 @@ Verdict MMA has taken fan picks on every UFC main card since UFC 205 (November
 was matched to). The community picks panel shows one combined winner pie, one
 combined method pie and one round/decision bar chart. Round percentages use
 all picks: decisions from both sources go under
-D; picks without a published finish round go under ?. Verdict publishes no
+DEC; picks without a published finish round go under ?. Verdict publishes no
 finish-round totals, so its knockout/submission picks stay unspecified. The
 round chart stays visible when Verdict picks are included, even if there are
 no local picks.
