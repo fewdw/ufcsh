@@ -44,13 +44,13 @@ const picksWord = (count: number) => `${count.toLocaleString()} ${count === 1 ? 
  * How many picks, never claiming more than is known. Verdict publishes each
  * option's share, not its count: when its numbers allow only one total that
  * total is shown; otherwise the fewest they allow, to three figures and
- * rounded down, with a + ("8,450+").
+ * rounded down ("8,450").
  */
 function countLabel(local: number, external: ExternalPicks | null): string {
   if (!external || external.exact) return picksWord(local + (external?.total ?? 0));
   const least = local + external.least;
   const step = 10 ** Math.max(0, Math.floor(Math.log10(least)) - 2);
-  return `${(Math.floor(least / step) * step).toLocaleString()}+ picks`;
+  return picksWord(Math.floor(least / step) * step);
 }
 
 /** A full pie from twelve o'clock: red's slices run clockwise from the top,

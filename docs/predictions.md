@@ -41,7 +41,8 @@ option above its ballot: then the solver allows up to 10% more, gives the
 least and never calls it exact. A single strict total is called exact only if
 quick picks couldn't also fit one up to 1% higher; a finish on top leaves totals up to two or three
 times the least. The panel shows an exact total as is and any other as the
-least, to three figures rounded down, with a `+`. Percentages are within about
+least, to three figures rounded down. The displayed count omits a `+`, but
+remains an estimate when `exact` is false. Percentages are within about
 0.3 points of the shares the prices state either way.
 
 Trust over time:
