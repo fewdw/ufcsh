@@ -70,7 +70,9 @@ Trust over time:
   its picks without the card being read again. A rematch that fails keeps its
   error on the card (Admin → Bugs) until one succeeds.
 - The sync, the backfill and Admin's repair may read a card at once: a split or
-  card record is never overwritten by a read that started earlier.
+  card record is never overwritten by a read that started earlier. A cleared
+  split is kept as a dated marker (never shown) so such a read can't restore
+  it, and the rematch only updates a card no read has touched since.
 - Cards still taking picks are found hourly on Verdict's events page and read
   hourly, every ten minutes from the day before, until the card is over; then
   the split is final and not read again. A card whose final read was missed is

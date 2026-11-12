@@ -76,10 +76,15 @@ const store = db.prepare(`UPDATE fights SET verdict_picks_json = ?1 WHERE id = ?
 const storedPicks = db.prepare("SELECT verdict_picks_json AS json FROM fights WHERE id = ?");
 /** Splits this Verdict card stored on bouts it no longer matches: a bout it
  * dropped, or every bout once the card is retired or not UFC. */
-const clearFrom = db.prepare(`UPDATE fights SET verdict_picks_json = NULL
+const clearFrom = db.prepare(`UPDATE fights
+  SET verdict_picks_json = json_object('cleared', 1, 'sourceUrl', json_extract(verdict_picks_json, '$.sourceUrl'), 'fetchedAt', ?2)
   WHERE json_valid(verdict_picks_json) AND json_extract(verdict_picks_json, '$.sourceUrl') LIKE ?1
+    AND json_extract(verdict_picks_json, '$.cleared') IS NULL
     AND coalesce(json_extract(verdict_picks_json, '$.fetchedAt'), 0) <= ?2
     AND id NOT IN (SELECT value FROM json_each(?3))`);
+/** A cleared split is kept as a marker of when, so an older read still in
+ * flight can't put it back; nothing shows it. */
+const cleared = (sourceUrl: string, fetchedAt: number) => JSON.stringify({ cleared: 1, sourceUrl, fetchedAt });
 const cardUrl = (verdictId: number) => `${VERDICT}/event/${verdictId}/fight/%`;
 const record = db.prepare(`INSERT INTO verdict_pick_cards (verdict_id, date, event_id, final, checked_at, error) VALUES (?, ?, ?, ?, ?, ?)
   ON CONFLICT(verdict_id) DO UPDATE SET date = COALESCE(excluded.date, verdict_pick_cards.date),
@@ -200,7 +205,10 @@ async function readBout(source: VerdictPickBout, fight: LocalBout, final: boolea
     await sleep(2_000);
     read = await fetchVerdictPickFight(source.eventId, source.fightNumber);
   }
-  const order = read ? pairing(read.f1Name, read.f2Name, fight)?.order ?? null : null;
+  // The same rules as a card read: a retired copy or another promotion's
+  // card gives nothing, even when reached by the rematch.
+  const eligible = !!read && read.active && /ufc|^tbd$/i.test(read.association);
+  const order = eligible ? pairing(read!.f1Name, read!.f2Name, fight)?.order ?? null : null;
   const unfit = !!order && !!read?.picks && !read.picks.fits;
   const value = order && read?.picks?.fits ? alignedPicks(read.picks, order, fight, { sourceUrl, fetchedAt: now, final }) : null;
   const prior = (storedPicks.get(fight.id) as { json: string | null } | undefined)?.json ?? null;
@@ -211,12 +219,13 @@ async function readBout(source: VerdictPickBout, fight: LocalBout, final: boolea
   if (value) {
     // Verdict may list one bout on two cards (both halves after a move, or a
     // retired copy): the larger poll is the card's, whichever is read last.
-    if (!ours && held?.format === VERDICT_PICKS_FORMAT && held.fits === true && Number(held.least) > value.least) {
+    const sameBout = (held?.f1Id === fight.f1_id && held?.f2Id === fight.f2_id) || (held?.f1Id === fight.f2_id && held?.f2Id === fight.f1_id);
+    if (!ours && sameBout && held?.format === VERDICT_PICKS_FORMAT && held.fits === true && Number(held.least) > value.least) {
       return { changed: false, unfit, picked: !!read?.picked };
     }
     return write(JSON.stringify(value));
   }
-  if (ours && (final || !read?.picked || !order)) return write(null);
+  if (ours && !held.cleared && (final || !read?.picked || !order)) return write(cleared(sourceUrl, now));
   return { changed: false, unfit, picked: !!read?.picked };
 }
 
@@ -286,9 +295,10 @@ export async function importVerdictPickCard(verdictId: number, now = Date.now())
   return result;
 }
 
-const unreadCards = db.prepare(`SELECT verdict_id, date, bouts_json, unfit FROM verdict_pick_cards
+const unreadCards = db.prepare(`SELECT verdict_id, date, bouts_json, unfit, checked_at FROM verdict_pick_cards
   WHERE final = 1 AND empty = 0 AND date IS NOT NULL AND bouts_json LIKE '%"read":false%'`);
-const setBouts = db.prepare("UPDATE verdict_pick_cards SET bouts_json = ?, unfit = ?, error = ? WHERE verdict_id = ?");
+/** Unless the card was read again meanwhile, which made its own list. */
+const setBouts = db.prepare("UPDATE verdict_pick_cards SET bouts_json = ?, unfit = ?, error = ? WHERE verdict_id = ? AND checked_at = ?");
 
 export type RematchResult = { stored: number; cards: number; failed: number; lastError: unknown };
 
@@ -301,7 +311,7 @@ export type RematchResult = { stored: number; cards: number; failed: number; las
  */
 export async function rematchVerdictPicks(now = Date.now()): Promise<RematchResult> {
   const result: RematchResult = { stored: 0, cards: 0, failed: 0, lastError: null };
-  for (const card of unreadCards.all() as { verdict_id: number; date: string; bouts_json: string; unfit: number }[]) {
+  for (const card of unreadCards.all() as { verdict_id: number; date: string; bouts_json: string; unfit: number; checked_at: number }[]) {
     let bouts: CardBout[];
     try { bouts = JSON.parse(card.bouts_json); } catch { continue; }
     const candidates = nearby.all(shiftDate(card.date, -1), shiftDate(card.date, 1)) as LocalBout[];
@@ -323,7 +333,7 @@ export async function rematchVerdictPicks(now = Date.now()): Promise<RematchResu
       error = `rematch: ${String(failure)}`.slice(0, 500);
       log(`verdict picks rematch ${card.verdict_id}: ${String(failure)}`);
     }
-    setBouts.run(JSON.stringify(bouts), unfit, error, card.verdict_id);
+    setBouts.run(JSON.stringify(bouts), unfit, error, card.verdict_id, card.checked_at);
   }
   return result;
 }

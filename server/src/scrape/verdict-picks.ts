@@ -186,7 +186,10 @@ export function parseVerdictPickFight(json: any): VerdictPickFight | null {
   const own = bout(fight);
   const seconds = Number(json?.event?.eventDate ?? fight?.fighter1?.eventDate);
   if (!own || !Number.isFinite(seconds) || seconds <= 0) return null;
-  const card = (Array.isArray(json?.event?.fights) ? json.event.fights : []).flatMap((entry: any) => {
+  // An empty list is Verdict saying the card has no bouts; only a response
+  // without one falls back to the bout itself.
+  const listed = Array.isArray(json?.event?.fights);
+  const card = (listed ? json.event.fights : [json?.fight]).flatMap((entry: any) => {
     const parsed = bout(entry);
     return parsed ? [parsed] : [];
   });
@@ -198,7 +201,7 @@ export function parseVerdictPickFight(json: any): VerdictPickFight | null {
     active: Number(json?.event?.eventActive ?? fight?.fighter1?.eventActive ?? 1) !== 0,
     picked: !!fight?.fightPoll?.fightBallots?.global,
     picks: verdictPickCounts(fight),
-    card: card.length ? card : [own],
+    card,
   };
 }
 
