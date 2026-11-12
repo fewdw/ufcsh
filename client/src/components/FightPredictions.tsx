@@ -40,6 +40,8 @@ const SHADES: Record<string, [string, string]> = {
   decision: ["#93c5fd", "#fca5a5"], none: ["#dbeafe", "#fee2e2"],
 };
 const picksWord = (count: number) => `${count.toLocaleString()} ${count === 1 ? "pick" : "picks"}`;
+const shareLabel = (count: number, total: number) =>
+  count > 0 && total > 0 && count / total < 0.01 ? "<1%" : `${sharePct(count, total)}%`;
 /**
  * How many picks, never claiming more than is known. Verdict publishes each
  * option's share, not its count: when its numbers allow only one total that
@@ -66,7 +68,7 @@ function Pie({ entries, total, size = 76 }: { entries: Share[]; total: number; s
   let counter = TOP;
   const point = (at: number) => `${(c + r * Math.cos(at)).toFixed(2)} ${(c + r * Math.sin(at)).toFixed(2)}`;
   return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0" role="img"
-    aria-label={shown.map(entry => `${entry.label} ${sharePct(entry.count, total)}%`).join(", ")}>
+    aria-label={shown.map(entry => `${entry.label} ${shareLabel(entry.count, total)}`).join(", ")}>
     {shown.length === 1
       ? <circle cx={c} cy={c} r={r} fill={shown[0].color}><title>{`${shown[0].label}: ${picksWord(shown[0].count)} (100%)`}</title></circle>
       : shown.map(entry => {
@@ -76,7 +78,7 @@ function Pie({ entries, total, size = 76 }: { entries: Share[]; total: number; s
         const large = sweep > Math.PI ? 1 : 0;
         return <path key={entry.key} d={`M ${c} ${c} L ${point(from)} A ${r} ${r} 0 ${large} 1 ${point(from + sweep)} Z`}
           fill={entry.color} strokeWidth={1.5} strokeLinejoin="round" className="stroke-white dark:stroke-[#18181b]">
-          <title>{`${entry.label}: ${picksWord(entry.count)} (${sharePct(entry.count, total)}%)`}</title>
+          <title>{`${entry.label}: ${picksWord(entry.count)} (${shareLabel(entry.count, total)})`}</title>
         </path>;
       })}
   </svg>;
@@ -98,9 +100,9 @@ function Key({ rows }: { rows: { key: string; swatches: string[]; label: string;
 function RoundBars({ rounds, total }: { rounds: { key: string; label: string; short: string; count: number; sides: number[] }[]; total: number }) {
   const most = Math.max(1, ...rounds.flatMap(round => round.sides));
   return <div className="flex h-[76px] items-end justify-center gap-1.5" role="img"
-    aria-label={rounds.map(round => `${round.label} ${sharePct(round.count, total)}%`).join(", ")}>
+    aria-label={rounds.map(round => `${round.label} ${shareLabel(round.count, total)}`).join(", ")}>
     {rounds.map(round => <div key={round.key} className="flex h-full w-5 flex-col items-center justify-end gap-0.5" title={`${round.label}: ${picksWord(round.count)}`}>
-      {round.count && round.key !== "unspecified" ? <span className="whitespace-nowrap text-[9px] font-semibold leading-none tabular-nums text-zinc-700">{sharePct(round.count, total)}%</span> : null}
+      {round.count && round.key !== "unspecified" ? <span className="whitespace-nowrap text-[9px] font-semibold leading-none tabular-nums text-zinc-700">{shareLabel(round.count, total)}</span> : null}
       <div className="flex h-full items-end gap-px">
         {round.sides.map((count, index) => <span key={index} className="block w-[7px] rounded-t-[2px]"
           style={{ height: `${count ? Math.max(6, (count / most) * 100) : 3}%`, backgroundColor: count ? (index === 0 ? "var(--color-f1)" : "var(--color-f2)") : "var(--color-plot-axis)" }} />)}
@@ -140,7 +142,7 @@ function CommunityPicks({ distribution }: { distribution: PredictionDistribution
           <Pie entries={fighters} total={total} />
           <Key rows={fighters.map((entry, index) => ({
             key: entry.key, swatches: [entry.color], label: lastName(entry.label),
-            value: `${sharePct(entry.count, total)}%`, ink: index === 0 ? "text-f1-ink" : "text-f2-ink", muted: !entry.count,
+            value: shareLabel(entry.count, total), ink: index === 0 ? "text-f1-ink" : "text-f2-ink", muted: !entry.count,
           }))} />
         </div>
         <div className="flex min-w-0 flex-col items-center">
@@ -148,7 +150,7 @@ function CommunityPicks({ distribution }: { distribution: PredictionDistribution
           <Pie entries={byFighter ? calls : methods.map(entry => ({ key: entry.method ?? "none", label: methodName(entry.method), count: entry.count, color: SHADES[entry.method ?? "none"][0] }))} total={total} />
           <Key rows={methods.filter(entry => entry.method || entry.count).map(entry => ({
             key: entry.method ?? "none", swatches: byFighter ? SHADES[entry.method ?? "none"] : [SHADES[entry.method ?? "none"][0]],
-            label: entry.method ? METHOD_SHORT[entry.method] : "Any", value: `${sharePct(entry.count, total)}%`, muted: !entry.count,
+            label: entry.method ? METHOD_SHORT[entry.method] : "Any", value: shareLabel(entry.count, total), muted: !entry.count,
           }))} />
         </div>
         <div className="col-span-2 flex min-w-0 flex-col items-center sm:col-span-1">
