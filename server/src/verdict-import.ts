@@ -40,7 +40,7 @@ const tokensOf = (name: string) => normName(name).replace(/\bjr\b/g, "junior").s
 
 /** The same person under Verdict's spelling: identical, or the same first and
  * last name around a middle name, or the same initial and surname. */
-function sameName(a: string, b: string): boolean {
+export function sameName(a: string, b: string): boolean {
   const left = normName(a);
   const right = normName(b);
   if (!left || !right) return false;
@@ -100,7 +100,7 @@ function needsJudges(fight: LocalFight): boolean {
 const hasCommunity = (fight: LocalFight) => !!parseCommunityScorecard(fight.community_score_json, completedScorecardRounds(fight));
 const scoreable = (fight: LocalFight) => isDecision(fight) || Number(fight.round) > 1;
 
-function shiftDate(dateIso: string, days: number): string {
+export function shiftDate(dateIso: string, days: number): string {
   const d = new Date(`${dateIso}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
@@ -119,10 +119,26 @@ const nearbyFights = db.prepare(`SELECT f.id, f.event_id, e.date,
 /** Finished scoreable fights (on a live card too) on the date Verdict gives, or a day either side:
  * Verdict files many cards under the UTC date, a day before or after the
  * local card date UFCStats uses. Both fighter names still have to agree. */
-const sides = (fight: LocalFight): [Side, Side] => [
+export const sides = (fight: Pick<LocalFight, "f1_name" | "f2_name" | "f1_alias" | "f2_alias">): [Side, Side] => [
   [fight.f1_name, ...(fight.f1_alias ? [fight.f1_alias] : [])],
   [fight.f2_name, ...(fight.f2_alias ? [fight.f2_alias] : [])],
 ];
+
+/** Each Verdict bout's one best local bout. Two bouts equally good is a
+ * guess; take neither. */
+export function matchBouts<S extends { f1Name: string; f2Name: string }, F extends Parameters<typeof sides>[0]>(
+  sources: S[], candidates: F[],
+): { source: S; fight: F }[] {
+  return sources.flatMap(source => {
+    const ranked = candidates.flatMap(fight => {
+      const found = alignment(source.f1Name, source.f2Name, ...sides(fight));
+      return found ? [{ fight, tier: found.tier }] : [];
+    });
+    const tier = Math.min(...ranked.map(match => match.tier));
+    const best = ranked.filter(match => match.tier === tier);
+    return best.length === 1 ? [{ source, fight: best[0].fight }] : [];
+  });
+}
 
 function localFightsNear(date: string): LocalFight[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
@@ -249,17 +265,7 @@ export async function importVerdictEvent(
     }
     return null;
   }
-  const candidates = localFightsNear(page.date);
-  const matches = page.fights.flatMap(source => {
-    const ranked = candidates.flatMap(fight => {
-      const found = alignment(source.f1Name, source.f2Name, ...sides(fight));
-      return found ? [{ fight, tier: found.tier }] : [];
-    });
-    const tier = Math.min(...ranked.map(match => match.tier));
-    const best = ranked.filter(match => match.tier === tier);
-    // Two bouts equally good is a guess; take neither.
-    return best.length === 1 ? [{ source, fight: best[0].fight }] : [];
-  });
+  const matches = matchBouts(page.fights, localFightsNear(page.date));
   const eventId = matches[0]?.fight.event_id ?? null;
   // Verdict splits a card over two pages that both list it, so a pass skips
   // fights it has already read.

@@ -14,6 +14,7 @@
     "backfill:images": "node src/backfill-images.ts",
     "backfill:image-variants": "node src/backfill-image-variants.ts",
     "backfill:scorecards": "node src/backfill-verdict-scorecards.ts",
+    "backfill:verdict-picks": "node src/backfill-verdict-picks.ts",
     "backfill:official-scorecards": "node src/backfill-mmadecisions-scorecards.ts",
     "backfill:point-deductions": "node src/backfill-point-deductions.ts",
     "load:test": "node src/load-test.ts",
