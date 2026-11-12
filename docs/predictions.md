@@ -18,12 +18,13 @@ charts, as a total (below).
 Verdict MMA has taken fan picks on every UFC main card since UFC 205 (November
 2016) and on prelims too since 2024. `verdict-picks.ts` stores them on the bout
 (`fights.verdict_picks_json`, in our corner order, with the two fighter ids it
-was matched to). The community picks panel adds them to ours for winner and
-method, then shows each community on its own under "Where the picks come
-from": Verdict's count, winner split and, until its picks are final (the card
-is over, or the bout under way), when it was last read; ufc.sh fans' count, winner split and round picks. The round
-chart is shown only for ufc.sh-only bouts: Verdict's picks name a round, but
-it never says which.
+was matched to). The community picks panel shows one combined winner pie, one
+combined method pie and one round/decision bar chart. Round percentages use
+all picks: decisions from both sources go under
+DEC; picks without a published finish round go under ?. Verdict publishes no
+finish-round totals, so its knockout/submission picks stay unspecified. The
+round chart stays visible when Verdict picks are included, even if there are
+no local picks.
 
 Verdict publishes no counts. Its public `/api/v1/fight` prices every option as
 total ÷ picks on it, to two decimals (4.2 when nobody picked it), and names the
@@ -40,7 +41,8 @@ option above its ballot: then the solver allows up to 10% more, gives the
 least and never calls it exact. A single strict total is called exact only if
 quick picks couldn't also fit one up to 1% higher; a finish on top leaves totals up to two or three
 times the least. The panel shows an exact total as is and any other as the
-least, to three figures rounded down, with a `+`. Percentages are within about
+least, to three figures rounded down. The displayed count omits a `+`, but
+remains an estimate when `exact` is false. Percentages are within about
 0.3 points of the shares the prices state either way.
 
 Trust over time:
