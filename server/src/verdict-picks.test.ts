@@ -192,14 +192,14 @@ test("a card that retires, or drops our bout, takes its split with it", async ()
   const local = fight();
   db.exec("BEGIN");
   try {
-    for (const change of [{ active: 0 }, { listed: false }]) {
+    for (const [card, change] of [[999989, { active: 0 }], [999979, { listed: false }]] as const) {
       db.prepare("UPDATE fights SET verdict_picks_json = NULL WHERE id = ?").run(local.id);
-      let restore = mockVerdict(local, { 999989: picked });
-      await importVerdictPickCard(999989, Date.now() - 1_000);
+      let restore = mockVerdict(local, { [card]: picked });
+      await importVerdictPickCard(card, Date.now() - 1_000);
       assert.equal(stored(local.id).total, 80);
       restore();
-      restore = mockVerdict(local, { 999989: picked }, local.f1_name, "UFC", change);
-      try { await importVerdictPickCard(999989); } finally { restore(); }
+      restore = mockVerdict(local, { [card]: picked }, local.f1_name, "UFC", change);
+      try { await importVerdictPickCard(card); } finally { restore(); }
       assert.equal(stored(local.id), null, JSON.stringify(change));
     }
   } finally { db.exec("ROLLBACK"); }
@@ -281,5 +281,77 @@ test("an earlier opponent's larger poll never blocks the current matchup's picks
     }), local.id);
     await importVerdictPickCard(999984);
     assert.equal(stored(local.id).least, 44);
+  } finally { restore(); db.exec("ROLLBACK"); }
+});
+
+test("a read that started before a newer read of its card writes nothing, even onto an empty bout", async () => {
+  const local = fight();
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE fights SET verdict_picks_json = NULL WHERE id = ?").run(local.id);
+    const t = Date.now();
+    let restore = mockVerdict(local, { 999983: picked }, local.f1_name, "UFC", { active: 0 });
+    await importVerdictPickCard(999983, t + 2_000);
+    restore();
+    restore = mockVerdict(local, { 999983: picked });
+    await importVerdictPickCard(999983, t);
+    restore();
+    assert.equal(stored(local.id), null);
+  } finally { db.exec("ROLLBACK"); }
+});
+
+test("between two cards listing our bout, the larger poll wins even when its read started first", async () => {
+  const local = fight();
+  const restore = mockVerdict(local, { 999982: picked, 999981: small });
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE fights SET verdict_picks_json = NULL WHERE id = ?").run(local.id);
+    const t = Date.now();
+    await importVerdictPickCard(999981, t + 1_000);
+    assert.equal(stored(local.id).least, 44);
+    await importVerdictPickCard(999982, t);
+    assert.equal(stored(local.id).total, 80);
+  } finally { restore(); db.exec("ROLLBACK"); }
+});
+
+test("a response Verdict changed shape is an error, never a card with no bouts", async () => {
+  const local = fight();
+  const restore = mockVerdict(local, { 999978: picked });
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE fights SET verdict_picks_json = NULL WHERE id = ?").run(local.id);
+    await importVerdictPickCard(999978, Date.now() - 1_000);
+    globalThis.fetch = async () => Response.json({ status: "Authentication required." });
+    await assert.rejects(importVerdictPickCard(999978), /unreadable/);
+    assert.equal(stored(local.id).total, 80);
+  } finally { restore(); db.exec("ROLLBACK"); }
+});
+
+test("a card that reads empty is believed only on the next read too", async () => {
+  const local = fight();
+  const restore = mockVerdict(local, { 999977: picked });
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE fights SET verdict_picks_json = NULL WHERE id = ?").run(local.id);
+    const t = Date.now();
+    await importVerdictPickCard(999977, t);
+    globalThis.fetch = async () => new Response('{"message":"Fight not found"}', { status: 404 });
+    await importVerdictPickCard(999977, t + 1_000);
+    assert.equal(stored(local.id).total, 80);
+    assert.match((db.prepare("SELECT error FROM verdict_pick_cards WHERE verdict_id = 999977").get() as { error: string }).error, /no bouts/);
+    await importVerdictPickCard(999977, t + 2_000);
+    assert.equal(stored(local.id), null);
+  } finally { restore(); db.exec("ROLLBACK"); }
+});
+
+test("a stray pick on a card from before UFC 205 is never shown", async () => {
+  const local = db.prepare(`SELECT f.id, f.event_id, f.f1_name, f.f2_name, f.f1_id, f.f2_id, e.date FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.date < '2016-01-01' ORDER BY e.date DESC LIMIT 1`).get() as Fight;
+  const restore = mockVerdict(local, { 999976: picked });
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE fights SET verdict_picks_json = NULL WHERE id = ?").run(local.id);
+    assert.equal((await importVerdictPickCard(999976)).stored, 0);
+    assert.equal(stored(local.id), null);
   } finally { restore(); db.exec("ROLLBACK"); }
 });

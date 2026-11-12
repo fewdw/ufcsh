@@ -37,7 +37,8 @@ total give no counts at all. A decision on top
 pins the total to within 0.005 ÷ its price (about 0.3% or less), unless
 Verdict's winner-only quick picks (filed as decisions, round 0) put that
 option above its ballot: then the solver allows up to 10% more, gives the
-least and never calls it exact; a finish on top leaves totals up to two or three
+least and never calls it exact. A single strict total is called exact only if
+quick picks couldn't also fit one up to 1% higher; a finish on top leaves totals up to two or three
 times the least. The panel shows an exact total as is and any other as the
 least, to three figures rounded down, with a `+`. Percentages are within about
 0.3 points of the shares the prices state either way.
@@ -50,9 +51,11 @@ Trust over time:
   copy Verdict has retired holds a sliver of the card's picks. A card that
   turns out otherwise loses the splits it stored.
 - Verdict may list one bout on two live cards (both halves after a move): the
-  split from the larger poll is kept, whichever card is read last. A card that
+  split from the larger poll is kept, whichever card is read (or finishes) last. A card that
   no longer lists one of our bouts (or lists no bouts at all) clears the split
-  it stored there.
+  it stored there. A card that had bouts and reads empty is noted in Admin →
+  Bugs and believed only when the next read agrees. A response missing the
+  bout or its date is an error, never "no bouts".
 - A bout is matched only when both fighters' names agree (tier 1 of
   `alignment`, aliases included), or one does and the other is Verdict's own
   spelling of the same fighter (`nearName`: "Charles Olivera", "Sumudaerji
@@ -69,27 +72,32 @@ Trust over time:
   bouts are matched again, so a card of ours loaded later (or a name fixed) gets
   its picks without the card being read again. A rematch that fails keeps its
   error on the card (Admin → Bugs) until one succeeds.
-- The sync, the backfill and Admin's repair may read a card at once: a split or
-  card record is never overwritten by a read that started earlier. A cleared
-  split is kept as a dated marker (never shown) so such a read can't restore
-  it, and the rematch only updates a card no read has touched since.
+- The sync, the backfill and Admin's repair may read cards at once, so each
+  write is decided in one statement against what is stored then: nothing from
+  a read of a card that has been read again since (`read_at`); over the same
+  Verdict bout's split, only a later read; over another card's split for the
+  same two fighters, only a poll at least as large. A cleared split is kept as
+  a dated marker (never shown), and the rematch only updates a card no read
+  has touched since.
 - Cards still taking picks are found hourly on Verdict's events page and read
   hourly, every ten minutes from the day before, until the card is over; then
   the split is final and not read again. A card whose final read was missed is
   read until one succeeds, for a month. A card no bout of ours matches yet
   (still being announced, or a placeholder dated years ahead) is read daily,
-  hourly in its last week. A final card Verdict lists again as not started
-  under a new date reopens. A failed read never un-finals a card. The panel says when open picks were
+  hourly in its last week; a matched one daily until its last fortnight. A
+  final card Verdict lists again as not started reopens if it was re-dated or
+  set aside as not a live UFC card. A failed read never un-finals a card. The panel says when open picks were
   last read.
 - Every other card is read once by a walk over Verdict's event ids, one per 30
-  seconds; `npm run backfill:verdict-picks` does the whole archive in about ten
-  minutes. Changing what is stored means bumping `VERDICT_PICKS_FORMAT` in
+  seconds; `npm run backfill:verdict-picks` does the whole archive in about half an
+  hour (two workers, a quarter-second pause per card, to spare the host that
+  also serves fight-night scoring). Changing what is stored means bumping `VERDICT_PICKS_FORMAT` in
   `predictions.ts`: older splits stop showing and every card is read again.
 - The walk gives up on a card after three lasting failures running (not a
   dropped connection, timeout, 401/403, rate limit or server error, so never
-  over an outage); it stays in Admin → Bugs. A card dated before UFC 205 took no picks and isn't read bout
-  by bout or rematched; any later card is, so a pickless bout never hides the
-  rest.
+  over an outage); it stays in Admin → Bugs. A card dated before UFC 205 was added later and isn't read bout
+  by bout or rematched, even if a stray pick landed on it; any later card is,
+  so a pickless bout never hides the rest.
 - A pass in which every card read fails (even if Verdict's events page still
   loads) is reported to Admin's sync status; a pass that read nothing neither
   clears nor extends that. Admin →

@@ -32,7 +32,7 @@ export type ExternalPicks = {
 const METHODS: PredictionMethod[] = ["ko", "submission", "decision"];
 /** The shape `verdict-picks.ts` stores. Bumped when it changes: a split an
  * older reader stored is not shown, and every card is read again. */
-export const VERDICT_PICKS_FORMAT = 5;
+export const VERDICT_PICKS_FORMAT = 6;
 /** A stored Verdict split for this bout, or null unless every count is whole,
  * they add up, and it was matched to these two fighters: a bout whose opponent
  * changed since never shows the old matchup's picks. */

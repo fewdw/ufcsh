@@ -4,7 +4,9 @@ import { importVerdictPickCard } from "./verdict-picks.ts";
 /**
  * Verdict MMA's fans' picks for its whole archive in one pass, instead of the
  * background walk's one card every 30 seconds. Usage:
- *   node src/backfill-verdict-picks.ts [--from=1] [--max=<newest card seen, else 2100>] [--concurrency=4]
+ *   node src/backfill-verdict-picks.ts [--from=1] [--max=<newest card seen, else 2100>] [--concurrency=2]
+ * Each worker pauses a quarter second between cards: Verdict also serves the
+ * live fight-night scoring this site relies on.
  * Cards already read final are skipped, here and by the background walk.
  */
 
@@ -14,7 +16,7 @@ const argv = new Map(process.argv.slice(2).map(value => {
 }));
 const first = Math.max(1, Number(argv.get("from") ?? 1));
 const last = Math.max(first, Number(argv.get("max") ?? getMeta("verdict_picks_newest") ?? 2100));
-const concurrency = Math.min(8, Math.max(1, Number(argv.get("concurrency") ?? 4)));
+const concurrency = Math.min(8, Math.max(1, Number(argv.get("concurrency") ?? 2)));
 const final = db.prepare("SELECT final FROM verdict_pick_cards WHERE verdict_id = ?");
 
 let next = first, scanned = 0, cards = 0, stored = 0, failed = 0;
@@ -33,6 +35,7 @@ await Promise.all(Array.from({ length: concurrency }, async () => {
       failed += 1;
       console.log(`card ${id}: ${String(error)}`);
     }
+    await new Promise(resolve => setTimeout(resolve, 250));
     if (scanned % 100 === 0) console.log(`scanned ${scanned}/${last - first + 1}; ${cards} cards matched; ${stored} bouts stored; ${failed} failed`);
   }
 }));

@@ -48,6 +48,9 @@ db.exec(`
   if (!columns.has("unfit")) db.exec("ALTER TABLE verdict_pick_cards ADD COLUMN unfit INTEGER NOT NULL DEFAULT 0");
   // Verdict's promotion for the card ("UFC", "UFCPrelims", "PFL"…).
   if (!columns.has("association")) db.exec("ALTER TABLE verdict_pick_cards ADD COLUMN association TEXT");
+  // When the last successful read of the card started: a read that started
+  // before it is out of date and writes nothing.
+  if (!columns.has("read_at")) db.exec("ALTER TABLE verdict_pick_cards ADD COLUMN read_at INTEGER");
 }
 
 /** Bumped whenever what is stored changes: every card is then read again by
@@ -69,16 +72,42 @@ const nearby = db.prepare(`SELECT f.id, f.event_id, f.f1_id, f.f2_id, f.f1_name,
   WHERE e.date BETWEEN ? AND ?`);
 type LocalBout = { id: string; event_id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; f1_alias: string | null; f2_alias: string | null; verdict_picks_json: string | null };
 
-/** Stores a split unless a read that started later already stored one: the
- * sync, the backfill and Admin's repair may read the same card at once. */
+/**
+ * The sync, the backfill and Admin's repair may read cards at once, so each
+ * write is decided in one statement against what is stored then:
+ * - nothing from a read of a card that has been read again since (`read_at`);
+ * - over a split from the same Verdict bout, only from a later read;
+ * - over one from another Verdict bout (a bout listed on two cards), only a
+ *   poll at least as large, unless the stored one no longer counts (cleared,
+ *   an older format, or for another pair of fighters).
+ * ?1 split, ?2 fight, ?3 read start, ?4 Verdict bout URL, ?5 card id,
+ * ?6 least, ?7 and ?8 the fight's fighter ids.
+ */
 const store = db.prepare(`UPDATE fights SET verdict_picks_json = ?1 WHERE id = ?2 AND verdict_picks_json IS NOT ?1
-  AND (NOT json_valid(verdict_picks_json) OR coalesce(json_extract(verdict_picks_json, '$.fetchedAt'), 0) <= ?3)`);
+  AND NOT EXISTS (SELECT 1 FROM verdict_pick_cards WHERE verdict_id = ?5 AND read_at > ?3)
+  AND (verdict_picks_json IS NULL OR NOT json_valid(verdict_picks_json)
+    OR (json_extract(verdict_picks_json, '$.sourceUrl') IS ?4 AND coalesce(json_extract(verdict_picks_json, '$.fetchedAt'), 0) <= ?3)
+    OR (json_extract(verdict_picks_json, '$.sourceUrl') IS NOT ?4 AND (
+      json_extract(verdict_picks_json, '$.cleared') IS NOT NULL
+      OR json_extract(verdict_picks_json, '$.format') IS NOT ${VERDICT_PICKS_FORMAT}
+      OR json_extract(verdict_picks_json, '$.fits') IS NOT 1
+      OR NOT ((json_extract(verdict_picks_json, '$.f1Id') IS ?7 AND json_extract(verdict_picks_json, '$.f2Id') IS ?8)
+        OR (json_extract(verdict_picks_json, '$.f1Id') IS ?8 AND json_extract(verdict_picks_json, '$.f2Id') IS ?7))
+      OR coalesce(json_extract(verdict_picks_json, '$.least'), 0) <= ?6)))`);
+/** Clears a split only if it is still this Verdict bout's and no later read
+ * of either kind has happened. */
+const clearOwn = db.prepare(`UPDATE fights SET verdict_picks_json = ?1 WHERE id = ?2
+  AND NOT EXISTS (SELECT 1 FROM verdict_pick_cards WHERE verdict_id = ?5 AND read_at > ?3)
+  AND json_valid(verdict_picks_json) AND json_extract(verdict_picks_json, '$.sourceUrl') IS ?4
+  AND json_extract(verdict_picks_json, '$.cleared') IS NULL
+  AND coalesce(json_extract(verdict_picks_json, '$.fetchedAt'), 0) <= ?3`);
 const storedPicks = db.prepare("SELECT verdict_picks_json AS json FROM fights WHERE id = ?");
 /** Splits this Verdict card stored on bouts it no longer matches: a bout it
  * dropped, or every bout once the card is retired or not UFC. */
 const clearFrom = db.prepare(`UPDATE fights
   SET verdict_picks_json = json_object('cleared', 1, 'sourceUrl', json_extract(verdict_picks_json, '$.sourceUrl'), 'fetchedAt', ?2)
-  WHERE json_valid(verdict_picks_json) AND json_extract(verdict_picks_json, '$.sourceUrl') LIKE ?1
+  WHERE NOT EXISTS (SELECT 1 FROM verdict_pick_cards WHERE verdict_id = ?4 AND read_at > ?2)
+    AND json_valid(verdict_picks_json) AND json_extract(verdict_picks_json, '$.sourceUrl') LIKE ?1
     AND json_extract(verdict_picks_json, '$.cleared') IS NULL
     AND coalesce(json_extract(verdict_picks_json, '$.fetchedAt'), 0) <= ?2
     AND id NOT IN (SELECT value FROM json_each(?3))`);
@@ -86,10 +115,10 @@ const clearFrom = db.prepare(`UPDATE fights
  * flight can't put it back; nothing shows it. */
 const cleared = (sourceUrl: string, fetchedAt: number) => JSON.stringify({ cleared: 1, sourceUrl, fetchedAt });
 const cardUrl = (verdictId: number) => `${VERDICT}/event/${verdictId}/fight/%`;
-const record = db.prepare(`INSERT INTO verdict_pick_cards (verdict_id, date, event_id, final, checked_at, error) VALUES (?, ?, ?, ?, ?, ?)
+const record = db.prepare(`INSERT INTO verdict_pick_cards (verdict_id, date, event_id, final, checked_at, error, read_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?5)
   ON CONFLICT(verdict_id) DO UPDATE SET date = COALESCE(excluded.date, verdict_pick_cards.date),
     event_id = COALESCE(excluded.event_id, verdict_pick_cards.event_id), final = excluded.final,
-    checked_at = excluded.checked_at, error = excluded.error
+    checked_at = excluded.checked_at, error = excluded.error, read_at = excluded.read_at
   WHERE excluded.checked_at >= verdict_pick_cards.checked_at`);
 /** Only the read that owns the card's latest `checked_at` writes its bouts. */
 const recordBouts = db.prepare("UPDATE verdict_pick_cards SET bouts_json = ?, empty = ?, unfit = ?, association = ? WHERE verdict_id = ? AND checked_at = ?");
@@ -97,8 +126,8 @@ const recordBouts = db.prepare("UPDATE verdict_pick_cards SET bouts_json = ?, em
 const recordError = db.prepare(`INSERT INTO verdict_pick_cards (verdict_id, final, checked_at, error) VALUES (?, 0, ?, ?)
   ON CONFLICT(verdict_id) DO UPDATE SET checked_at = excluded.checked_at, error = excluded.error
   WHERE excluded.checked_at >= verdict_pick_cards.checked_at`);
-const cardRow = db.prepare("SELECT date, event_id, final, checked_at, bouts_json FROM verdict_pick_cards WHERE verdict_id = ?");
-type CardRow = { date: string | null; event_id: string | null; final: number; checked_at: number; bouts_json: string | null };
+const cardRow = db.prepare("SELECT date, event_id, final, empty, checked_at, bouts_json, error FROM verdict_pick_cards WHERE verdict_id = ?");
+type CardRow = { date: string | null; event_id: string | null; final: number; empty: number; checked_at: number; bouts_json: string | null; error: string | null };
 
 const tokens = (name: string) => normName(name).split(" ").filter(Boolean);
 function oneEditApart(a: string, b: string): boolean {
@@ -212,25 +241,22 @@ async function readBout(source: VerdictPickBout, fight: LocalBout, final: boolea
   const unfit = !!order && !!read?.picks && !read.picks.fits;
   const value = order && read?.picks?.fits ? alignedPicks(read.picks, order, fight, { sourceUrl, fetchedAt: now, final }) : null;
   const prior = (storedPicks.get(fight.id) as { json: string | null } | undefined)?.json ?? null;
-  const write = (json: string | null) => ({ changed: store.run(json, fight.id, now).changes > 0 && content(json) !== content(prior), unfit, picked: !!read?.picked });
-  let held: any = null;
-  try { held = JSON.parse(prior ?? "null"); } catch { /* unreadable: replaced, never cleared */ }
-  const ours = held?.sourceUrl === sourceUrl;
+  const done = (changes: number, json: string) => ({ changed: changes > 0 && content(json) !== content(prior), unfit, picked: !!read?.picked });
   if (value) {
-    // Verdict may list one bout on two cards (both halves after a move, or a
-    // retired copy): the larger poll is the card's, whichever is read last.
-    const sameBout = (held?.f1Id === fight.f1_id && held?.f2Id === fight.f2_id) || (held?.f1Id === fight.f2_id && held?.f2Id === fight.f1_id);
-    if (!ours && sameBout && held?.format === VERDICT_PICKS_FORMAT && held.fits === true && Number(held.least) > value.least) {
-      return { changed: false, unfit, picked: !!read?.picked };
-    }
-    return write(JSON.stringify(value));
+    const json = JSON.stringify(value);
+    return done(Number(store.run(json, fight.id, now, sourceUrl, source.eventId, value.least, fight.f1_id, fight.f2_id).changes), json);
   }
-  if (ours && !held.cleared && (final || !read?.picked || !order)) return write(cleared(sourceUrl, now));
+  if (final || !read?.picked || !order) {
+    const json = cleared(sourceUrl, now);
+    return done(Number(clearOwn.run(json, fight.id, now, sourceUrl, source.eventId).changes), json);
+  }
   return { changed: false, unfit, picked: !!read?.picked };
 }
 
 /** Before UFC 205 Verdict took no picks: its cards from then were added later. */
 const FIRST_PICKS = "2016-11-12";
+/** Marks a card that read empty after having bouts, until a second read agrees. */
+const EMPTY = "empty:";
 
 /**
  * Read one half of a Verdict UFC card and store the picks on every bout of
@@ -246,12 +272,18 @@ export async function importVerdictPickCard(verdictId: number, now = Date.now())
     try { hints = (JSON.parse(row?.bouts_json ?? "[]") as CardBout[]).map(bout => bout.fightNumber); } catch { /* none */ }
     const first = await firstBout(verdictId, hints);
     if (!first) {
-      // No bouts: a card past the newest ones stays open to be found; one we
-      // had dated that has since gone empty is final once its date passes,
-      // and its splits go with it.
-      const gone = !!row?.date && row.date < today;
-      record.run(verdictId, null, null, gone ? 1 : 0, now, null);
-      if (row?.date) clearFrom.run(cardUrl(verdictId), now, "[]");
+      // No bouts: a card past the newest ones stays open to be found. One that
+      // had bouts and now reads empty is noted (Admin → Bugs) and believed
+      // only on the next read too; then its splits go, and once its date has
+      // passed it is final.
+      if (row?.date) {
+        if (!row.error?.startsWith(EMPTY)) {
+          recordError.run(verdictId, now, `${EMPTY} the card lists no bouts`);
+          return result;
+        }
+        clearFrom.run(cardUrl(verdictId), now, "[]", verdictId);
+      }
+      record.run(verdictId, null, null, row?.date && row.date < today ? 1 : 0, now, row?.date ? `${EMPTY} the card lists no bouts` : null);
       return result;
     }
     result.bouts = first.card.length;
@@ -264,7 +296,7 @@ export async function importVerdictPickCard(verdictId: number, now = Date.now())
     if (!/ufc|^tbd$/i.test(first.association) || !first.active) {
       record.run(verdictId, first.date, null, 1, now, null);
       recordBouts.run(JSON.stringify(bouts), 1, 0, first.association, verdictId, now);
-      clearFrom.run(cardUrl(verdictId), now, "[]");
+      clearFrom.run(cardUrl(verdictId), now, "[]", verdictId);
       return result;
     }
     const candidates = nearby.all(shiftDate(first.date, -1), shiftDate(first.date, 1)) as LocalBout[];
@@ -272,8 +304,9 @@ export async function importVerdictPickCard(verdictId: number, now = Date.now())
     // with ours is another matchup, and its picks say nothing about ours.
     const matches = matchPicks(bouts, candidates);
     result.matched = matches.length;
-    // A card from before Verdict took picks has none to read.
-    const early = first.date < FIRST_PICKS && !first.picked;
+    // A card from before Verdict took picks (added later, though a stray pick
+    // may have landed on it) is never read bout by bout.
+    const early = first.date < FIRST_PICKS;
     let unfit = 0;
     for (const { source, fight } of early ? [] : matches) {
       const outcome = await readBout(source, fight, final, now, first);
@@ -281,8 +314,9 @@ export async function importVerdictPickCard(verdictId: number, now = Date.now())
       if (outcome.unfit) unfit += 1;
       source.read = true;
     }
-    // A bout this card no longer lists (or no longer matches) loses its split.
-    clearFrom.run(cardUrl(verdictId), now, JSON.stringify(matches.map(match => match.fight.id)));
+    // A bout this card no longer lists (or no longer matches) loses its split,
+    // as does every bout of an early card.
+    clearFrom.run(cardUrl(verdictId), now, JSON.stringify(early ? [] : matches.map(match => match.fight.id)), verdictId);
     // Empty: from before Verdict took picks, so its other bouts aren't worth
     // matching again. A later card's unread bouts stay open to the rematch,
     // even if those read so far took no picks.
@@ -366,8 +400,9 @@ async function listedCards(): Promise<Map<number, { date: string; status: number
  * placeholder Verdict dated years ahead) daily, hourly in its last week. */
 function everyFor(date: string, matched: boolean, now: number): number {
   const days = (Date.parse(`${date}T00:00:00Z`) - now) / 86_400_000;
-  if (!matched) return days <= 7 ? 60 * 60_000 : 24 * 60 * 60_000;
-  return days <= 1 ? 10 * 60_000 : 60 * 60_000;
+  if (days <= 1 && matched) return 10 * 60_000;
+  // Beyond a fortnight even a matched card is outside the Predict tab's window.
+  return days <= (matched ? 14 : 7) ? 60 * 60_000 : 24 * 60 * 60_000;
 }
 /** Cards still taking picks, and any whose final read was missed (an outage):
  * those are read until one succeeds, for a month. */
@@ -413,7 +448,10 @@ export async function syncVerdictPicks(now = Date.now()): Promise<boolean> {
       for (const [id, card] of listed) {
         const row = cardRow.get(id) as CardRow | undefined;
         // A final card Verdict lists again as not started (re-dated) reopens.
-        const reopened = !!row?.final && card.status === 0 && card.date >= today && card.date !== row.date;
+        // A final card Verdict lists again as not started reopens if it was
+        // re-dated, or if it was set aside as not a live UFC card (Verdict
+        // fixes a card's label or revives it in place).
+        const reopened = !!row?.final && card.status === 0 && card.date >= today && (card.date !== row.date || !!row.empty);
         const stale = !!row && !row.final && row.checked_at < now - everyFor(row.date ?? card.date ?? today, !!row.event_id, now);
         if (!row || reopened || stale) due.push(id);
       }

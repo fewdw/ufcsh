@@ -148,6 +148,15 @@ export function verdictPickCounts(fight: any): VerdictPicks | null {
     }
     if (solutions.length) break;
   }
+  // A single strict total is exact only if quick picks couldn't put it a
+  // little higher: prices barely move when a few are added.
+  let doubtful = false;
+  if (solutions.length && !quick && solutions[0].total === solutions.at(-1)!.total) {
+    const { total: only, unpicked } = solutions[0];
+    quick = true;
+    for (let total = only + 1; total <= Math.floor(only * 1.01) && !doubtful; total++) doubtful = fits(total, unpicked);
+    quick = false;
+  }
   const zeroSets = new Set(solutions.map(s => [...s.unpicked].map(b => all.indexOf(b)).join(",")));
   if (zeroSets.size > 1) return null;
   const split = (counts: number[], side: 0 | 1): VerdictPickSplit => {
@@ -164,7 +173,7 @@ export function verdictPickCounts(fight: any): VerdictPicks | null {
     const counts = assign(total, solutions[0].unpicked);
     // Under the quick-pick reading a single total is only as certain as that
     // reading, so it is never called exact.
-    return { total, least, exact: least === most && !quick, fits: true, f1: split(counts, 0), f2: split(counts, 1) };
+    return { total, least, exact: least === most && !quick && !doubtful, fits: true, f1: split(counts, 0), f2: split(counts, 1) };
   }
   // No total fits: prices and the top ballot read a moment apart while picks
   // are still coming in, or Verdict changed how it prices. Nothing here is
@@ -180,12 +189,16 @@ const bout = (fight: any): VerdictPickBout | null => {
   return Number.isInteger(eventId) && Number.isInteger(fightNumber) && fightNumber > 0 && f1Name && f2Name ? { eventId, fightNumber, f1Name, f2Name } : null;
 };
 
-/** One response of `/api/v1/fight`: the bout, its picks and the rest of its card. */
+/** One response of `/api/v1/fight`: the bout, its picks and the rest of its
+ * card. Null only for a bout without both fighters' names (a placeholder);
+ * a response missing the bout or its date is unreadable and throws, so a
+ * change on Verdict's side is an error, never "no bouts". */
 export function parseVerdictPickFight(json: any): VerdictPickFight | null {
   const fight = json?.fight;
-  const own = bout(fight);
   const seconds = Number(json?.event?.eventDate ?? fight?.fighter1?.eventDate);
-  if (!own || !Number.isFinite(seconds) || seconds <= 0) return null;
+  if (!fight || typeof fight !== "object" || !Number.isFinite(seconds) || seconds <= 0) throw new Error("Verdict fight response unreadable");
+  const own = bout(fight);
+  if (!own) return null;
   // An empty list is Verdict saying the card has no bouts; only a response
   // without one falls back to the bout itself.
   const listed = Array.isArray(json?.event?.fights);
