@@ -161,11 +161,6 @@ function CommunityPicks({ distribution }: { distribution: PredictionDistribution
           <p className="mt-2 text-[10px] text-zinc-500">D = decision{unspecified ? " · ? = unspecified" : ""}</p>
         </div>
       </div>
-      {external ? <p className="border-t border-zinc-100 px-4 py-3 text-[11px] text-zinc-500 sm:px-5">
-        <a href={external.sourceUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-zinc-700 hover:underline">{external.source} ↗</a>
-        {` · ${countLabel(0, external)}`}{local ? ` · ${picksWord(local)} from ufc.sh fans` : ""}.
-        {unspecified ? " Verdict MMA does not publish finish-round totals." : ""}
-      </p> : null}
     </section>
   );
 }
