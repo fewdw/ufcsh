@@ -18,12 +18,14 @@ charts, as a total (below).
 Verdict MMA has taken fan picks on every UFC main card since UFC 205 (November
 2016) and on prelims too since 2024. `verdict-picks.ts` stores them on the bout
 (`fights.verdict_picks_json`, in our corner order, with the two fighter ids it
-was matched to). The community picks panel adds them to ours for winner and
-method, then shows each community on its own under "Where the picks come
-from": Verdict's count, winner split and, until its picks are final (the card
-is over, or the bout under way), when it was last read; ufc.sh fans' count, winner split and round picks. The round
-chart is shown only for ufc.sh-only bouts: Verdict's picks name a round, but
-it never says which.
+was matched to). The community picks panel shows one combined winner pie, one
+combined method pie and one round/decision bar chart. A small source line links to Verdict and
+states how many picks came from each community, without repeating the winner
+split. Round percentages use all picks: decisions from both sources go under
+D; picks without a published finish round go under ?. Verdict publishes no
+finish-round totals, so its knockout/submission picks stay unspecified. The
+round chart stays visible when Verdict picks are included, even if there are
+no local picks.
 
 Verdict publishes no counts. Its public `/api/v1/fight` prices every option as
 total ÷ picks on it, to two decimals (4.2 when nobody picked it), and names the

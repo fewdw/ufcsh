@@ -30,6 +30,22 @@ export type PredictionDistribution = {
   methods: { method: PredictionMethod | null; count: number }[];
   rounds: { round: number | null; count: number }[];
 };
+/** Every pick appears once: a finish round, decision, or unspecified timing.
+ * Verdict publishes method totals but no finish-round totals, so its finishes
+ * stay unspecified rather than being assigned invented rounds. */
+export function predictionRoundShares(distribution: PredictionDistribution) {
+  const rounds = distribution.rounds.filter(entry => entry.round != null).map(entry => ({
+    key: `r${entry.round}`, label: `Round ${entry.round}`, short: `${entry.round}`,
+    sides: distribution.fighters.map(side => side.rounds?.find(pick => pick.round === entry.round)?.count ?? 0),
+  }));
+  rounds.push({ key: "decision", label: "Decision", short: "D",
+    sides: distribution.fighters.map(side => side.methods?.find(entry => entry.method === "decision")?.count ?? 0) });
+  const unspecified = distribution.fighters.map((side, index) =>
+    Math.max(0, side.count - rounds.reduce((sum, round) => sum + round.sides[index], 0)));
+  if (unspecified.some(count => count > 0)) rounds.push({ key: "unspecified", label: "Round unspecified", short: "?", sides: unspecified });
+  return rounds.map(round => ({ ...round, count: round.sides.reduce((sum, count) => sum + count, 0) }));
+}
+
 export type PredictionStatus = {
   matchupKey: string;
   open: boolean; reason: string; lockedAt: number | null; eventStartsAt: number | null;
