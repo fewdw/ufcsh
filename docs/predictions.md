@@ -92,10 +92,14 @@ Trust over time:
   A final card Verdict lists again as not started reopens if it was re-dated,
   or if it was set aside and the listing now shows it as a live UFC card. A failed read never un-finals a card. The panel says when open picks were
   last read.
-- Every other card is read once by a walk over Verdict's event ids, one per 30
-  seconds; `npm run backfill:verdict-picks` does the whole archive in about half an
-  hour (two workers, a quarter-second pause per card, to spare the host that
-  also serves fight-night scoring). Changing what is stored means bumping `VERDICT_PICKS_FORMAT` in
+- Every other card is read once by a walk down Verdict's event ids from the
+  newest it has seen, so last week's card comes before 2016's: up to 20 seconds
+  of reading every 30-second pass, a quarter second between cards (one card a
+  pass while a card of ours is on, to spare the host that also serves
+  fight-night scoring), about the whole archive in under an hour. It skips final
+  cards and any read since it began; once done it starts again from the top only
+  when Verdict has added cards above where it started.
+  `npm run backfill:verdict-picks` does the same in one pass, newest first. Changing what is stored means bumping `VERDICT_PICKS_FORMAT` in
   `predictions.ts`: older splits stop showing and every card is read again.
 - The walk gives up on a card after three lasting failures running (not a
   dropped connection, timeout, 401/403, rate limit or server error, so never
@@ -109,7 +113,10 @@ Trust over time:
   picks that may be wrong": open cards more than three hours overdue on their own
   schedule, and finished
   cards with bouts whose prices fit no total. Many of the latter at once means
-  Verdict changed how it prices picks.
+  Verdict changed how it prices picks. "Bouts without Verdict picks" lists
+  every bout since UFC 205 whose community picks show none (the Predict tab's
+  own test, `externalPicks`), with the Verdict cards matched to its event and a
+  re-read for each; older prelims are expected there.
 
 ## Closing picks
 

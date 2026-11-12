@@ -101,11 +101,9 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-11-11">November 11, 2026</time></p>
+            <p><time dateTime="2026-11-12">November 12, 2026</time></p>
             <ul>
-              <li>Community predictions include Verdict MMA fan picks for upcoming and past fights.</li>
-              <li>Predict shows picks and method pies alongside a round and decision chart.</li>
-              <li>Small nonzero prediction shares display &lt;1%.</li>
+              <li>Verdict MMA fan picks fill in recent cards first and the whole archive much faster.</li>
             </ul>
           </Section>
         </div>

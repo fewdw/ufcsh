@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { db } from "./db.ts";
+import { db, getMeta, setMeta } from "./db.ts";
 import { VERDICT_PICKS_FORMAT } from "./predictions.ts";
-import { importVerdictPickCard, pairing, rematchVerdictPicks } from "./verdict-picks.ts";
+import { importVerdictPickCard, pairing, rematchVerdictPicks, syncVerdictPicks } from "./verdict-picks.ts";
 
 type Fight = { id: string; event_id: string; f1_name: string; f2_name: string; f1_id: string; f2_id: string; date: string };
 const fight = () => db.prepare(`SELECT f.id, f.event_id, f.f1_name, f.f2_name, f.f1_id, f.f2_id, e.date FROM fights f JOIN events e ON e.id = f.event_id
@@ -385,4 +385,37 @@ test("a newer failed attempt never stops an earlier successful read from retirin
     assert.deepEqual([card.final, card.read_at], [1, t + 2_000]);
     assert.match(card.error, /418/);
   } finally { db.exec("ROLLBACK"); }
+});
+
+test("the archive walk reads newest first, skips cards already read, and starts again only for cards added above it", async () => {
+  const prior = globalThis.fetch;
+  const asked: number[] = [];
+  globalThis.fetch = async input => {
+    const id = Number(new URL(String(input)).searchParams.get("eventID"));
+    if (id >= 999_000 && !asked.includes(id)) asked.push(id);
+    return new Response('{"message":"Fight not found"}', { status: 404 });
+  };
+  db.exec("BEGIN");
+  try {
+    const now = Date.now();
+    for (const [key, value] of [["since", now - 60_000], ["top", 999995], ["down", 999995], ["newest", 999995]]) setMeta(`verdict_picks_${key}`, String(value));
+    // Read since the walk began, and final: neither is read again.
+    db.prepare("INSERT OR REPLACE INTO verdict_pick_cards (verdict_id, final, checked_at, read_at) VALUES (999994, 0, ?1, ?1), (999993, 1, 0, 0)").run(now - 30_000);
+    await syncVerdictPicks(now, 0);
+    await syncVerdictPicks(now + 30_000, 0);
+    assert.deepEqual(asked, [999995, 999992]);
+    assert.equal(getMeta("verdict_picks_down"), "999991");
+    // Done: idle until Verdict adds a card above where it started.
+    setMeta("verdict_picks_down", "0");
+    await syncVerdictPicks(now + 60_000, 0);
+    assert.deepEqual(asked, [999995, 999992]);
+    setMeta("verdict_picks_newest", "999997");
+    await syncVerdictPicks(now + 90_000, 0);
+    await syncVerdictPicks(now + 120_000, 0);
+    assert.deepEqual(asked, [999995, 999992, 999997, 999996]);
+    assert.equal(getMeta("verdict_picks_top"), "999997");
+  } finally {
+    db.exec("ROLLBACK");
+    globalThis.fetch = prior;
+  }
 });

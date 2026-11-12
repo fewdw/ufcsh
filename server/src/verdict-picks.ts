@@ -10,9 +10,9 @@ import { VERDICT_PICKS_FORMAT } from "./predictions.ts";
  * community picks (`PredictionStore.distribution`). Verdict has taken picks on
  * every UFC card since UFC 205 (November 2016).
  *
- * Every Verdict card is read once by a slow walk over its event ids; cards
- * still to be fought are found on its events page and read again until their
- * picks lock at the start of the card.
+ * Every Verdict card is read once by a walk over its event ids, newest first;
+ * cards still to be fought are found on its events page and read again until
+ * their picks lock at the start of the card.
  */
 
 /** As stored on a bout, in our corner order. `f1Id`/`f2Id` are the fighters
@@ -53,13 +53,31 @@ db.exec(`
   if (!columns.has("read_at")) db.exec("ALTER TABLE verdict_pick_cards ADD COLUMN read_at INTEGER");
 }
 
+/**
+ * The archive walk goes down Verdict's event ids from the newest it has seen
+ * (`verdict_picks_down`, the next id; 0 when done), so the cards readers look
+ * at first are read first. It skips a final card and any read since the walk
+ * began (`verdict_picks_since`). Once done it starts again from the top only
+ * when Verdict has added cards above where it started (`verdict_picks_top`).
+ */
+function restartWalk(since: number) {
+  const newest = getMeta("verdict_picks_newest") ?? "0";
+  setMeta("verdict_picks_top", newest);
+  setMeta("verdict_picks_down", newest);
+  setMeta("verdict_picks_since", String(since));
+}
 /** Bumped whenever what is stored changes: every card is then read again by
  * the walk (and the backfill), so no bout keeps a split an older reader made. */
 const FORMAT = String(VERDICT_PICKS_FORMAT);
 if (getMeta("verdict_picks_format") !== FORMAT) {
   db.exec("UPDATE verdict_pick_cards SET final = 0");
-  setMeta("verdict_picks_walk", "1");
+  restartWalk(Date.now());
   setMeta("verdict_picks_format", FORMAT);
+} else if (getMeta("verdict_picks_down") == null) {
+  // From the first walk, which went up one card a pass: every card it (or the
+  // events page) read stays read.
+  const first = (db.prepare("SELECT min(read_at) AS at FROM verdict_pick_cards").get() as { at: number | null }).at;
+  restartWalk(first ?? Date.now());
 }
 
 /** Every bout on the dates Verdict may file a card under (it uses the UTC
@@ -131,8 +149,8 @@ const recordBouts = db.prepare("UPDATE verdict_pick_cards SET bouts_json = ?, em
 const recordError = db.prepare(`INSERT INTO verdict_pick_cards (verdict_id, final, checked_at, error) VALUES (?, 0, ?, ?)
   ON CONFLICT(verdict_id) DO UPDATE SET checked_at = excluded.checked_at, error = excluded.error
   WHERE excluded.checked_at >= verdict_pick_cards.checked_at`);
-const cardRow = db.prepare("SELECT date, event_id, final, empty, checked_at, bouts_json, error FROM verdict_pick_cards WHERE verdict_id = ?");
-type CardRow = { date: string | null; event_id: string | null; final: number; empty: number; checked_at: number; bouts_json: string | null; error: string | null };
+const cardRow = db.prepare("SELECT date, event_id, final, empty, checked_at, read_at, bouts_json, error FROM verdict_pick_cards WHERE verdict_id = ?");
+type CardRow = { date: string | null; event_id: string | null; final: number; empty: number; checked_at: number; read_at: number | null; bouts_json: string | null; error: string | null };
 
 const tokens = (name: string) => normName(name).split(" ").filter(Boolean);
 function oneEditApart(a: string, b: string): boolean {
@@ -430,6 +448,12 @@ function lasting(error: unknown): boolean {
   return !/fetch failed|timeout|abort|ECONN|ETIMEDOUT|socket/i.test(String(error));
 }
 
+/** The walk reads cards for up to this long a pass, a quarter second apart
+ * (Verdict also serves fight-night scoring): the archive in under an hour.
+ * While a card of ours is on, one card a pass. */
+const WALK_BUDGET_MS = 20_000;
+const fightNight = db.prepare("SELECT 1 FROM events WHERE complete = 0 AND date BETWEEN ? AND ? LIMIT 1");
+
 let running = false;
 let listedAt = 0;
 let rematchedAt = 0;
@@ -438,11 +462,11 @@ let walkFailures = 0;
 
 /**
  * Background pass, every 30 seconds: cards on Verdict's events page hourly,
- * open cards again on the schedule above, the next card of the archive walk
- * (one per pass, until it reaches the newest card), and every six hours the
- * rematch of finished cards' unread bouts.
+ * open cards again on the schedule above, the archive walk's next cards (for
+ * up to 20 seconds), and every six hours the rematch of finished cards'
+ * unread bouts.
  */
-export async function syncVerdictPicks(now = Date.now()): Promise<boolean> {
+export async function syncVerdictPicks(now = Date.now(), walkBudget = WALK_BUDGET_MS): Promise<boolean> {
   if (running) return false;
   running = true;
   try {
@@ -484,22 +508,37 @@ export async function syncVerdictPicks(now = Date.now()): Promise<boolean> {
     // The walk moves on past a card once it has read it and rests a while when
     // Verdict doesn't answer. It gives up on a card only after three lasting
     // failures running (it stays in Admin → Bugs), never over an outage.
-    const next = Number(getMeta("verdict_picks_walk") ?? 1);
-    if (now >= walkRestUntil && next <= Number(getMeta("verdict_picks_newest") ?? 0)) {
+    let down = Number(getMeta("verdict_picks_down") ?? 0);
+    if (down < 1 && Number(getMeta("verdict_picks_newest") ?? 0) > Number(getMeta("verdict_picks_top") ?? 0)) {
+      restartWalk(Number(getMeta("verdict_picks_since") ?? 0));
+      down = Number(getMeta("verdict_picks_down"));
+    }
+    const since = Number(getMeta("verdict_picks_since") ?? 0);
+    const started = Date.now();
+    const yesterday = new Date(now - 86_400_000).toISOString().slice(0, 10);
+    const budget = fightNight.get(yesterday, today) ? 0 : walkBudget;
+    let walked = false;
+    while (down >= 1 && now >= walkRestUntil && !(walked && Date.now() - started >= budget)) {
+      const row = cardRow.get(down) as CardRow | undefined;
+      if (row?.final || (row?.read_at ?? 0) >= since || due.includes(down)) { down -= 1; continue; }
+      if (walked) await sleep(250);
+      walked = true;
+      tried += 1; cards += 1;
       try {
-        const row = cardRow.get(next) as CardRow | undefined;
-        if (!row?.final && !due.includes(next)) { tried += 1; cards += 1; stored += (await importVerdictPickCard(next, now)).stored; }
-        setMeta("verdict_picks_walk", String(next + 1));
+        stored += (await importVerdictPickCard(down, now + Date.now() - started)).stored;
         walkFailures = 0;
       } catch (error) {
         failure(error);
         cardsFailed += 1;
         walkRestUntil = now + 15 * 60_000;
         walkFailures = lasting(error) ? walkFailures + 1 : 0;
-        if (walkFailures >= 3) { setMeta("verdict_picks_walk", String(next + 1)); walkFailures = 0; }
-        log(`verdict picks walk at ${next}: ${String(error)}`);
+        log(`verdict picks walk at ${down}: ${String(error)}`);
+        if (walkFailures < 3) break;
+        walkFailures = 0;
       }
+      setMeta("verdict_picks_down", String(--down));
     }
+    if (String(down) !== getMeta("verdict_picks_down")) setMeta("verdict_picks_down", String(down));
     // Mostly local: only bouts that newly match are fetched.
     if (now - rematchedAt > 6 * 3_600_000) {
       rematchedAt = now;
