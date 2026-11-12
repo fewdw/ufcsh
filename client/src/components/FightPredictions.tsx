@@ -102,7 +102,7 @@ function RoundBars({ rounds, total }: { rounds: { key: string; label: string; sh
   return <div className="flex h-[76px] items-end justify-center gap-1.5" role="img"
     aria-label={rounds.map(round => `${round.label} ${shareLabel(round.count, total)}`).join(", ")}>
     {rounds.map(round => <div key={round.key} className="flex h-full w-5 flex-col items-center justify-end gap-0.5" title={`${round.label}: ${picksWord(round.count)}`}>
-      {round.count && round.key !== "unspecified" ? <span className="whitespace-nowrap text-[9px] font-semibold leading-none tabular-nums text-zinc-700">{shareLabel(round.count, total)}</span> : null}
+      {round.count ? <span className="whitespace-nowrap text-[9px] font-semibold leading-none tabular-nums text-zinc-700">{shareLabel(round.count, total)}</span> : null}
       <div className="flex h-full items-end gap-px">
         {round.sides.map((count, index) => <span key={index} className="block w-[7px] rounded-t-[2px]"
           style={{ height: `${count ? Math.max(6, (count / most) * 100) : 3}%`, backgroundColor: count ? (index === 0 ? "var(--color-f1)" : "var(--color-f2)") : "var(--color-plot-axis)" }} />)}
