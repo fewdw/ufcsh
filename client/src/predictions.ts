@@ -12,13 +12,40 @@ export type PredictionResult = {
   /** What a pick is worth just for being made, right or wrong. */
   entry: number; fighter: number; method: number; round: number; reason: string | null;
 };
+type MethodSplit = Record<PredictionMethod, number>;
+/** Picks made on Verdict MMA, counted in with ours for who and how. `least`
+ * is the fewest picks Verdict's numbers allow; `exact` when `total` is the only
+ * one. `final` once its picks have locked; `fetchedAt` when last read. */
+export type ExternalPicks = {
+  source: string; sourceUrl: string; total: number; least: number; exact: boolean;
+  fetchedAt: number; final: boolean; f1: MethodSplit; f2: MethodSplit;
+};
 /** How everyone has called this bout, for the community charts. */
 export type PredictionDistribution = {
   total: number;
+  /** Picks made here, the only ones the round counts cover. */
+  local?: number;
+  external?: ExternalPicks | null;
   fighters: { fighterId: string; name: string; count: number; methods?: { method: PredictionMethod | null; count: number }[]; rounds?: { round: number | null; count: number }[] }[];
   methods: { method: PredictionMethod | null; count: number }[];
   rounds: { round: number | null; count: number }[];
 };
+/** Every pick appears once: a finish round, decision, or unspecified timing.
+ * Verdict publishes method totals but no finish-round totals, so its finishes
+ * stay unspecified rather than being assigned invented rounds. */
+export function predictionRoundShares(distribution: PredictionDistribution) {
+  const rounds = distribution.rounds.filter(entry => entry.round != null).map(entry => ({
+    key: `r${entry.round}`, label: `Round ${entry.round}`, short: `${entry.round}`,
+    sides: distribution.fighters.map(side => side.rounds?.find(pick => pick.round === entry.round)?.count ?? 0),
+  }));
+  rounds.push({ key: "decision", label: "Decision", short: "DEC",
+    sides: distribution.fighters.map(side => side.methods?.find(entry => entry.method === "decision")?.count ?? 0) });
+  const unspecified = distribution.fighters.map((side, index) =>
+    Math.max(0, side.count - rounds.reduce((sum, round) => sum + round.sides[index], 0)));
+  if (unspecified.some(count => count > 0)) rounds.push({ key: "unspecified", label: "Round unspecified", short: "?", sides: unspecified });
+  return rounds.map(round => ({ ...round, count: round.sides.reduce((sum, count) => sum + count, 0) }));
+}
+
 export type PredictionStatus = {
   matchupKey: string;
   open: boolean; reason: string; lockedAt: number | null; eventStartsAt: number | null;

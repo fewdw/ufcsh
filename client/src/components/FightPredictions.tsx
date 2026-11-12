@@ -4,8 +4,8 @@ import { apiCache, useApi, type Matchup } from "../api";
 import { accountsEnabled, useAccount, useAuth } from "../auth";
 import { recallMine, rememberMine, useSessionUser } from "../profile";
 import { lastName } from "../format";
-import { METHOD_LABEL, predictionLabel, predictionPoints, sharePct } from "../predictions";
-import type { MyPrediction, PredictionDistribution, PredictionMethod, PredictionSummary } from "../predictions";
+import { METHOD_LABEL, predictionLabel, predictionPoints, predictionRoundShares, sharePct } from "../predictions";
+import type { ExternalPicks, MyPrediction, PredictionDistribution, PredictionMethod, PredictionSummary } from "../predictions";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 import { BUTTON_PRIMARY_LARGE } from "../ui";
 
@@ -25,7 +25,7 @@ export default function FightPredictions({ fight }: { fight: Matchup }) {
     {error ? <>{error} <button className="underline" onClick={retry}>Retry</button></> : "Loading predictions…"}
   </section>;
   return <>
-    {data.total ? <CommunityPicks distribution={data.distribution} scheduledRounds={data.scheduledRounds} /> : null}
+    {data.total ? <CommunityPicks distribution={data.distribution} /> : null}
     {accountsEnabled ? <PredictionGate key={fight.id} fight={fight} status={data} onSaved={saved} />
       : <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Sign-in must be configured to save predictions.</section>}
   </>;
@@ -33,14 +33,27 @@ export default function FightPredictions({ fight }: { fight: Matchup }) {
 
 type Share = { key: string; label: string; short?: string; count: number; color: string; counterClockwise?: boolean };
 
-const SECTION_LABEL = "mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-400";
 /** Each corner's colour, darkest for a knockout down to lightest for no
  *  method named: the method pie reads by fighter and by how at once. */
 const SHADES: Record<string, [string, string]> = {
   ko: ["#1e40af", "#991b1b"], submission: ["#3b82f6", "#ef4444"],
   decision: ["#93c5fd", "#fca5a5"], none: ["#dbeafe", "#fee2e2"],
 };
-const picksWord = (count: number) => `${count} ${count === 1 ? "pick" : "picks"}`;
+const picksWord = (count: number) => `${count.toLocaleString()} ${count === 1 ? "pick" : "picks"}`;
+const shareLabel = (count: number, total: number) =>
+  count > 0 && total > 0 && count / total < 0.01 ? "<1%" : `${sharePct(count, total)}%`;
+/**
+ * How many picks, never claiming more than is known. Verdict publishes each
+ * option's share, not its count: when its numbers allow only one total that
+ * total is shown; otherwise the fewest they allow, to three figures and
+ * rounded down ("8,450").
+ */
+function countLabel(local: number, external: ExternalPicks | null): string {
+  if (!external || external.exact) return picksWord(local + (external?.total ?? 0));
+  const least = local + external.least;
+  const step = 10 ** Math.max(0, Math.floor(Math.log10(least)) - 2);
+  return picksWord(Math.floor(least / step) * step);
+}
 
 /** A full pie from twelve o'clock: red's slices run clockwise from the top,
  *  blue's counter-clockwise, so the two corners meet at twelve and the split
@@ -55,7 +68,7 @@ function Pie({ entries, total, size = 76 }: { entries: Share[]; total: number; s
   let counter = TOP;
   const point = (at: number) => `${(c + r * Math.cos(at)).toFixed(2)} ${(c + r * Math.sin(at)).toFixed(2)}`;
   return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0" role="img"
-    aria-label={shown.map(entry => `${entry.label} ${sharePct(entry.count, total)}%`).join(", ")}>
+    aria-label={shown.map(entry => `${entry.label} ${shareLabel(entry.count, total)}`).join(", ")}>
     {shown.length === 1
       ? <circle cx={c} cy={c} r={r} fill={shown[0].color}><title>{`${shown[0].label}: ${picksWord(shown[0].count)} (100%)`}</title></circle>
       : shown.map(entry => {
@@ -65,7 +78,7 @@ function Pie({ entries, total, size = 76 }: { entries: Share[]; total: number; s
         const large = sweep > Math.PI ? 1 : 0;
         return <path key={entry.key} d={`M ${c} ${c} L ${point(from)} A ${r} ${r} 0 ${large} 1 ${point(from + sweep)} Z`}
           fill={entry.color} strokeWidth={1.5} strokeLinejoin="round" className="stroke-white dark:stroke-[#18181b]">
-          <title>{`${entry.label}: ${picksWord(entry.count)} (${sharePct(entry.count, total)}%)`}</title>
+          <title>{`${entry.label}: ${picksWord(entry.count)} (${shareLabel(entry.count, total)})`}</title>
         </path>;
       })}
   </svg>;
@@ -73,7 +86,7 @@ function Pie({ entries, total, size = 76 }: { entries: Share[]; total: number; s
 
 /** A small key under a chart: swatches, a short name, the share. */
 function Key({ rows }: { rows: { key: string; swatches: string[]; label: string; value: string; ink?: string; muted?: boolean }[] }) {
-  return <ul className="mt-2 w-full space-y-0.5 text-[11px] leading-4" aria-hidden="true">
+  return <ul className="mt-2 w-full max-w-44 space-y-0.5 text-[11px] leading-4" aria-hidden="true">
     {rows.map(row => <li key={row.key} className={`flex min-w-0 items-center gap-1 ${row.muted ? "text-zinc-400" : "text-zinc-600"}`}>
       <span className="flex shrink-0 -space-x-0.5">{row.swatches.map(color => <span key={color} className="h-2 w-2 rounded-full ring-1 ring-white dark:ring-[#18181b]" style={{ backgroundColor: color }} />)}</span>
       <span className="min-w-0 truncate">{row.label}</span>
@@ -83,13 +96,13 @@ function Key({ rows }: { rows: { key: string; swatches: string[]; label: string;
 }
 
 /** Rounds are ordered, so they stand side by side: a pair of bars for each,
- *  blue's and red's, with the round's share of all picks over the pair. */
+ *  blue's and red's, with each category's share of all picks. */
 function RoundBars({ rounds, total }: { rounds: { key: string; label: string; short: string; count: number; sides: number[] }[]; total: number }) {
   const most = Math.max(1, ...rounds.flatMap(round => round.sides));
   return <div className="flex h-[76px] items-end justify-center gap-1.5" role="img"
-    aria-label={rounds.map(round => `${round.label} ${sharePct(round.count, total)}%`).join(", ")}>
-    {rounds.map(round => <div key={round.key} className="flex h-full flex-col items-center justify-end gap-0.5" title={`${round.label}: ${picksWord(round.count)}`}>
-      {round.count ? <span className="text-[9px] font-semibold leading-none tabular-nums text-zinc-700">{sharePct(round.count, total)}</span> : null}
+    aria-label={rounds.map(round => `${round.label} ${shareLabel(round.count, total)}`).join(", ")}>
+    {rounds.map(round => <div key={round.key} className="flex h-full w-5 flex-col items-center justify-end gap-0.5" title={`${round.label}: ${picksWord(round.count)}`}>
+      {round.count ? <span className="whitespace-nowrap text-[9px] font-semibold leading-none tabular-nums text-zinc-700">{shareLabel(round.count, total)}</span> : null}
       <div className="flex h-full items-end gap-px">
         {round.sides.map((count, index) => <span key={index} className="block w-[7px] rounded-t-[2px]"
           style={{ height: `${count ? Math.max(6, (count / most) * 100) : 3}%`, backgroundColor: count ? (index === 0 ? "var(--color-f1)" : "var(--color-f2)") : "var(--color-plot-axis)" }} />)}
@@ -98,10 +111,10 @@ function RoundBars({ rounds, total }: { rounds: { key: string; label: string; sh
   </div>;
 }
 
-/** Who wins, how and when, side by side in one row. */
-function CommunityPicks({ distribution, scheduledRounds }: { distribution: PredictionDistribution; scheduledRounds: number | null }) {
+/** One chart each for who, how and when, including Verdict MMA's picks. */
+function CommunityPicks({ distribution }: { distribution: PredictionDistribution }) {
   const total = distribution.total;
-  const [f1, f2] = distribution.fighters;
+  const external = distribution.external ?? null;
   const fighters: Share[] = distribution.fighters.map((entry, index) => ({
     key: entry.fighterId || `f${index}`, label: entry.name, count: entry.count,
     color: index === 0 ? "var(--color-f1)" : "var(--color-f2)", counterClockwise: index === 0,
@@ -116,50 +129,37 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
     color: SHADES[method ?? "none"][index], counterClockwise: index === 0,
   })));
   const methods = distribution.methods;
-  // Only picks that say when: a named round, or the distance (D). A finish
-  // with no round named says nothing about when, so it is left out.
-  const decisions = (methods?: { method: PredictionMethod | null; count: number }[]) =>
-    methods?.find(entry => entry.method === "decision")?.count ?? 0;
-  const rounds = [
-    ...distribution.rounds.filter(entry => entry.round != null).map(entry => ({
-      key: `r${entry.round}`, label: `Round ${entry.round}`, short: `${entry.round}`, count: entry.count,
-      sides: distribution.fighters.map(side => side.rounds?.find(pick => pick.round === entry.round)?.count ?? 0),
-    })),
-    { key: "decision", label: "Decision", short: "D", count: decisions(distribution.methods),
-      sides: distribution.fighters.map(side => decisions(side.methods)) },
-  ];
-  const timed = rounds.reduce((sum, entry) => sum + entry.count, 0);
-  const roundsKnown = scheduledRounds === 3 || scheduledRounds === 5;
-  const byFighter = Boolean(f1?.methods && f2?.methods);
+  const rounds = predictionRoundShares(distribution);
+  const byFighter = distribution.fighters.every(side => side.methods);
+  const local = distribution.local ?? total - (external?.total ?? 0);
 
   return (
-    <section className={PANEL_SHELL}>
-      <PanelHeading title="Community picks" divider={false} aside={<span className="text-xs tabular-nums text-zinc-500">{picksWord(total)}</span>} />
-      <div className={`grid gap-3 px-4 pb-4 sm:gap-6 sm:px-5 ${roundsKnown ? "grid-cols-3" : "grid-cols-2"}`}>
+    <section className={PANEL_SHELL} aria-label="Community picks">
+      <PanelHeading title="Community picks" divider={false} aside={<span className="text-xs tabular-nums text-zinc-500">{countLabel(local, external)}</span>} />
+      <div className="grid grid-cols-2 gap-x-3 gap-y-5 px-4 pb-4 sm:grid-cols-3 sm:gap-6 sm:px-5">
         <div className="flex min-w-0 flex-col items-center">
-          <h3 className={SECTION_LABEL}>Winner</h3>
+          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Picks</h3>
           <Pie entries={fighters} total={total} />
           <Key rows={fighters.map((entry, index) => ({
             key: entry.key, swatches: [entry.color], label: lastName(entry.label),
-            value: `${sharePct(entry.count, total)}%`, ink: index === 0 ? "text-f1-ink" : "text-f2-ink", muted: !entry.count,
+            value: shareLabel(entry.count, total), ink: index === 0 ? "text-f1-ink" : "text-f2-ink", muted: !entry.count,
           }))} />
         </div>
         <div className="flex min-w-0 flex-col items-center">
-          <h3 className={SECTION_LABEL}>Method</h3>
+          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Method</h3>
           <Pie entries={byFighter ? calls : methods.map(entry => ({ key: entry.method ?? "none", label: methodName(entry.method), count: entry.count, color: SHADES[entry.method ?? "none"][0] }))} total={total} />
           <Key rows={methods.filter(entry => entry.method || entry.count).map(entry => ({
             key: entry.method ?? "none", swatches: byFighter ? SHADES[entry.method ?? "none"] : [SHADES[entry.method ?? "none"][0]],
-            label: entry.method ? METHOD_SHORT[entry.method] : "Any", value: `${sharePct(entry.count, total)}%`, muted: !entry.count,
+            label: entry.method ? METHOD_SHORT[entry.method] : "Any", value: shareLabel(entry.count, total), muted: !entry.count,
           }))} />
         </div>
-        {roundsKnown ? <div className="flex min-w-0 flex-col items-center">
-          <h3 className={SECTION_LABEL}>Round %</h3>
-          <RoundBars rounds={rounds} total={timed} />
+        <div className="col-span-2 flex min-w-0 flex-col items-center sm:col-span-1">
+          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Round %</h3>
+          <RoundBars rounds={rounds} total={total} />
           <div className="mt-1 flex justify-center gap-1.5 text-[10px] leading-none text-zinc-500" aria-hidden="true">
-            {rounds.map(entry => <span key={entry.key} className="w-[15px] text-center">{entry.short}</span>)}
+            {rounds.map(entry => <span key={entry.key} className="w-5 text-center">{entry.short}</span>)}
           </div>
-          <p className="mt-2 text-center text-[9px] leading-tight text-zinc-500">D = decision</p>
-        </div> : null}
+        </div>
       </div>
     </section>
   );

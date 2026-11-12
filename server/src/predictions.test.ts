@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { once } from "node:events";
 import { ScoringStore } from "./scoring.ts";
-import { PREDICTION_POINTS, PredictionStore, predictionWindow, type PredictionFight } from "./predictions.ts";
+import { PREDICTION_POINTS, PredictionStore, VERDICT_PICKS_FORMAT, predictionWindow, type PredictionFight } from "./predictions.ts";
 import { createPredictionsHandler } from "./predictions-http.ts";
 
 const now = Date.parse("2026-10-03T12:00:00Z");
@@ -267,4 +267,45 @@ test("with no live results, a bout closes at its estimated start, so a past card
   const unsplit = Array.from({ length: 5 }, (_, index) => fight(index));
   assert.equal(predictionWindow({ fight: unsplit[4], bouts: unsplit }, eventStart + 2 * 3_600_000 - 1).open, true);
   assert.equal(predictionWindow({ fight: unsplit[4], bouts: unsplit }, eventStart + 2 * 3_600_000).open, false);
+});
+
+test("Verdict MMA's picks join ours for who and how, never for which round", t => {
+  const { bouts, store } = fixture(t);
+  const bout = bouts[0];
+  store.save(bout.id, "local-fan", pick(bout));
+  const verdict = { format: VERDICT_PICKS_FORMAT, source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/1", total: 100, least: 100, exact: true,
+    fits: true, fetchedAt: 1, final: true, f1Id: bout.f1_id, f2Id: bout.f2_id,
+    f1: { ko: 10, submission: 5, decision: 45 }, f2: { ko: 20, submission: 0, decision: 20 } };
+  bout.verdict_picks_json = JSON.stringify(verdict);
+  const merged = store.summary(bout.id);
+  assert.equal(merged.total, 101);
+  assert.equal(merged.distribution.local, 1);
+  assert.deepEqual(merged.distribution.fighters.map(side => side.count), [61, 40]);
+  assert.deepEqual(merged.distribution.fighters[0].methods, [
+    { method: "ko", count: 11 }, { method: "submission", count: 5 }, { method: "decision", count: 45 }, { method: null, count: 0 },
+  ]);
+  assert.deepEqual(merged.distribution.methods.map(entry => entry.count), [31, 5, 65, 0]);
+  assert.deepEqual(merged.distribution.rounds, [{ round: 1, count: 0 }, { round: 2, count: 1 }, { round: 3, count: 0 }, { round: null, count: 0 }]);
+  assert.equal(merged.distribution.external?.exact, true);
+  // A split that doesn't add up is ignored rather than drawn.
+  bout.verdict_picks_json = JSON.stringify({ ...verdict, total: 99 });
+  assert.equal(store.summary(bout.id).total, 1);
+  assert.equal(store.summary(bout.id).distribution.external, null);
+  // Stored with the corners the other way round, it is turned to this bout's.
+  bout.verdict_picks_json = JSON.stringify({ ...verdict, f1Id: bout.f2_id, f2Id: bout.f1_id, f1: verdict.f2, f2: verdict.f1 });
+  assert.deepEqual(store.summary(bout.id).distribution.fighters.map(side => side.count), [61, 40]);
+  // A split an older reader stored, or one whose prices fit no total, is not shown.
+  for (const stale of [{ format: VERDICT_PICKS_FORMAT - 1 }, { fits: false }]) {
+    bout.verdict_picks_json = JSON.stringify({ ...verdict, ...stale });
+    assert.equal(store.summary(bout.id).total, 1);
+  }
+  // A split last read while picks were open is final once the bout is decided.
+  bout.verdict_picks_json = JSON.stringify({ ...verdict, final: false });
+  assert.equal(store.summary(bout.id).distribution.external?.final, false);
+  bout.f1_outcome = "win"; bout.f2_outcome = "loss";
+  assert.equal(store.summary(bout.id).distribution.external?.final, true);
+  bout.f1_outcome = null; bout.f2_outcome = null;
+  // A new opponent on the same bout never inherits the old matchup's picks.
+  bout.verdict_picks_json = JSON.stringify({ ...verdict, f2Id: "someone-else" });
+  assert.equal(store.summary(bout.id).total, 1);
 });
