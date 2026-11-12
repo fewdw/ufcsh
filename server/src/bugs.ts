@@ -21,6 +21,7 @@ import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
 import { everyFor as verdictPickEvery, importVerdictPickCard } from "./verdict-picks.ts";
+import { externalPicks } from "./predictions.ts";
 import { deductionProblem, fightDeductionState, MMA_DECISIONS_BLOCKED, storedMedia, syncFightMediaScores, syncFightPointDeductions } from "./point-deductions.ts";
 import type { DeductionFight } from "./point-deduction-rules.ts";
 import { readCancelledBoardList, syncCancelledBouts } from "./cancelled-bouts.ts";
@@ -1351,6 +1352,36 @@ function verdictPickDrift(): BugCheck {
   ]);
 }
 
+/** Bouts whose community picks show none of Verdict MMA's fans' picks, by
+ * the same test the Predict tab applies (`externalPicks`). */
+function verdictPicksMissing(): BugCheck {
+  const fights = (db.prepare(`SELECT ${FIGHT_COLUMNS}, f.verdict_picks_json FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.date BETWEEN '2016-11-12' AND date('now', '+35 day') ORDER BY e.date DESC, f.ord`).all() as (FightRow & { verdict_picks_json: string | null })[])
+    .filter(fight => !externalPicks(fight.verdict_picks_json, fight));
+  const cards = new Map<string, { verdict_id: number; association: string | null; read_at: number | null }[]>();
+  for (const card of db.prepare(`SELECT event_id, verdict_id, association, read_at FROM verdict_pick_cards
+    WHERE event_id IS NOT NULL ORDER BY verdict_id`).all() as { event_id: string; verdict_id: number; association: string | null; read_at: number | null }[]) {
+    cards.set(card.event_id, [...cards.get(card.event_id) ?? [], card]);
+  }
+  return check({
+    id: "verdict-picks-missing",
+    group: "Missing data",
+    label: "Bouts without Verdict picks",
+    description: "Bouts whose community picks include no Verdict MMA fan picks: Verdict has no card for them yet, the archive walk (newest first) hasn't read their card, Verdict took no picks on the bout (a late replacement), its prices fit no total, or the matchup changed since it was read. Verdict took picks on main cards from UFC 205 (November 2016) and on prelims only from 2024, so older prelims are expected here. Each lists the Verdict cards matched to its event; reading one again fetches it now.",
+    grade: item => {
+      const days = daysFrom(item.date) ?? -9999;
+      return days >= -7 && days <= 7 ? "must" : days >= -365 ? "minor" : "ok";
+    },
+  }, fights.map(fight => {
+    const read = cards.get(fight.event_id) ?? [];
+    return fightItem(fight, {
+      facts: [["Verdict cards", read.length ? read.map(card => `${card.verdict_id} (${card.association ?? "?"}, read ${ago(card.read_at)})`).join(", ") : "none matched yet"]],
+      links: read.map(card => ({ label: `Verdict card ${card.verdict_id}`, href: `https://verdictmma.com/event/${card.verdict_id}` })),
+      actions: read.map(card => ({ id: "verdict-picks" as const, label: `Read card ${card.verdict_id} again`, target: `card:${card.verdict_id}` })),
+    });
+  }));
+}
+
 /** Tonight's safety net for `verdict-live.ts`: a read that goes wrong only
  * shows as a bout with no live state, on a card that otherwise imports fine. */
 function verdictLiveMissed(): BugCheck {
@@ -2431,6 +2462,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     verdictImportErrors(),
     verdictPickErrors(),
     verdictPickDrift(),
+    verdictPicksMissing(),
     verdictLiveMissed(),
     suspiciousOdds(),
     wrongFighterPages(),
