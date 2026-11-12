@@ -33,7 +33,6 @@ export default function FightPredictions({ fight }: { fight: Matchup }) {
 
 type Share = { key: string; label: string; short?: string; count: number; color: string; counterClockwise?: boolean };
 
-const SECTION_LABEL = "mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-400";
 /** Each corner's colour, darkest for a knockout down to lightest for no
  *  method named: the method pie reads by fighter and by how at once. */
 const SHADES: Record<string, [string, string]> = {
@@ -52,11 +51,6 @@ function countLabel(local: number, external: ExternalPicks | null): string {
   const least = local + external.least;
   const step = 10 ** Math.max(0, Math.floor(Math.log10(least)) - 2);
   return `${(Math.floor(least / step) * step).toLocaleString()}+ picks`;
-}
-/** When Verdict's not-yet-final picks were last read. */
-function updatedAgo(at: number, now = Date.now()): string {
-  const minutes = Math.max(0, Math.round((now - at) / 60_000));
-  return minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min ago` : minutes < 2_880 ? `${Math.round(minutes / 60)} h ago` : `${Math.round(minutes / 1_440)} days ago`;
 }
 
 /** A full pie from twelve o'clock: red's slices run clockwise from the top,
@@ -117,8 +111,8 @@ function RoundBars({ rounds, total }: { rounds: { key: string; label: string; sh
 
 /** One community's pick for the winner: who it is, how many, and the split
  *  as a bar in the corners' colours. */
-function SourceRow({ name, href, count, split, detail }: {
-  name: string; href?: string; count: string; split: [number, number] | null; detail?: string | null;
+function SourceRow({ name, href, count, split }: {
+  name: string; href?: string; count: string; split: [number, number] | null;
 }) {
   const total = split ? split[0] + split[1] : 0;
   const first = sharePct(split?.[0] ?? 0, total);
@@ -138,7 +132,6 @@ function SourceRow({ name, href, count, split, detail }: {
       </span>
       <span className="w-9 text-right text-f2-ink">{100 - first}%</span>
     </div> : null}
-    {detail ? <p className="mt-1 text-[11px] leading-4 text-zinc-500">{detail}</p> : null}
   </li>;
 }
 
@@ -168,7 +161,7 @@ function CommunityPicks({ distribution, scheduledRounds, open }: { distribution:
   const methods = distribution.methods;
   const outside = (index: number) => external ? external[index === 0 ? "f1" : "f2"] : null;
   const sum = (split: ExternalPicks["f1"] | null) => split ? split.ko + split.submission + split.decision : 0;
-  // Only picks that say when: a named round, or the distance (D). A finish
+  // Only picks that say when: a named round, or a decision. A finish
   // with no round named says nothing about when, so it is left out, as are
   // Verdict's picks, which name a round it never publishes.
   const decisions = (methods?: { method: PredictionMethod | null; count: number }[], minus = 0) =>
@@ -178,7 +171,7 @@ function CommunityPicks({ distribution, scheduledRounds, open }: { distribution:
       key: `r${entry.round}`, label: `Round ${entry.round}`, short: `${entry.round}`, count: entry.count,
       sides: distribution.fighters.map(side => side.rounds?.find(pick => pick.round === entry.round)?.count ?? 0),
     })),
-    { key: "decision", label: "Decision", short: "D",
+    { key: "decision", label: "Decision", short: "Dec",
       count: decisions(distribution.methods, (outside(0)?.decision ?? 0) + (outside(1)?.decision ?? 0)),
       sides: distribution.fighters.map((side, index) => decisions(side.methods, outside(index)?.decision)) },
   ];
@@ -187,17 +180,13 @@ function CommunityPicks({ distribution, scheduledRounds, open }: { distribution:
   const byFighter = Boolean(f1?.methods && f2?.methods);
   const local = distribution.local ?? total - (external?.total ?? 0);
   const localSplit: [number, number] = [(f1?.count ?? 0) - sum(outside(0)), (f2?.count ?? 0) - sum(outside(1))];
-  // With Verdict counted in, ufc.sh's round picks are a small sample of their
-  // own: said in words, beside its fans' winner split.
-  const when = timed ? rounds.filter(entry => entry.count).map(entry =>
-    `${entry.key === "decision" ? "Decision" : `R${entry.short}`} ${sharePct(entry.count, timed)}%`).join(" · ") : null;
 
   return (
-    <section className={PANEL_SHELL}>
-      <PanelHeading title="Community picks" divider={false} aside={<span className="text-xs tabular-nums text-zinc-500">{countLabel(local, external)}</span>} />
+    <section className={PANEL_SHELL} aria-label="Community picks">
+      <p className="px-4 py-3 text-right text-xs tabular-nums text-zinc-500 sm:px-5">{countLabel(local, external)}</p>
       <div className={`grid gap-3 px-4 pb-4 sm:gap-6 sm:px-5 ${roundsKnown ? "grid-cols-3" : "grid-cols-2"}`}>
         <div className="flex min-w-0 flex-col items-center">
-          <h3 className={SECTION_LABEL}>Winner</h3>
+          <h3 className="sr-only">Winner</h3>
           <Pie entries={fighters} total={total} />
           <Key rows={fighters.map((entry, index) => ({
             key: entry.key, swatches: [entry.color], label: lastName(entry.label),
@@ -205,7 +194,7 @@ function CommunityPicks({ distribution, scheduledRounds, open }: { distribution:
           }))} />
         </div>
         <div className="flex min-w-0 flex-col items-center">
-          <h3 className={SECTION_LABEL}>Method</h3>
+          <h3 className="sr-only">Method</h3>
           <Pie entries={byFighter ? calls : methods.map(entry => ({ key: entry.method ?? "none", label: methodName(entry.method), count: entry.count, color: SHADES[entry.method ?? "none"][0] }))} total={total} />
           <Key rows={methods.filter(entry => entry.method || entry.count).map(entry => ({
             key: entry.method ?? "none", swatches: byFighter ? SHADES[entry.method ?? "none"] : [SHADES[entry.method ?? "none"][0]],
@@ -213,26 +202,20 @@ function CommunityPicks({ distribution, scheduledRounds, open }: { distribution:
           }))} />
         </div>
         {roundsKnown ? <div className="flex min-w-0 flex-col items-center">
-          <h3 className={SECTION_LABEL}>When</h3>
+          <h3 className="sr-only">Round</h3>
           <RoundBars rounds={rounds} total={timed} />
           <div className="mt-1 flex justify-center gap-1.5 text-[10px] leading-none text-zinc-500" aria-hidden="true">
             {rounds.map(entry => <span key={entry.key} className="w-[15px] text-center">{entry.short}</span>)}
           </div>
-          <p className="mt-2 text-center text-[9px] leading-tight text-zinc-500">{timed ? `% of ${picksWord(timed)} · ` : ""}D = decision</p>
         </div> : null}
       </div>
       {external ? <div className="border-t border-zinc-100 px-4 py-3 sm:px-5">
-        <h3 className={`${SECTION_LABEL} text-left`}>Where the picks come from</h3>
         <ul>
           <SourceRow name={external.source} href={external.sourceUrl} count={countLabel(0, external)}
-            split={[sum(external.f1), sum(external.f2)]}
-            detail={external.final ? null : `Not final yet · read ${updatedAgo(external.fetchedAt)}`} />
+            split={[sum(external.f1), sum(external.f2)]} />
           {local || open ? <SourceRow name="ufc.sh fans" count={local ? picksWord(local) : "No picks yet"}
-            split={local ? localSplit : null} detail={when ? `When: ${when}` : null} /> : null}
+            split={local ? localSplit : null} /> : null}
         </ul>
-        {!external.exact ? <p className="mt-2.5 text-[11px] leading-4 text-zinc-500">
-          + means at least: Verdict MMA publishes each pick’s share, not how many made it.
-        </p> : null}
       </div> : null}
     </section>
   );
