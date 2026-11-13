@@ -84,20 +84,39 @@ function shortMethod(fight: Matchup): string {
   return DECISION_LABEL[method] ?? method.toUpperCase();
 }
 
-/** "KO/TKO R1/3 3:12" — how it ended, in one line under the winner's photo. */
-function resultSummary(fight: Matchup): string {
+/** How it ended ("KO/TKO") and when ("R1/3 3:12"), under the winner's photo. */
+type ResultSummary = { method: string; when: string };
+
+function resultSummary(fight: Matchup): ResultSummary {
   const total = fight.detail?.methodInfo?.["Time format"]?.match(/(\d+)\s*Rnd/i)?.[1];
   // Early bouts were scheduled as "1 Rnd + OT", so a fight can end in a round
   // past the scheduled count. Drop the total rather than print "R2/1". Formats
   // with no round count at all ("No Time Limit") land here too.
   const scheduled = total && Number(fight.round) <= Number(total) ? total : "";
-  return [
-    shortMethod(fight),
-    fight.round ? `R${fight.round}${scheduled ? `/${scheduled}` : ""}` : "",
-    fight.time ?? "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  return {
+    method: shortMethod(fight),
+    when: [fight.round ? `R${fight.round}${scheduled ? `/${scheduled}` : ""}` : "", fight.time ?? ""].filter(Boolean).join(" "),
+  };
+}
+
+/** A hero pill in two unbreakable parts: one line when the corner has room,
+ *  otherwise stacked in a box only as wide as its longer part. (Wrapped text
+ *  would keep the box at the full corner width.) The row it sits in is the
+ *  container, so the switch follows the corner's own width, and a corner too
+ *  narrow for the full lead word shows its short form. */
+function HeroPill({ lead, short, rest, srPrefix, className }: { lead: string; short?: string; rest?: string; srPrefix?: string; className: string }) {
+  return (
+    <span className={`${RESULT_PILL} flex-col items-center gap-x-1 rounded-md px-1.5 py-0.5 text-center tabular-nums @[10rem]:flex-row @[10rem]:rounded-full ${className}`}>
+      <span className="whitespace-nowrap">
+        {srPrefix ? <span className="sr-only">{srPrefix} </span> : null}
+        {short && short !== lead ? <>
+          <span className="@[7rem]:hidden">{short}</span>
+          <span className="hidden @[7rem]:inline">{lead}</span>
+        </> : lead}
+      </span>
+      {rest ? <span className="whitespace-nowrap font-semibold tracking-[0.02em]">{rest}</span> : null}
+    </span>
+  );
 }
 
 /** "Welterweight" / "Flyweight Title" / "Interim Heavyweight Title" — gold for
@@ -153,7 +172,7 @@ function FighterHero({
   side: MatchupSide;
   align: "left" | "right";
   bonuses: Matchup["bonuses"] | undefined;
-  result?: string | null;
+  result?: ResultSummary | null;
   /** A full-body cut-out, or the bare headshot drawn to its size when only the
    *  other corner has one; both corners use small headshots when neither does. */
   portrait: "full" | "face" | "small";
@@ -165,7 +184,6 @@ function FighterHero({
   const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title={rankingTitle(side.ranking, past)}>{rank}</span>;
   const showResult = side.outcome ? RESULT_PREFIX[side.outcome] : undefined;
   const change = boutChange(side);
-  const compactResult = result?.replace(/^(UNANIMOUS|SPLIT|MAJORITY)\b/, (word) => `${word[0]}-DEC`);
   const fotn = !!bonuses?.fotn;
   const perf = bonuses?.perf && side.outcome === "win" ? bonuses.perf_kind ?? "perf" : null;
   const className = `matchup-fighter matchup-fighter--${align} group flex min-w-0 flex-col items-center gap-3 text-center @[58rem]:gap-4 ${
@@ -211,22 +229,18 @@ function FighterHero({
             </Link> : change.full}
           </div> : null}
           {(result && showResult) || fotn || perf || side.weight_miss != null ? (
-            <div className={`mt-2 flex flex-wrap items-center justify-center gap-1 ${align === "right" ? "@[58rem]:justify-end" : "@[58rem]:justify-start"}`}>
+            <div className={`@container mt-2 flex flex-wrap items-center justify-center gap-1 ${align === "right" ? "@[58rem]:justify-end" : "@[58rem]:justify-start"}`}>
               {result && showResult ? (
-                <span className={`${RESULT_PILL} max-w-full justify-center !rounded-lg text-balance tabular-nums ${outcomeClasses(side.outcome)}`}>
-                  <span className="sr-only">{showResult}</span>
-                  {/* A phone-width card abbreviates the decision so the result
-                      stays on one line. */}
-                  {compactResult !== result ? <>
-                    <span className="@[30rem]:hidden">{compactResult}</span>
-                    <span className="hidden @[30rem]:inline">{result}</span>
-                  </> : result}
-                </span>
+                <HeroPill
+                  className={outcomeClasses(side.outcome)}
+                  srPrefix={showResult}
+                  lead={result.method}
+                  short={result.method.replace(/^(UNANIMOUS|SPLIT|MAJORITY)$/, (word) => `${word[0]}-DEC`)}
+                  rest={result.when}
+                />
               ) : null}
               {side.weight_miss != null ? (
-                <span className={`${RESULT_PILL} max-w-full justify-center !rounded-lg text-balance tabular-nums bg-rose-100 text-rose-700`}>
-                  Missed weight{side.weight_miss ? ` · ${side.weight_miss} lb` : ""}
-                </span>
+                <HeroPill className="bg-rose-100 text-rose-700" lead="Missed weight" short="Missed wt" rest={side.weight_miss ? `${side.weight_miss} lb` : undefined} />
               ) : null}
               {/* Fight of the Night belongs to both corners, a performance award to the winner. */}
               {perf ? <span className={BONUS_TAG} title={`${PERF_AWARD[perf].full} bonus`}>{PERF_AWARD[perf].short}</span> : null}
