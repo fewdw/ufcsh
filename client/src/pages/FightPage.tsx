@@ -2,7 +2,6 @@ import { List, X } from "lucide-react";
 import Flag from "../components/Flag";
 import { isFightDay } from "../liveEvent";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApi } from "../api";
 import type { EventDetail, EventFight, FightDetailBlock, HistoryRow, Matchup, MatchupSide, ProfessionalHistoryRow } from "../api";
@@ -103,12 +102,19 @@ function resultSummary(fight: Matchup): ResultSummary {
 /** A hero pill in two unbreakable parts: one line when the corner has room,
  *  otherwise stacked in a box only as wide as its longer part. (Wrapped text
  *  would keep the box at the full corner width.) The row it sits in is the
- *  container, so the switch follows the corner's own width. */
-function HeroPill({ lead, rest, className }: { lead: ReactNode; rest?: string; className: string }) {
+ *  container, so the switch follows the corner's own width, and a corner too
+ *  narrow for the full lead word shows its short form. */
+function HeroPill({ lead, short, rest, srPrefix, className }: { lead: string; short?: string; rest?: string; srPrefix?: string; className: string }) {
   return (
-    <span className={`${RESULT_PILL} flex-col items-center gap-x-1 rounded-md px-2 py-0.5 text-center tabular-nums @[10rem]:flex-row @[10rem]:rounded-full ${className}`}>
-      <span className="whitespace-nowrap">{lead}</span>
-      {rest ? <span className="whitespace-nowrap opacity-75">{rest}</span> : null}
+    <span className={`${RESULT_PILL} flex-col items-center gap-x-1 rounded-md px-1.5 py-0.5 text-center tabular-nums @[10rem]:flex-row @[10rem]:rounded-full ${className}`}>
+      <span className="whitespace-nowrap">
+        {srPrefix ? <span className="sr-only">{srPrefix} </span> : null}
+        {short && short !== lead ? <>
+          <span className="@[7rem]:hidden">{short}</span>
+          <span className="hidden @[7rem]:inline">{lead}</span>
+        </> : lead}
+      </span>
+      {rest ? <span className="whitespace-nowrap font-semibold tracking-[0.02em]">{rest}</span> : null}
     </span>
   );
 }
@@ -178,7 +184,6 @@ function FighterHero({
   const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title={rankingTitle(side.ranking, past)}>{rank}</span>;
   const showResult = side.outcome ? RESULT_PREFIX[side.outcome] : undefined;
   const change = boutChange(side);
-  const compactMethod = result?.method.replace(/^(UNANIMOUS|SPLIT|MAJORITY)$/, (word) => `${word[0]}-DEC`);
   const fotn = !!bonuses?.fotn;
   const perf = bonuses?.perf && side.outcome === "win" ? bonuses.perf_kind ?? "perf" : null;
   const className = `matchup-fighter matchup-fighter--${align} group flex min-w-0 flex-col items-center gap-3 text-center @[58rem]:gap-4 ${
@@ -228,19 +233,14 @@ function FighterHero({
               {result && showResult ? (
                 <HeroPill
                   className={outcomeClasses(side.outcome)}
-                  lead={<>
-                    <span className="sr-only">{showResult} </span>
-                    {/* Only a corner too narrow for the full word abbreviates the decision. */}
-                    {compactMethod !== result.method ? <>
-                      <span className="@[6rem]:hidden">{compactMethod}</span>
-                      <span className="hidden @[6rem]:inline">{result.method}</span>
-                    </> : result.method}
-                  </>}
+                  srPrefix={showResult}
+                  lead={result.method}
+                  short={result.method.replace(/^(UNANIMOUS|SPLIT|MAJORITY)$/, (word) => `${word[0]}-DEC`)}
                   rest={result.when}
                 />
               ) : null}
               {side.weight_miss != null ? (
-                <HeroPill className="bg-rose-100 text-rose-700" lead="Missed weight" rest={side.weight_miss ? `${side.weight_miss} lb` : undefined} />
+                <HeroPill className="bg-rose-100 text-rose-700" lead="Missed weight" short="Missed wt" rest={side.weight_miss ? `${side.weight_miss} lb` : undefined} />
               ) : null}
               {/* Fight of the Night belongs to both corners, a performance award to the winner. */}
               {perf ? <span className={BONUS_TAG} title={`${PERF_AWARD[perf].full} bonus`}>{PERF_AWARD[perf].short}</span> : null}
