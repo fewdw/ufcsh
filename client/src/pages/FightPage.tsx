@@ -285,7 +285,7 @@ type UfcHistoryRow = HistoryRow | ProfessionalHistoryRow;
 function CompactOutcomePill({ outcome, title }: { outcome: HistoryRow["outcome"]; title?: string }) {
   return (
     <span
-      className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded px-1 text-[9px] font-bold leading-none ${outcomeClasses(outcome)}`}
+      className={`inline-flex h-4 min-w-[1.125rem] shrink-0 items-center justify-center rounded px-1 text-[9px] font-bold leading-none ${outcomeClasses(outcome)}`}
       title={title ?? formOutcomeWord(outcome)}
     >
       {outcomeLabel(outcome) || "?"}
@@ -311,7 +311,7 @@ function FormTarget({ row, className, children }: { row: UfcHistoryRow; classNam
 
 /** Marks a bout fought outside the UFC, in the violet the fighter page uses. */
 function OutsideTag() {
-  return <span className="text-[9px] font-semibold uppercase leading-3 tracking-[0.04em] text-violet-600">Outside UFC</span>;
+  return <span className="whitespace-nowrap text-[10px] font-semibold leading-3 text-violet-600">Outside UFC</span>;
 }
 
 /** First name over everything after it, so "Rafael dos Anjos" keeps its
@@ -338,9 +338,9 @@ function FormBout({ row }: { row: UfcHistoryRow }) {
         <span className="block truncate font-medium text-zinc-500">{given || " "}</span>
         <span className="block truncate font-semibold text-zinc-800">{surname}</span>
       </span>
-      <span className="flex max-w-full flex-wrap items-center justify-center gap-1">
+      <span className="flex max-w-full items-center justify-center gap-1">
         <FormMark row={row} />
-        <span className="text-[9px] font-semibold uppercase leading-4 tracking-[0.04em] text-zinc-500">
+        <span className="min-w-0 truncate text-[9px] font-semibold uppercase leading-4 tracking-[0.04em] text-zinc-500">
           {method || "—"}
         </span>
       </span>
