@@ -101,9 +101,10 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-11-12">November 12, 2026</time></p>
+            <p><time dateTime="2026-11-13">November 13, 2026</time></p>
             <ul>
-              <li>Verdict MMA fan picks fill in recent cards first and the whole archive much faster.</li>
+              <li>Fight result and missed-weight badges fit neatly on small and large screens.</li>
+              <li>Last-five fight labels are clearer, with shorter methods and tidier Outside UFC tags.</li>
             </ul>
           </Section>
         </div>
