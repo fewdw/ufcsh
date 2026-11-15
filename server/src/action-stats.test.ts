@@ -108,6 +108,10 @@ test("a verdict posted before the last round's rows is a page still being writte
     "f1 significantStrikes disagrees with event summary",
   ]);
   assert.ok(issues.every(isUnsettledSourceIssue));
+  // A first-round finish read before any round rows: no stat tables at all.
+  const bare = { ...summaryFor(1), round: "1", detail_json: JSON.stringify({ type: "past", methodInfo: { Round: "1" } }) };
+  assert.deepEqual(validateFightActions(bare), ["totals per round cover 0 of 1 rounds"]);
+  assert.ok(validateFightActions(bare).every(isUnsettledSourceIssue));
   // More rows than rounds is a bad parse, which waiting will not fix.
   assert.ok(!isUnsettledSourceIssue("totals per round cover 4 of 3 rounds"));
   assert.ok(!isUnsettledSourceIssue("f1 strike targets do not sum to significant strikes"));
