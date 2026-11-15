@@ -141,6 +141,14 @@ export function validateFightActions(fight: any): string[] {
       const rounds = (block as any)?.rounds?.length;
       if (rounds != null && rounds !== fought) issues.push(`${name} per round cover ${rounds} of ${fought} rounds`);
     }
+    // A first-round finish read in the minutes after the verdict has no round
+    // rows yet, so the page carries no stat tables at all (UFC 334: McKinney
+    // vs. Miller). Every stored page with stats has them, so this is the same
+    // unfinished page as a short round table, and the attempt checks below
+    // would only repeat it eighteen times.
+    if (!detail?.totals && !detail?.sigStrikes && !detail?.totalsRounds && !detail?.sigStrikesRounds) {
+      return [`totals per round cover 0 of ${fought} rounds`];
+    }
   }
   for (const side of ["f1", "f2"] as const) {
     const summaryChecks = [
