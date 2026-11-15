@@ -101,10 +101,9 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-11-13">November 13, 2026</time></p>
+            <p><time dateTime="2026-11-14">November 14, 2026</time></p>
             <ul>
-              <li>Fight result and missed-weight badges fit neatly on small and large screens.</li>
-              <li>Last-five fight labels are clearer, with shorter methods and tidier Outside UFC tags.</li>
+              <li>Live fight stats wait quietly for the official numbers after a first-round finish.</li>
             </ul>
           </Section>
         </div>
