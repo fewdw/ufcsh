@@ -86,6 +86,18 @@ test("early page sections are stored without a live feed; stale and unmatched pl
   assert.deepEqual(db.prepare("SELECT segment, card_pos FROM fights WHERE event_id = ? ORDER BY ord").all(eventId), placed);
 });
 
+test("a new card whose ufc.com page lists no bouts yet is not a failed read", async t => {
+  db.exec("SAVEPOINT fresh_card");
+  t.after(() => db.exec("ROLLBACK TO fresh_card; RELEASE fresh_card"));
+  const id = "cafc000000000006";
+  db.prepare(`INSERT INTO events (id, name, date, ufc_slug) VALUES (?, 'Fresh card', '2099-06-01', 'fresh-card')`).run(id);
+  db.prepare(`INSERT INTO fights (id, event_id, ord, f1_name, f2_name) VALUES ('cafc000000000060', ?, 0, 'Fighter One', 'Fighter Two')`).run(id);
+  t.mock.method(globalThis, "fetch", async () => new Response("<html>UFC Fight Night</html>"));
+  await syncEventSegments(id);
+  assert.deepEqual(Object.values(db.prepare("SELECT segment, card_pos FROM fights WHERE event_id = ?").get(id)!), [null, null]);
+  assert.ok(db.prepare("SELECT segments_fetched_at FROM events WHERE id = ?").get(id)?.segments_fetched_at);
+});
+
 test("a card ufc.com lists but has not split yet is a good read: its feed still counts, nothing is placed", async t => {
   db.exec("SAVEPOINT unsplit_card");
   t.after(() => db.exec("ROLLBACK TO unsplit_card; RELEASE unsplit_card"));

@@ -101,9 +101,9 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-11-14">November 14, 2026</time></p>
+            <p><time dateTime="2026-11-16">November 16, 2026</time></p>
             <ul>
-              <li>Live fight stats wait quietly for the official numbers after a first-round finish.</li>
+              <li>Newly announced cards no longer raise sync errors while ufc.com catches up.</li>
             </ul>
           </Section>
         </div>
