@@ -340,8 +340,8 @@ export async function syncEventSegments(eventId: string): Promise<void> {
     if (outageReport(feedJob, card.feedError)) recordSyncError(feedJob, card.feedError);
     log(`card feed unavailable for ${event.ufc_slug}; using its event page: ${card.feedError}`);
   } else if (card.info) outageReport(feedJob, null, Date.now(), true);
-  const fights = db.prepare("SELECT id, ord, f1_name, f2_name FROM fights WHERE event_id = ?")
-    .all(eventId) as { id: string; ord: number; f1_name: string; f2_name: string }[];
+  const fights = db.prepare("SELECT id, ord, f1_name, f2_name, segment, card_pos FROM fights WHERE event_id = ?")
+    .all(eventId) as { id: string; ord: number; f1_name: string; f2_name: string; segment: string | null; card_pos: number | null }[];
   // The archive index has paired pages with the wrong dates before. A page
   // whose card shares no bout with ours is another event's: forget it and
   // everything read from it, so the next archive pass offers the right one.
@@ -361,9 +361,12 @@ export async function syncEventSegments(eventId: string): Promise<void> {
   // for the card with no section on any bout, and the page has no section
   // blocks. That is a good read with nothing to place, not a failure, and the
   // feed's rounds, venue and officials still count. Unplaced bouts stay in
-  // Admin → Bugs. A page with no feed at all is a read that failed.
+  // Admin → Bugs. A page with no feed at all is a read that failed, unless
+  // nothing on the card was ever placed: a newly announced card's page lists
+  // no bouts for a while after other sources do, and there is nothing to keep.
   const unsplit = fights.length > 0 && !bouts.length;
-  if (unsplit && !card.info) throw new Error(`ufc.com ${event.ufc_slug} carried no card sections; keeping the last good placements`);
+  const placed = fights.some(fight => fight.segment !== null || fight.card_pos !== null);
+  if (unsplit && !card.info && placed) throw new Error(`ufc.com ${event.ufc_slug} carried no card sections; keeping the last good placements`);
   const segments = assignSegments(fights, bouts);
   if (!unsplit) {
     const update = db.prepare("UPDATE fights SET segment = ? WHERE id = ?");
