@@ -35,6 +35,7 @@ import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
 import { cardChanges, catchweights, eventInfobox, eventSection, fetchArticleByTitle, fetchEventArticle, fetchFighterArticle, recordCatchweight, samePlace, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
+import { syncUfcJudgeRounds } from "./ufc-judge-rounds.ts";
 import { syncVerdictPicks } from "./verdict-picks.ts";
 import { syncRecentPointDeductions } from "./point-deductions.ts";
 import { syncVerdictLive, VERDICT_LIVE_MS } from "./verdict-live.ts";
@@ -2133,6 +2134,9 @@ export function startScheduler(): void {
   // Verdict MMA round cards and community scorecards, on their own clock so a
   // long tick can't hold back a fight-night tally. The pass decides what is due.
   setInterval(() => void guarded("verdict_scorecards", async () => { await syncVerdictScorecards(); }), 30_000);
+  // The promotion's own round cards for each decision (ufc-judge-rounds.ts);
+  // the pass decides what is due.
+  setInterval(() => void guarded("ufc_judge_rounds", async () => { await syncUfcJudgeRounds(); }), 60_000);
   // Verdict MMA's fans' picks: cards still taking them, and a walk through
   // the archive one card at a time (verdict-picks.ts).
   setInterval(() => void guarded("verdict_picks", async () => await syncVerdictPicks() || NOT_DUE), 30_000);
