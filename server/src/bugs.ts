@@ -26,6 +26,7 @@ import { deductionProblem, fightDeductionState, MMA_DECISIONS_BLOCKED, storedMed
 import type { DeductionFight } from "./point-deduction-rules.ts";
 import { readCancelledBoardList, syncCancelledBouts } from "./cancelled-bouts.ts";
 import { repairJudgeNames } from "./repair-judge-names.ts";
+import { rereadUfcJudgeRounds } from "./ufc-judge-rounds.ts";
 import { keptApart, mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import { rosterEventsByFighter, rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
@@ -1086,11 +1087,11 @@ function cancelledBoutsUnlinked(): BugCheck {
 function decisionsWithoutJudgeRounds(): BugCheck {
   const linkedEvents = new Set((db.prepare("SELECT DISTINCT event_id FROM verdict_events WHERE event_id IS NOT NULL").all() as { event_id: string }[]).map(row => row.event_id));
   const candidates = db.prepare(`
-    SELECT ${FIGHT_COLUMNS}, f.method, f.detail_json, f.judge_rounds_json, f.verdict_checked_at
+    SELECT ${FIGHT_COLUMNS}, f.method, f.detail_json, f.judge_rounds_json, f.verdict_checked_at, f.ufc_rounds_checked_at, e.ufc_event_id
     FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.complete = 1 AND f.method LIKE '%DEC' AND e.date >= '2003-01-01'
     ORDER BY e.date DESC
-  `).all() as (FightRow & { method: string; detail_json: string | null; judge_rounds_json: string | null; verdict_checked_at: number | null })[];
+  `).all() as (FightRow & { method: string; detail_json: string | null; judge_rounds_json: string | null; verdict_checked_at: number | null; ufc_rounds_checked_at: number | null; ufc_event_id: number | null })[];
   const rows = candidates.filter(fight => {
     if (!fight.judge_rounds_json) return true;
     try {
@@ -1104,12 +1105,15 @@ function decisionsWithoutJudgeRounds(): BugCheck {
     id: "decision-no-judge-rounds",
     group: "Scorecards",
     label: "Official cards missing round scores",
-    description: "Decisions since 2003 where one or more official cards still lack round scores. The Verdict and MMA Decisions imports match the event date and both fighter names, then verify each judge's final total before attaching rounds.",
+    description: "Decisions since 2003 where one or more official cards still lack round scores. ufc.com's fight feed (read within minutes of a decision), Verdict and MMA Decisions are matched by both fighter names, and each judge's final total is verified before rounds are attached.",
     grade: recent([[7, "minor"]]),
   }, rows.map(fight => fightItem(fight, {
-    facts: [["Official totals", fight.detail_json?.includes('"judges"') ? "yes" : "no"], ["Verdict checked", ago(fight.verdict_checked_at)]],
+    facts: [["Official totals", fight.detail_json?.includes('"judges"') ? "yes" : "no"], ["ufc.com checked", ago(fight.ufc_rounds_checked_at)], ["Verdict checked", ago(fight.verdict_checked_at)]],
     links: [{ label: "Verdict events", href: "https://verdictmma.com/events" }],
-    actions: linkedEvents.has(fight.event_id) ? [{ id: "verdict", label: "Re-read scorecards", target: fight.id }] : [],
+    actions: [
+      ...(fight.ufc_event_id ? [{ id: "ufc-rounds" as const, label: "Re-read ufc.com feed", target: fight.id }] : []),
+      ...(linkedEvents.has(fight.event_id) ? [{ id: "verdict" as const, label: "Re-read scorecards", target: fight.id }] : []),
+    ],
   })));
 }
 
@@ -2557,7 +2561,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "event-crew" | "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "verdict-picks" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "polymarket-data" | "deductions" | "media" | "antidoping" | "pay";
+export type BugActionId = "event-crew" | "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "verdict-picks" | "ufc-rounds" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "polymarket-data" | "deductions" | "media" | "antidoping" | "pay";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -2572,6 +2576,7 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       return { ok: true, message: `${stored} crew report(s) read from the feed. A card still missing its crew needs a manual import.` };
     }
     case "judge-names": return repairJudgeNames(target);
+    case "ufc-rounds": return rereadUfcJudgeRounds(target);
     case "potential-odds": {
       const result = await syncPotentialMatchups({ props: true });
       return { ok: result.failed < 2, message: `${potentialMatchups().length} potential matchups with odds.${result.failed ? ` ${result.failed} source(s) could not be read; stored prices were kept.` : ""}` };

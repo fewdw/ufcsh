@@ -42,6 +42,8 @@ test("known Verdict cards give both scorecard backlogs a working repair target",
   db.exec("BEGIN");
   try {
     db.prepare("UPDATE fights SET judge_rounds_json = NULL, community_score_json = NULL WHERE id = ?").run(fight.id);
+    // The ufc.com feed's re-read has its own test; this one is about Verdict's.
+    db.prepare("UPDATE events SET ufc_event_id = NULL WHERE id = ?").run(fight.event_id);
     db.prepare("DELETE FROM verdict_events WHERE event_id = ?").run(fight.event_id);
     const action = (check: string) => bugReport().checks.find(row => row.id === check)!.items.find(item => item.key === fight.id)!.actions;
     for (const check of ["decision-no-judge-rounds", "fight-no-community-scores"]) assert.deepEqual(action(check), []);
