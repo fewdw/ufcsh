@@ -103,7 +103,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-11-16">November 16, 2026</time></p>
             <ul>
-              <li>Newly announced cards no longer raise sync errors while ufc.com catches up.</li>
+              <li>Judges' round-by-round scorecards now arrive from ufc.com's official feed within minutes of a decision.</li>
             </ul>
           </Section>
         </div>
