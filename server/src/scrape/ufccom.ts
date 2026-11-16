@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import { fetchHtml } from "../http.ts";
 import { cleanText, namesAgree, normName } from "../util.ts";
+import type { JudgeCard, JudgeRound } from "../judge-scorecards.ts";
 
 export const WEIGHT_LIMITS: Record<string, string> = {
   Strawweight: "115 lbs",
@@ -740,6 +741,70 @@ export function parseEventInfo(feed: unknown): ScrapedEventInfo | null {
 
 async function fetchJson(url: string): Promise<unknown> {
   return JSON.parse(await fetchHtml(url, { timeoutMs: 30000 }));
+}
+
+/** A bout's id in the promotion's feed, by both fighters' names. */
+export type UfcFeedBout = { fightId: number; f1Name: string; f2Name: string };
+/** Every judge's round card for one bout, in the feed's fighter order. */
+export type UfcFightScores = UfcFeedBout & { judges: JudgeCard[] };
+
+const fighterName = (fighter: any): string => cleanText(`${fighter?.Name?.FirstName ?? ""} ${fighter?.Name?.LastName ?? ""}`);
+
+/** The bouts an event feed lists. */
+export function parseFeedBouts(feed: unknown): UfcFeedBout[] {
+  const card = (feed as any)?.LiveEventDetail?.FightCard;
+  return (Array.isArray(card) ? card : []).flatMap((fight: any): UfcFeedBout[] => {
+    const fightId = Number(fight?.FightId);
+    const names = (Array.isArray(fight?.Fighters) ? fight.Fighters : []).map(fighterName);
+    return Number.isSafeInteger(fightId) && fightId > 0 && names.length === 2 && names[0] && names[1]
+      ? [{ fightId, f1Name: names[0], f2Name: names[1] }] : [];
+  });
+}
+
+/** The official judges' round scores a fight feed publishes once a decision
+ * is read. A card is kept only when every round names both fighters' whole
+ * scores and they add up to the total the same feed states for that judge. */
+export function parseFightRoundScores(feed: unknown): UfcFightScores | null {
+  const detail = (feed as any)?.LiveFightDetail;
+  const fightId = Number(detail?.FightId);
+  const fighters = Array.isArray(detail?.Fighters) ? detail.Fighters : [];
+  const ids = fighters.map((fighter: any) => Number(fighter?.FighterId));
+  const names = fighters.map(fighterName);
+  if (!Number.isSafeInteger(fightId) || fightId < 1 || fighters.length !== 2 || !names[0] || !names[1]
+    || ids.some((id: number) => !Number.isSafeInteger(id)) || ids[0] === ids[1]) return null;
+  const score = (sides: unknown, id: number): number => {
+    const found = (Array.isArray(sides) ? sides : []).filter((side: any) => Number(side?.FighterId) === id);
+    return found.length === 1 && typeof found[0]?.Score === "number" && Number.isInteger(found[0].Score) ? found[0].Score : NaN;
+  };
+  const judgeName = (card: any): string => cleanText(`${card?.JudgeFirstName ?? ""} ${card?.JudgeLastName ?? ""}`);
+  const totals = Array.isArray(detail?.Result?.FightScores) ? detail.Result.FightScores : [];
+  const judges: JudgeCard[] = [];
+  for (const card of Array.isArray(detail?.Result?.RoundScores) ? detail.Result.RoundScores : []) {
+    const judge = judgeName(card);
+    const rounds = (Array.isArray(card?.Rounds) ? card.Rounds : [])
+      .map((round: any) => ({ round: Number(round?.RoundNumber), f1Score: score(round?.Fighters, ids[0]), f2Score: score(round?.Fighters, ids[1]) }))
+      .sort((a: JudgeRound, b: JudgeRound) => a.round - b.round);
+    if (!judge || !rounds.length || rounds.some((round: JudgeRound, index: number) => round.round !== index + 1
+      || !Number.isInteger(round.f1Score) || !Number.isInteger(round.f2Score))) continue;
+    const f1Score = rounds.reduce((sum: number, round: JudgeRound) => sum + round.f1Score, 0);
+    const f2Score = rounds.reduce((sum: number, round: JudgeRound) => sum + round.f2Score, 0);
+    const stated = totals.filter((total: any) => Number(total?.JudgeId) === Number(card?.JudgeId) && judgeName(total) === judge);
+    if (stated.length !== 1 || score(stated[0].Fighters, ids[0]) !== f1Score || score(stated[0].Fighters, ids[1]) !== f2Score) continue;
+    judges.push({ judge, f1Score, f2Score, rounds });
+  }
+  return { fightId, f1Name: names[0], f2Name: names[1], judges };
+}
+
+export const ufcFightFeedUrl = (fightId: number): string => `${LIVE_CARD_API}/fight/live/${fightId}.json`;
+
+export async function fetchEventFeedBouts(eventId: number): Promise<UfcFeedBout[]> {
+  const feed = await fetchJson(`${LIVE_CARD_API}/event/live/${eventId}.json`);
+  if (Number((feed as any)?.LiveEventDetail?.EventId) !== eventId) throw new Error(`ufc.com event ${eventId} returned no matching event`);
+  return parseFeedBouts(feed);
+}
+
+export async function fetchFightRoundScores(fightId: number): Promise<UfcFightScores | null> {
+  return parseFightRoundScores(await fetchJson(ufcFightFeedUrl(fightId)));
 }
 
 /** An event page plus the rule set of every bout on it, and the venue,

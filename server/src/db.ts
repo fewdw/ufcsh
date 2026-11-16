@@ -315,6 +315,9 @@ for (const [name, type] of [
   ["deductions_checked_at", "INTEGER"],
   // The same page's media scores: journalists' cards (point-deductions.ts).
   ["media_scores_json", "TEXT"],
+  // When the promotion's fight feed was last read for this decision's round
+  // cards (ufc-judge-rounds.ts).
+  ["ufc_rounds_checked_at", "INTEGER"],
 ] as const) {
   if (!fightColumns.some((column) => column.name === name)) {
     db.exec(`ALTER TABLE fights ADD COLUMN ${name} ${type}`);
@@ -828,7 +831,7 @@ const revisionTables: Record<string, string[]> = {
 for (const [table, revisions] of Object.entries(revisionTables)) {
   const checkTimestamps = new Set(["detail_fetched_at", "birth_fetched_at", "photo_checked_at", "bfo_checked_at", "bfo_final_at",
     "schedule_fetched_at", "segments_fetched_at", "wiki_checked_at", "fetched_at", "checked_at",
-    "venue_checked_at", "wiki_info_checked_at", "catch_weight_checked_at", "verdict_checked_at", "verdict_error", "verdict_live_json", "verdict_picks_json", "deductions_checked_at",
+    "venue_checked_at", "wiki_info_checked_at", "catch_weight_checked_at", "verdict_checked_at", "verdict_error", "verdict_live_json", "verdict_picks_json", "deductions_checked_at", "ufc_rounds_checked_at",
     // Read live by the matchup alone; no index or list is built from it.
     "media_scores_json", "pay_json", "pay_checked_at", "pay_issues_json"]);
   const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
