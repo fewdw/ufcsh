@@ -103,7 +103,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-11-16">November 16, 2026</time></p>
             <ul>
-              <li>Newcomers whose UFC record hasn't caught up, and fighters listed under a joined Chinese name, now get their full fight history.</li>
+              <li>Older fights now pick up fan scorecards that Verdict MMA users add later.</li>
             </ul>
           </Section>
         </div>

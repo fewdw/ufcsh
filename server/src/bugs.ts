@@ -1235,13 +1235,15 @@ function fightsWithoutCommunityScores(): BugCheck {
     FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.complete = 1 AND (f.method LIKE '%DEC' OR CAST(f.round AS INTEGER) > 1)
       AND (f.community_score_json IS NULL OR json_valid(f.community_score_json) = 0)
+      AND (e.date >= date('now', '-30 day') OR f.verdict_error IS NOT NULL OR NOT EXISTS (SELECT 1 FROM verdict_events v
+        WHERE v.event_id = e.id AND v.checked_at > (julianday(e.date) + 1 - 2440587.5) * 86400000))
     ORDER BY e.date DESC
   `).all() as (FightRow & { method: string; round: string | null; verdict_checked_at: number | null })[];
   return check({
     id: "fight-no-community-scores",
     group: "Scorecards",
     label: "Fights missing community scorecards",
-    description: "Completed bouts with at least one scoreable round but no imported community aggregate. Imported counts and averages stay separate from user profiles and are weighted with new ufc.sh cards at read time.",
+    description: "Completed bouts with at least one scoreable round but no imported community aggregate. After 30 days a bout is left out once its Verdict card has been read since the fight: Verdict has no fan cards for it, or doesn't list it (many older prelims). The background pass re-reads those every 90 days, since fans keep scoring the archive. Imported counts and averages stay separate from user profiles and are weighted with new ufc.sh cards at read time.",
     grade: recent([[7, "minor"]]),
   }, rows.map(fight => fightItem(fight, {
     facts: [["Method", fight.method ?? "unknown"], ["Rounds reached", fight.round ?? "unknown"], ["Verdict checked", ago(fight.verdict_checked_at)]],
