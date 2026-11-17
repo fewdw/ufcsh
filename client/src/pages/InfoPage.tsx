@@ -103,7 +103,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-11-16">November 16, 2026</time></p>
             <ul>
-              <li>Judges' round-by-round scorecards now arrive from ufc.com's official feed within minutes of a decision.</li>
+              <li>Newcomers whose UFC record hasn't caught up, and fighters listed under a joined Chinese name, now get their full fight history.</li>
             </ul>
           </Section>
         </div>
