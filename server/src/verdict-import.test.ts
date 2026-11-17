@@ -47,12 +47,29 @@ test("known Verdict cards give both scorecard backlogs a working repair target",
     db.prepare("DELETE FROM verdict_events WHERE event_id = ?").run(fight.event_id);
     const action = (check: string) => bugReport().checks.find(row => row.id === check)!.items.find(item => item.key === fight.id)!.actions;
     for (const check of ["decision-no-judge-rounds", "fight-no-community-scores"]) assert.deepEqual(action(check), []);
-    db.prepare("INSERT INTO verdict_events (verdict_id, event_id, checked_at) VALUES (?, ?, ?)").run(999999, fight.event_id, Date.now());
+    db.prepare("INSERT INTO verdict_events (verdict_id, event_id, checked_at) VALUES (?, ?, ?)").run(999999, fight.event_id, 0);
     for (const check of ["decision-no-judge-rounds", "fight-no-community-scores"]) {
       assert.deepEqual(action(check), [{ id: "verdict", label: "Re-read scorecards", target: fight.id }]);
     }
     db.prepare("UPDATE fights SET community_score_json = ? WHERE id = ?").run('{"cards":0,"sourceUrl":"https://verdictmma.com/event/999999/fight/1"}', fight.id);
     assert.deepEqual(action("fight-invalid-community-scores"), [{ id: "verdict", label: "Re-read source scorecards", target: "card:999999" }]);
+  } finally { db.exec("ROLLBACK"); }
+});
+
+test("an archive bout drops off the community backlog once its Verdict card is read after the fight", () => {
+  const fight = db.prepare(`SELECT f.id, f.event_id FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND e.date < date('now', '-400 day') AND f.method LIKE '%DEC' ORDER BY e.date DESC LIMIT 1`).get() as { id: string; event_id: string };
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE fights SET community_score_json = NULL, verdict_error = NULL WHERE id = ?").run(fight.id);
+    db.prepare("DELETE FROM verdict_events WHERE event_id = ?").run(fight.event_id);
+    const listed = () => bugReport().checks.find(row => row.id === "fight-no-community-scores")!.items.some(item => item.key === fight.id);
+    db.prepare("INSERT INTO verdict_events (verdict_id, event_id, checked_at) VALUES (?, ?, ?)").run(999999, fight.event_id, 0);
+    assert.equal(listed(), true);
+    db.prepare("UPDATE verdict_events SET checked_at = ? WHERE verdict_id = 999999").run(Date.now());
+    assert.equal(listed(), false);
+    db.prepare("UPDATE fights SET verdict_error = 'Verdict HTTP 500' WHERE id = ?").run(fight.id);
+    assert.equal(listed(), true);
   } finally { db.exec("ROLLBACK"); }
 });
 
