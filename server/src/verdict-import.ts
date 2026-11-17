@@ -315,11 +315,16 @@ const REFRESH_BY_AGE: [maxDays: number, everyMs: number][] = [
   [180, 7 * 86_400_000],
   [365, 30 * 86_400_000],
 ];
+/** Older bouts still without a tally are read quarterly: fans keep scoring
+ * the archive, and a card with none yet may have some later. A pass reads at
+ * most one such card, after every newer one. */
+const ARCHIVE_MS = 90 * 86_400_000;
 /** A bout just scored on fight night (a decision, or a stoppage after the
  * first round) without its tally is what readers open next. */
 const LIVE_MS = 60_000;
 const ageInDays = (date: string, now: number) => (now - Date.parse(`${date}T00:00:00Z`)) / 86_400_000;
-const everyFor = (age: number, live: boolean) => live && age <= 1.5 ? LIVE_MS : REFRESH_BY_AGE.find(([maxDays]) => age <= maxDays)?.[1];
+const everyFor = (age: number, live: boolean) => live && age <= 1.5 ? LIVE_MS
+  : REFRESH_BY_AGE.find(([maxDays]) => age <= maxDays)?.[1] ?? (live ? ARCHIVE_MS : undefined);
 
 function fightDue(fight: LocalFight, now = Date.now()): boolean {
   const every = everyFor(ageInDays(fight.date, now), scoreable(fight) && !fight.community_score_json);
@@ -333,7 +338,7 @@ const dueCards = db.prepare(`SELECT v.verdict_id, v.checked_at, julianday('now')
     (v.event_id IS NULL OR e.complete = 0 OR EXISTS (SELECT 1 FROM fights f WHERE f.event_id = e.id
       AND (f.method LIKE '%DEC%' OR CAST(f.round AS INTEGER) > 1) AND f.community_score_json IS NULL)) AS live
   FROM verdict_events v LEFT JOIN events e ON e.id = v.event_id
-  WHERE (v.event_id IS NOT NULL AND e.date <= date('now') AND e.date >= date('now', '-365 day'))
+  WHERE (v.event_id IS NOT NULL AND e.date <= date('now'))
     OR (v.event_id IS NULL AND v.date BETWEEN date('now', '-3 day') AND date('now', '+1 day')
       AND EXISTS (SELECT 1 FROM events n WHERE n.date BETWEEN date(v.date, '-1 day') AND date(v.date, '+1 day')))
   ORDER BY age`);
@@ -371,9 +376,11 @@ export async function syncVerdictScorecards(): Promise<VerdictImportStats & { ev
         add(await importVerdictEvent(id, "missing", { quiet: id > maxKnown }));
       }
     }
+    let archive = 0;
     for (const card of dueCards.all() as { verdict_id: number; checked_at: number; age: number; live: number }[]) {
       const every = everyFor(card.age, !!card.live);
-      if (every && card.checked_at < Date.now() - every) add(await importVerdictEvent(card.verdict_id, "recent", { due: fight => fightDue(fight) }));
+      if (!every || card.checked_at >= Date.now() - every || (card.age > 365 && archive++ > 0)) continue;
+      add(await importVerdictEvent(card.verdict_id, "recent", { due: fight => fightDue(fight) }));
     }
     if (total.events) log(`verdict scorecards: ${total.events} events, ${total.matchedFights} fights, ${total.official} official, ${total.community} community, ${total.failed} failed`);
     return total;

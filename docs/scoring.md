@@ -117,7 +117,10 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   still has the bout on: its stoppage round also reads as ended). Its fans'
   average — thousands of cards — joins ours for those rounds, and the total
   once it covers every closed round; the finished tally from
-  `verdict-import.ts` replaces it after the result. Verdict splits a card over
+  `verdict-import.ts` replaces it after the result, re-read on a schedule
+  that slows as the bout ages; bouts over a year old still without a tally
+  are re-read every 90 days (one card per pass), since fans keep scoring the
+  archive. Verdict splits a card over
   two ids and serves the main card's fight models for both, so the prelims are
   found from the `fighterVersus` rows and read from their own bout pages. A
   bout past its first round with no live read is in Admin → Bugs.
