@@ -64,8 +64,16 @@ export function samePersonName(a: string, b: string, bNickname = ""): boolean {
     const leftBase = withoutSuffix(left);
     const rightBase = withoutSuffix(right);
     if (leftBase !== left && rightBase !== right && left !== right) return false;
-    return leftBase === rightBase || tokens(leftBase) === tokens(rightBase);
+    return leftBase === rightBase || tokens(leftBase) === tokens(rightBase)
+      || joinedName(leftBase, rightBase) || joinedName(rightBase, leftBase);
   });
+}
+
+/** UFCStats files some Chinese fighters as one word, family name first
+ *  ("Jiniushiyue"), where other sources write "Niushiyue Ji". */
+function joinedName(single: string, pair: string): boolean {
+  const two = pair.split(" ");
+  return !single.includes(" ") && two.length === 2 && (two.join("") === single || two[1] + two[0] === single);
 }
 
 function looksLikeUfcEvent(name: string): boolean {
@@ -225,6 +233,12 @@ export function isVerifiedIdentity(
   // same person at any record gap.
   const sameNickname = Boolean(local.nickname && profile.nickname && normName(local.nickname) === normName(profile.nickname));
   if (known.length === 0 && candidateCount === 1 && birthMatches && sameNickname && similarOpponentName(local.name, profile.name)) return true;
+  // UFCStats copies a newcomer's record once, at signing, while the source goes
+  // on adding their bouts elsewhere. The only exact-name result with the same
+  // date of birth whose history passed through exactly that record is the same
+  // person ("5-0" on UFCStats, "7-0" on a page that read 5-0 two bouts ago).
+  if (known.length === 0 && candidateCount === 1 && birthMatches && samePersonName(local.name, profile.name)
+    && local.wins + local.losses + local.draws > 0 && passedThroughRecord(local, profile.bouts)) return true;
   if (!samePersonName(local.name, profile.name)) {
     // A previously discovered profile may use a legal name or a differently
     // spaced transliteration. A matching birth date plus reconciled UFC history
@@ -249,6 +263,16 @@ export function isVerifiedIdentity(
   // same full record plus either an independent bio match or one unique exact
   // name result. Duplicate names with no corroborating field remain ambiguous.
   return birthMatches || sameNickname || candidateCount === 1;
+}
+
+function passedThroughRecord(local: LocalFighter, bouts: SherdogBout[]): boolean {
+  let wins = 0, losses = 0, draws = 0;
+  return [...bouts].sort((a, b) => a.date.localeCompare(b.date)).some((bout) => {
+    if (bout.outcome === "win") wins++;
+    else if (bout.outcome === "loss") losses++;
+    else if (bout.outcome === "draw") draws++;
+    return wins === local.wins && losses === local.losses && draws === local.draws;
+  });
 }
 
 async function searchByName(local: LocalFighter): Promise<SherdogCandidate[]> {

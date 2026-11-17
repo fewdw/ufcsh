@@ -126,3 +126,22 @@ test("records a bout apart still verify on name, birth date and every UFC bout",
   assert.equal(isVerifiedIdentity(typo, 1, { ...candidate, name: "Mehemmedali Osmanli", birthDate: "" }, [], []), false);
   assert.equal(isVerifiedIdentity({ ...fighter, name: "Nick Diaz" }, 1, { ...candidate, name: "Nate Diaz" }, [], []), false);
 });
+
+test("a newcomer verifies when the source history passed through the UFCStats record", () => {
+  const fighter = { ...local, name: "Ivan Gnizditskiy", nickname: "", birth_date: "1996-05-10", wins: 5, losses: 0 };
+  const win = (date: string) => ({ ...reconciled(1)[0], date, outcome: "win" as const });
+  const bouts = ["2026-03-28", "2025-05-30", "2025-03-07", "2024-10-12", "2024-02-24", "2023-05-27", "2018-06-10"].map(win);
+  const candidate = profile({ name: "Ivan Gnizditskiy", nickname: "Samurai", birthDate: "1996-05-10", wins: 7, losses: 0, bouts });
+  assert.ok(isVerifiedIdentity(fighter, 1, candidate, [], []));
+  assert.equal(isVerifiedIdentity(fighter, 2, candidate, [], []), false, "not when another candidate shares the name");
+  assert.equal(isVerifiedIdentity(fighter, 1, { ...candidate, birthDate: "" }, [], []), false, "not without the birth date");
+  assert.equal(isVerifiedIdentity({ ...fighter, losses: 1 }, 1, candidate, [], []), false, "not a record the history never had");
+});
+
+test("a one-word UFCStats name matches the source's family-name-last spelling", () => {
+  assert.ok(samePersonName("Jiniushiyue", "Niushiyue Ji"));
+  assert.ok(samePersonName("Niushiyue Ji", "Jiniushiyue"));
+  assert.equal(samePersonName("Jiniushiyue", "Niushiyue Jin"), false);
+  const fighter = { ...local, name: "Jiniushiyue", nickname: "Little Vajra", birth_date: "2000-12-09", wins: 17, losses: 4 };
+  assert.ok(isVerifiedIdentity(fighter, 1, profile({ name: "Niushiyue Ji", nickname: "Little King Kong", birthDate: "2000-12-09", wins: 17, losses: 4 }), [], []));
+});
