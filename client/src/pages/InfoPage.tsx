@@ -101,9 +101,9 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-11-16">November 16, 2026</time></p>
+            <p><time dateTime="2026-11-17">November 17, 2026</time></p>
             <ul>
-              <li>Older fights now pick up fan scorecards that Verdict MMA users add later.</li>
+              <li>When an odds source blocks us, we pause it and use our backup source instead of retrying every few minutes.</li>
             </ul>
           </Section>
         </div>
