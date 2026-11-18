@@ -52,3 +52,31 @@ test("transient failures other than 429 keep their existing retries", async (t) 
   assert.deepEqual(await postJson("https://retry.example/gql", {}), { ok: true });
   assert.equal(request.mock.callCount(), 2);
 });
+
+test("a Cloudflare block page pauses the host for an hour with a readable error", async (t) => {
+  const started = Date.parse("2030-01-01T00:00:00Z");
+  let now = started;
+  t.mock.method(Date, "now", () => now);
+  const page = '<!DOCTYPE html><title>Attention Required! | Cloudflare</title><h1 data-translate="block_headline">Sorry, you have been blocked</h1>'
+    + '<span>Cloudflare Ray ID: <strong class="font-semibold">a5c403931ebaab15</strong></span>';
+  const request = t.mock.method(globalThis, "fetch", async () => new Response(page, { status: 403 }));
+  const results = await Promise.allSettled([postJson("https://blocked.example/gql", {}), fetchHtml("https://blocked.example/board")]);
+  assert.equal(request.mock.callCount(), 1, "no retry, and the queued page waits out the block");
+  for (const result of results) {
+    assert.equal(result.status, "rejected");
+    if (result.status !== "rejected") continue;
+    assert.ok(result.reason instanceof HttpRateLimitError);
+    assert.equal(result.reason.retryAt, started + 3_600_000);
+    assert.equal(result.reason.message, "HTTP 403 for https://blocked.example/gql; retry after 2030-01-01T01:00:00.000Z: Cloudflare blocked this server (Ray ID a5c403931ebaab15)");
+  }
+  now += 3_600_000;
+  request.mock.mockImplementation(async () => Response.json({ ok: true }));
+  assert.deepEqual(await postJson("https://blocked.example/gql", {}), { ok: true }, "the host is tried again after an hour");
+});
+
+test("an API's own 403 is not a block", async (t) => {
+  const request = t.mock.method(globalThis, "fetch", async () => Response.json({ errors: [{ message: "Unknown query" }] }, { status: 403 }));
+  await assert.rejects(postJson("https://api-403.example/gql", {}), /HTTP 403 for https:\/\/api-403\.example\/gql: \{"errors"/);
+  await assert.rejects(postJson("https://api-403.example/gql", {}), /Unknown query/);
+  assert.equal(request.mock.callCount(), 4, "each try reaches the host, with its retry");
+});
