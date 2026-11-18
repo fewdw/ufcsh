@@ -36,11 +36,13 @@ const HOST_GAP_MS: Record<string, number> = {
 };
 const DEFAULT_GAP_MS = 1000;
 
+/** A host that refuses us for a while (a 429, or a firewall block): its queue
+ *  fails at once until `retryAt`, without retries. */
 export class HttpRateLimitError extends Error {
   readonly retryAt: number;
 
-  constructor(url: string, retryAt: number, detail: string) {
-    super(`HTTP 429 for ${url}; retry after ${new Date(retryAt).toISOString()}: ${detail}`);
+  constructor(url: string, retryAt: number, detail: string, status = 429) {
+    super(`HTTP ${status} for ${url}; retry after ${new Date(retryAt).toISOString()}: ${detail}`);
     this.retryAt = retryAt;
   }
 }
@@ -69,6 +71,20 @@ async function rateLimitError(state: HostState, res: Response, url: string): Pro
   // minutes instead of retrying in seconds and extending the rate limit.
   const until = Number.isFinite(retryAt) && retryAt >= now && retryAt <= 8.64e15 ? retryAt : now + 5 * 60_000;
   const error = new HttpRateLimitError(url, until, (await res.text().catch(() => "")).slice(0, 200));
+  state.rateLimit = error;
+  return error;
+}
+
+/** Cloudflare's "Sorry, you have been blocked" page: a firewall rule refusing
+ *  this server, not a passing error. FightOdds.io's blocked every request from
+ *  the VPS from 2026-11-17 20:00 UTC; asking twice every five minutes only adds
+ *  to the traffic that tripped it, so the host gets one try an hour. */
+const BLOCK_COOLDOWN_MS = 60 * 60_000;
+
+function blockError(state: HostState, status: number, text: string, url: string): HttpRateLimitError | null {
+  if (status !== 403 || !text.includes('data-translate="block_headline"')) return null;
+  const ray = text.match(/Ray ID: <strong[^>]*>([0-9a-f]+)</)?.[1];
+  const error = new HttpRateLimitError(url, Date.now() + BLOCK_COOLDOWN_MS, `Cloudflare blocked this server${ray ? ` (Ray ID ${ray})` : ""}`, 403);
   state.rateLimit = error;
   return error;
 }
@@ -126,6 +142,8 @@ async function fetchOnce(state: HostState, url: string, timeoutMs: number): Prom
       await solveChallenge(state, new URL(res.url || url).origin, text);
       continue;
     }
+    const blocked = blockError(state, res.status, text, res.url || url);
+    if (blocked) throw blocked;
     if (!res.ok) throw new Error(`HTTP ${res.status} for ${res.url || url}`);
     return text;
   }
@@ -148,7 +166,10 @@ export function postJson(url: string, body: unknown, { timeoutMs = 25000, retrie
     });
     // An API says why it refused in the body; keep that in the error.
     if (res.status === 429) throw await rateLimitError(state, res, url);
-    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw blockError(state, res.status, text, url) ?? new Error(`HTTP ${res.status} for ${url}: ${text.slice(0, 200)}`);
+    }
     return res.json();
   });
 }
