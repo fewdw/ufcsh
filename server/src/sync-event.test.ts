@@ -435,3 +435,31 @@ test("a pairing booked again in the read that confirms another pairing's drop un
   store(bout(Y, a, b));
   assert.equal(db.prepare("SELECT 1 FROM odds WHERE fight_id = ?").get(Y), undefined);
 });
+
+test("a missing bout marked live or decided goes when one of its fighters is in another bout on the page", t => {
+  const eventId = "face0000000000z2";
+  const [a, b, c, d, x, y] = ["face0000000000z3", "face0000000000z4", "face0000000000z5", "face0000000000z6", "face0000000000z7", "face0000000000z8"];
+  t.after(() => {
+    db.prepare("DELETE FROM fights WHERE event_id = ?").run(eventId);
+    db.prepare("DELETE FROM dropped_bouts WHERE event_id = ?").run(eventId);
+    db.prepare("DELETE FROM events WHERE id = ?").run(eventId);
+  });
+  db.prepare("INSERT INTO events (id, name, date, complete) VALUES (?, 'UFC Replaced fixture', '2099-07-01', 0)").run(eventId);
+  const corner = (id: string, outcome: string | null = null) => ({ id, name: `Replaced ${id.slice(-2)}fixture`, outcome, kd: "", str: "", td: "", sub: "" });
+  const bout = (id: string, one: string, two: string, decided = false): ScrapedEventDetail["fights"][number] => ({ id, ord: 0, weightClass: "Lightweight", titleFight: false,
+    f1: corner(one, decided ? "win" : null), f2: corner(two, decided ? "loss" : null),
+    method: decided ? "KO/TKO" : null, methodDetails: null, round: decided ? "1" : null, time: decided ? "1:00" : null, bonuses: { perf: false, fotn: false } });
+  const store = (...fights: ScrapedEventDetail["fights"]) => storeEventDetail({ id: eventId, name: "UFC Replaced fixture", date: "2099-07-01", location: "Las Vegas", fights });
+  const rows = () => (db.prepare("SELECT id FROM fights WHERE event_id = ? ORDER BY id").all(eventId) as { id: string }[]).map(row => row.id.slice(-2));
+  const complete = () => (db.prepare("SELECT complete FROM events WHERE id = ?").get(eventId) as { complete: number }).complete;
+
+  // Verdict matched its live A v C to our stale A v B; UFCStats then lists A v C, decided.
+  store(bout("face0000000000k1", x, y), bout("face0000000000k2", a, b));
+  db.prepare(`UPDATE fights SET verdict_live_json = '{"sourceUrl":"x","status":1,"started":1,"ended":0,"community":null}' WHERE id = 'face0000000000k2'`).run();
+  store(bout("face0000000000k1", x, y, true), bout("face0000000000k3", a, c, true));
+  assert.deepEqual([rows(), complete()], [["k1", "k3"], 1]);
+
+  // A decided bout corrected to another opponent under a new id: one result for A.
+  store(bout("face0000000000k1", x, y, true), bout("face0000000000k4", a, d, true));
+  assert.deepEqual(rows(), ["k1", "k4"]);
+});

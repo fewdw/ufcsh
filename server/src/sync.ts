@@ -143,7 +143,8 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
       f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null };
     // A bout decided or being fought is never dropped by a page that leaves it
     // out (or lists it again under a new id with no result yet): a partial
-    // read, so it stays, with its result, stats and prices.
+    // read, so it stays, with its result, stats and prices, unless one of its
+    // fighters is in another bout on the page (`replaced`).
     const fought = (row: Booked & { verdict_live_json?: string | null }) =>
       row.f1_outcome != null || row.f2_outcome != null || fightIsUnderway(row);
     // A page that loses most of a full card's unfought pairings is usually a
@@ -183,11 +184,15 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
     // left loses the booking (UFCStats' own word, so confirmed at once).
     const movedFrom = db.prepare(`SELECT f.id, f.event_id, f.f1_id, f.f2_id, f.f1_name, f.f2_name, f.weight_class, f.f1_outcome, f.f2_outcome,
       f.detail_json, e.complete, e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ? AND f.event_id <> ?`);
+    // No one fights twice on a card: a missing bout one of whose fighters is
+    // in another bout on the page was replaced, however it was marked.
+    const replaced = (row: Booked) => detail.fights.some(f => [f.f1, f.f2].some(side =>
+      samePerson(row.f1_id, row.f1_name, side) || samePerson(row.f2_id, row.f2_name, side)));
     const keptFought: Booked[] = [];
     for (const row of existing) {
       if (currentIds.has(row.id)) continue;
       const relisted = detail.fights.find(f => samePairing(row, f));
-      if (fought(row) && (!relisted || (relisted.f1.outcome == null && relisted.f2.outcome == null))) {
+      if (fought(row) && (relisted ? relisted.f1.outcome == null && relisted.f2.outcome == null : !replaced(row))) {
         keptFought.push(row);
         continue;
       }
