@@ -1765,12 +1765,13 @@ export async function syncKalshiOdds(scraped?: KalshiBout[]): Promise<{ bouts: n
 export async function syncFightOdds({ props = false }: { props?: boolean } = {}): Promise<{ events: number; lines: number; props: number }> {
   const events = await fightOddsEvents(new Date(Date.now() - DAY).toISOString().slice(0, 10));
   const selectFights = db.prepare(`
-    SELECT f.id, f.event_id, f.ord, f.segment, f.card_pos, f.f1_id, f.f2_id, f.f1_name, f.f2_name, f.f1_outcome, f.f2_outcome, f.detail_json, e.date
+    SELECT f.id, f.event_id, f.ord, f.segment, f.card_pos, f.f1_id, f.f2_id, f.f1_name, f.f2_name, f.f1_outcome, f.f2_outcome, f.detail_json, e.date,
+      min(coalesce(e.early_prelims_at, 9e15), coalesce(e.prelims_at, 9e15), coalesce(e.main_card_at, 9e15)) AS card_start
     FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.complete = 0 AND e.date BETWEEN date(?, '-1 day') AND date(?, '+1 day')
   `);
   type Row = { id: string; event_id: string; ord: number; segment: string | null; card_pos: number | null; f1_id: string; f2_id: string; f1_name: string; f2_name: string;
-    f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; date: string };
+    f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; date: string; card_start: number | null };
   const upsertLine = db.prepare(`
     INSERT INTO odds (fight_id, f1_open, f1_close, f2_open, f2_close, source_url, checked_at, fetched_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
