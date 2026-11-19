@@ -2,14 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { americanFromProbability, marketProbability, parseKalshiBouts } from "./kalshi.ts";
 
-const market = (ticker: string, name: string, bid: string, ask: string) => ({
-  ticker, yes_sub_title: name, status: "active", yes_bid_dollars: bid, yes_ask_dollars: ask, occurrence_datetime: "2099-11-21T20:00:00Z",
+const market = (ticker: string, name: string, bid: string, ask: string, volume = "0") => ({
+  ticker, yes_sub_title: name, status: "active", yes_bid_dollars: bid, yes_ask_dollars: ask, occurrence_datetime: "2099-11-21T20:00:00Z", volume_fp: volume,
 });
 const event = (series: string, markets: ReturnType<typeof market>[]) => ({ event_ticker: `${series}-99NOV21NURLOR`, series_ticker: series, title: "Fixture", markets });
 
 test("a Kalshi bout carries both fighters' prices and its method and decision props in American odds", () => {
   const [bout] = parseKalshiBouts(
-    [event("KXUFCFIGHT", [{ ...market("NUR", "Diyar  Nurgozhay", "0.6900", "0.7000"), volume_fp: "1700.73" }, { ...market("LOR", "Alik Lorenz", "0.3000", "0.3100"), volume_fp: "8123.87" }])],
+    [event("KXUFCFIGHT", [market("NUR", "Diyar  Nurgozhay", "0.6900", "0.7000", "1700.73"), market("LOR", "Alik Lorenz", "0.3000", "0.3100", "8123.87")])],
     [event("KXUFCMOV", [
       market("NURKO", "Diyar Nurgozhay by KO/TKO/DQ", "0.3000", "0.3200"),
       market("NURSUB", "Diyar Nurgozhay by Submission", "0.1000", "0.1200"),
@@ -24,7 +24,14 @@ test("a Kalshi bout carries both fighters' prices and its method and decision pr
   assert.equal(bout.date, "2099-11-21");
   assert.equal(bout.sourceUrl, "https://kalshi.com/markets/kxufcfight/kxufcfight-99nov21nurlor");
   assert.deepEqual(bout.moneyline, { f1: [{ bookmaker: "Kalshi", line: "-228" }], f2: [{ bookmaker: "Kalshi", line: "+228" }] });
-  assert.deepEqual(bout.market, { f1: 0.695, f2: 0.305, volume: 9825 });
+  assert.deepEqual(bout.market, { f1: 0.695, f2: 0.305, volume: 9825, tickers: ["NUR", "LOR"] });
+  // Every prop market, worded as Polymarket words it, a thin one unpriced.
+  const yes = (id: string) => bout.extras.find((extra) => extra.id === id);
+  assert.deepEqual([yes("NURKO")?.question, yes("NURKO")?.type, yes("NURKO")?.outcomes[0].p], ["Will Diyar Nurgozhay win by KO/TKO/DQ?", "ufc_method_of_victory", 0.31]);
+  assert.deepEqual(yes("NURDEC")?.outcomes, [{ name: "Yes", p: null }, { name: "No", p: null }]);
+  assert.equal(yes("DRAW")?.question, "Will the fight end in a draw or no contest?");
+  assert.deepEqual([yes("DIST")?.question, yes("DIST")?.outcomes[0].p], ["Will the fight go the distance?", 0.25]);
+  assert.equal(bout.extras.length, 6);
   assert.deepEqual(bout.f1, {
     ko: { label: "Diyar Nurgozhay wins by TKO/KO", prices: [{ bookmaker: "Kalshi", line: "+223" }] },
     submission: { label: "Diyar Nurgozhay wins by submission", prices: [{ bookmaker: "Kalshi", line: "+809" }] },

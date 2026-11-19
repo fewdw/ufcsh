@@ -34,7 +34,7 @@ export type BoardMatchup = ScrapedMethodOdds & {
   moneyline?: { f1: MethodOddsPrice[]; f2: MethodOddsPrice[] };
   /** A prediction market's own read of the bout: each side's chance, the
    *  middle of its bid and ask, and contracts traded on both. */
-  market?: { f1: number; f2: number; volume: number };
+  market?: { f1: number; f2: number; volume: number; tickers?: [string, string] };
 };
 export type EventMethodMatchup = BoardMatchup & { f1Name: string; f2Name: string };
 
@@ -683,7 +683,10 @@ export function methodOddsForFight(
     if (aligned) return found;
     const moneylineKeys = found.moneylineKeys && { f1: found.moneylineKeys.f2, f2: found.moneylineKeys.f1 };
     const moneyline = found.moneyline && { f1: found.moneyline.f2, f2: found.moneyline.f1 };
-    const market = found.market && { f1: found.market.f2, f2: found.market.f1, volume: found.market.volume };
+    const market = found.market && {
+      f1: found.market.f2, f2: found.market.f1, volume: found.market.volume,
+      ...(found.market.tickers ? { tickers: [found.market.tickers[1], found.market.tickers[0]] as [string, string] } : {}),
+    };
     return { ...found, f1: found.f2, f2: found.f1, moneylineKeys, moneyline, market };
   }
   return null;

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { db, getMeta, setMeta } from "./db.ts";
 import { syncKalshiOdds, syncMethodOddsForEvent } from "./sync.ts";
 import { resolvePublicApi } from "./api.ts";
+import { kalshiDetail } from "./odds-sides.ts";
 import { unmatchedBouts } from "./odds-unmatched.ts";
 import { unmatchedSourceBouts } from "./bugs.ts";
 import type { KalshiBout } from "./scrape/kalshi.ts";
@@ -152,12 +153,14 @@ test("Kalshi prices a bout no book has, on its own fighters, never replaces a bo
   db.prepare("INSERT INTO method_odds (fight_id, markets_json, source_url, final, fetched_at) VALUES (?, '{}', ?, 0, 1)").run(priced, book);
   const price = (line: string) => [{ bookmaker: "Kalshi", line }];
   const bout = (f1Name: string, f2Name: string, one: string, two: string): KalshiBout => ({
-    f1Name, f2Name, date: "2099-06-06", f1: {}, f2: {}, additional: [], sourceUrl: `https://kalshi.com/markets/kxufcfight/${f1Name.split(" ")[1].toLowerCase()}`,
+    f1Name, f2Name, date: "2099-06-06", f1: {}, f2: {}, additional: [], extras: [], sourceUrl: `https://kalshi.com/markets/kxufcfight/${f1Name.split(" ")[1].toLowerCase()}`,
     moneyline: { f1: price(one), f2: price(two) },
   });
   const bouts = [
     { ...bout("Jiri Prochazka", "Navajo Stirling", "+150", "-150"), f1: { ko: { label: "Jiri Prochazka wins by TKO/KO", prices: price("+200") } },
-      market: { f1: 0.4, f2: 0.58, volume: 1234 } },
+      market: { f1: 0.4, f2: 0.58, volume: 1234 },
+      extras: [{ id: "KXUFCMOV-X", question: "Will Jiri Prochazka win by KO/TKO/DQ?", url: "https://kalshi.com/markets/kxufcmov/x", type: "ufc_method_of_victory",
+        outcomes: [{ name: "Yes", p: 0.3 }, { name: "No", p: 0.7 }], volume: 10, liquidity: null, closed: false }] },
     bout("First One", "Second Two", "-900", "+900"),
     bout("Zed Unknown", "Daniel Other", "+120", "-120"),
     bout("Max Nobody", "Rex Absent", "-110", "+110"),
@@ -176,6 +179,9 @@ test("Kalshi prices a bout no book has, on its own fighters, never replaces a bo
   };
   // Kalshi's own read is kept on our corners: Stirling is our first.
   assert.deepEqual(market(), ["face0000000000k5", 0.58, 0.4, 1234]);
+  const detail = kalshiDetail(open)!;
+  assert.deepEqual([detail.status, Math.round(detail.p! * 1000), detail.extras.length, detail.url], ["open", 592, 1, "https://kalshi.com/markets/kxufcfight/prochazka"]);
+  assert.equal(kalshiDetail(misspelt)!.status, "missing");
 
   // Once a book prices it, Kalshi stands aside, but its read stays beside the line.
   db.prepare("UPDATE odds SET f1_close = '-170', f2_close = '+140', source_url = ? WHERE fight_id = ?").run(book, open);

@@ -511,6 +511,8 @@ for (const alter of [
   // contracts traded), as JSON keyed to the fighter pair they were read for.
   "ALTER TABLE odds ADD COLUMN books_json TEXT",
   "ALTER TABLE odds ADD COLUMN kalshi_json TEXT",
+  // Kalshi's winner price by the hour, for its chart: { at, f1_id, points: [{ at, p }] }.
+  "ALTER TABLE odds ADD COLUMN kalshi_history_json TEXT",
 ]) {
   try {
     db.exec(alter);

@@ -51,7 +51,7 @@ import { decisionFromCards } from "./judge-scorecards.ts";
 import { syncCancelledBouts } from "./cancelled-bouts.ts";
 import { frozenAtBell, frozenNow } from "./odds-freeze.ts";
 import { recordUnmatched, partnerFight, type UnmatchedBout } from "./odds-unmatched.ts";
-import { scrapeKalshiBouts, type KalshiBout } from "./scrape/kalshi.ts";
+import { kalshiHistory, scrapeKalshiBouts, type KalshiBout } from "./scrape/kalshi.ts";
 import { syncAntidopingTests } from "./antidoping.ts";
 import { boutLines, boutProps, fightOddsBoard, fightOddsEvents, fightOddsOpeners, fightOddsProps, matchBout } from "./scrape/fightodds.ts";
 
@@ -1666,6 +1666,7 @@ export async function syncKalshiOdds(scraped?: KalshiBout[]): Promise<{ bouts: n
   const writeMarket = db.prepare("UPDATE odds SET kalshi_json = ? WHERE fight_id = ?");
   const frozen = frozenNow();
   const used = new Set<KalshiBout>();
+  const charts: { fightId: string; f1Id: string; ticker: string }[] = [];
   let lines = 0, stored = 0;
   for (const event of events) {
     const fights = fightsOf.all(event.id) as MethodOddsFight[];
@@ -1685,7 +1686,9 @@ export async function syncKalshiOdds(scraped?: KalshiBout[]): Promise<{ bouts: n
         if (consistentMoneyline(a, b)) { writeLine.run(fight.id, a, b, odds.sourceUrl, now); lines++; }
       }
       if (odds.market) {
-        writeMarket.run(JSON.stringify({ f1_id: fight.f1_id, f2_id: fight.f2_id, at: now, url: odds.sourceUrl, ...odds.market }), fight.id);
+        const extras = (odds as Partial<KalshiBout>).extras ?? [];
+        writeMarket.run(JSON.stringify({ f1_id: fight.f1_id, f2_id: fight.f2_id, at: now, url: odds.sourceUrl, ...odds.market, extras }), fight.id);
+        if (odds.market.tickers) charts.push({ fightId: fight.id, f1Id: fight.f1_id, ticker: odds.market.tickers[0] });
       }
       const held = props.get(fight.id) as { source_url: string | null } | undefined;
       if ((Object.keys(odds.f1).length || Object.keys(odds.f2).length || odds.additional.length) && (!held || kalshiOrNone(held.source_url))) {
@@ -1698,6 +1701,21 @@ export async function syncKalshiOdds(scraped?: KalshiBout[]): Promise<{ bouts: n
       f1: bout.f1Name, f2: bout.f2Name, f1Line: bout.moneyline!.f1[0].line, f2Line: bout.moneyline!.f2[0].line, url: bout.sourceUrl,
       partner: partnerFight(fights, matched, bout.f1Name, bout.f2Name),
     })));
+  }
+  // Each bout's chart is read again every half hour, after the prices above
+  // are written: its first corner's market by the hour since it opened.
+  const chartAt = db.prepare("SELECT kalshi_history_json FROM odds WHERE fight_id = ?");
+  const writeChart = db.prepare("UPDATE odds SET kalshi_history_json = ? WHERE fight_id = ?");
+  for (const chart of charts) {
+    let held: { at?: number; ticker?: string } | null = null;
+    try { held = JSON.parse((chartAt.get(chart.fightId) as { kalshi_history_json: string | null } | undefined)?.kalshi_history_json ?? "null"); } catch { /* read again */ }
+    if (held?.ticker === chart.ticker && Date.now() - (held.at ?? 0) < 30 * 60_000) continue;
+    try {
+      const points = await kalshiHistory(chart.ticker, Date.now() - 30 * DAY);
+      writeChart.run(JSON.stringify({ at: Date.now(), f1_id: chart.f1Id, ticker: chart.ticker, points }), chart.fightId);
+    } catch (err) {
+      log(`kalshi history failed [${chart.fightId}]:`, String(err));
+    }
   }
   return { bouts: bouts.length, lines, props: stored };
 }

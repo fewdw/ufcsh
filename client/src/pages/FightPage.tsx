@@ -22,10 +22,6 @@ import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
 import PolymarketPanel, { MarketTeaser } from "../components/PolymarketPanel";
 import KalshiTeaser from "../components/KalshiTeaser";
-import { useMarketData } from "../useMarketData";
-import { useNow } from "../useNow";
-import { kalshiRead, polymarketRead } from "../marketQuote";
-import type { MarketSummary } from "../polymarket-types";
 import { predictionTabVisible, type PredictionSummary } from "../predictions";
 import { FightRail, FightRailSkeleton, FightStepLink, FightStrip, MatchupSkeleton } from "../components/FightRail";
 // Part of this page's own code, so the Discussion tab opens with it rather
@@ -508,16 +504,6 @@ function MatchupContext({ fight }: { fight: Matchup }) {
 function OddsPanel({ fight }: { fight: Matchup }) {
   const props = fight.odds?.props;
   const { settings, update } = useSettings();
-  const source = settings.predictionMarket;
-  // Polymarket's price is read from the card's board only while it is the one shown.
-  const { data: board } = useMarketData<{ fights: MarketSummary[] }>(
-    !fight.potential && source === "polymarket" ? `/api/polymarket/board?event=${fight.event.id}` : null,
-    10_000,
-  );
-  const now = useNow(true, 5000);
-  const read = source === "kalshi"
-    ? kalshiRead(fight.odds?.kalshi, fight.status === "past", now)
-    : polymarketRead(board?.fights.find((row) => row.fight.id === fight.id), now);
   if (!hasOddsMarkets(props, fight.f1.name, fight.f2.name) && !fight.odds?.f1.close && !fight.odds?.f2.close) return null;
   return (
     <section className={`${shell} @container flex flex-col overflow-hidden`}>
@@ -537,7 +523,6 @@ function OddsPanel({ fight }: { fight: Matchup }) {
         odds={props ?? { f1: {}, f2: {}, additional: [], source_url: "", fetched_at: 0, final: fight.status === "past" }}
         moneyline={fight.odds ? { f1: fight.odds.f1, f2: fight.odds.f2 } : null}
         books={fight.odds?.books}
-        prediction={fight.potential ? undefined : { source, read, onSource: (next) => update("predictionMarket", next) }}
         fightId={betFightId(fight)}
         f1Name={fight.f1.name}
         f2Name={fight.f2.name}

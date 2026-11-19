@@ -10,8 +10,7 @@ import { bestPrice, fairChances, formatPrice, impliedProbability, mostLikelyQuot
 import { organizeAdditionalOdds } from "../oddsLayout";
 import { CHART_TEXT } from "./FightStats";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
-import type { OddsFormat, PredictionMarket } from "../settings";
-import type { PredictionRead } from "../marketQuote";
+import type { OddsFormat } from "../settings";
 import { bettable, outcomeId, useParlay, type Outcome, type ParlayLeg } from "../parlay";
 
 const ODDS_FORMATS: { id: OddsFormat; label: string }[] = [
@@ -274,100 +273,10 @@ function OddsTable({ title, columns, groups, wideLabel = true, live, format, com
   );
 }
 
-const MARKET_SOURCES: { id: PredictionMarket; label: string }[] = [
-  { id: "polymarket", label: "Polymarket" },
-  { id: "kalshi", label: "Kalshi" },
-];
-
-/** Which prediction market sits beside the sportsbooks, kept for every
- *  matchup (Settings → predictionMarket). */
-export function MarketSourceTabs({ source, onChange }: { source: PredictionMarket; onChange: (source: PredictionMarket) => void }) {
-  return (
-    <div className={segmentedGroup} role="group" aria-label="Prediction market">
-      {MARKET_SOURCES.map((option) => (
-        <button
-          key={option.id}
-          type="button"
-          aria-pressed={source === option.id}
-          onClick={() => onChange(option.id)}
-          className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition ${source === option.id ? segmentedSelected : segmentedIdle}`}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-export type Prediction = { source: PredictionMarket; read: PredictionRead; onSource: (source: PredictionMarket) => void };
-
-/** Each fighter's chance to win two ways: the sportsbooks' price with their
- *  margin taken out, and the chosen prediction market's traders'. A gap of
- *  five points or more is spelled out: the crowd and the books disagree. */
-function ChanceTable({ f1Name, f2Name, books, prediction, live, compact }: {
-  f1Name: string; f2Name: string; books: [number, number] | null; prediction?: Prediction; live: boolean; compact?: boolean;
-}) {
-  const rowPad = compact ? "py-px" : "py-1";
-  const name = prediction ? MARKET_SOURCES.find((option) => option.id === prediction.source)!.label : "";
-  const columns = [...(books ? ["Books"] : []), ...(prediction ? [name] : [])];
-  const booksPct = books && percentPair(books);
-  const marketPct = prediction?.read.chances ? percentPair(prediction.read.chances) : null;
-  const gap = booksPct && marketPct ? marketPct[0] - booksPct[0] : 0;
-  // Told from the side the market likes more than the books do.
-  const side = gap > 0 ? 0 : 1;
-  const cell = `text-center font-semibold tabular-nums text-zinc-900 dark:text-zinc-100 ${rowPad}`;
-  return (
-    <div className="flex flex-col">
-      <div className={`flex items-center justify-between gap-2 ${compact ? "pb-1" : "pb-2"}`}>
-        <h3 className="truncate text-[11px] font-semibold text-zinc-900 dark:text-zinc-100">Chance to win</h3>
-        {prediction ? <MarketSourceTabs source={prediction.source} onChange={prediction.onSource} /> : null}
-      </div>
-      <table className="w-full table-fixed border-collapse">
-        <colgroup>
-          <col />
-          {columns.map((column) => <col key={column} className={compact ? "w-[4.25rem]" : "w-[4.75rem]"} />)}
-        </colgroup>
-        <thead>
-          <tr>
-            <th scope="col" aria-hidden="true" />
-            {columns.map((column) => <th key={column} scope="col" className={`whitespace-nowrap text-center text-[10px] font-normal text-zinc-400 ${compact ? "pb-0.5" : "pb-1.5"}`}>{column}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {([[f1Name, 0], [f2Name, 1]] as const).map(([fighter, index]) => (
-            <tr key={fighter} className="border-t border-zinc-100 dark:border-zinc-800">
-              <th scope="row" className={`truncate pr-2 text-left font-normal text-zinc-500 ${rowPad}`} title={fighter}>{fighter}</th>
-              {booksPct ? <td className={cell} title="The sportsbooks' price with their margin taken out">{booksPct[index]}%</td> : null}
-              {prediction ? (
-                marketPct
-                  ? <td className={cell} title={`${name} traders`}>{marketPct[index]}%</td>
-                  : <td className={`text-center text-zinc-300 dark:text-zinc-600 ${rowPad}`} aria-label="No price">—</td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {booksPct && marketPct && Math.abs(gap) >= 5 ? (
-        <p className="mt-1 text-[10px] text-zinc-600 dark:text-zinc-300">{name}'s traders {live ? "give" : "gave"} {lastName(side ? f2Name : f1Name)} {marketPct[side]}%, the books {booksPct[side]}%.</p>
-      ) : null}
-      {prediction && !marketPct ? (
-        <p className="mt-1 text-[10px] text-zinc-500">{name} has no price on this bout{live ? " yet" : ""}.</p>
-      ) : null}
-      {prediction?.read.url && marketPct ? (
-        <p className="mt-0.5 text-[9px] text-zinc-400">
-          <a href={prediction.read.url} target="_blank" rel="noreferrer" className="transition hover:text-zinc-700 dark:hover:text-zinc-200">
-            {name}{prediction.read.traded ? ` · ${prediction.read.traded}` : ""} <span aria-hidden="true">↗</span>
-          </a>
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 /** The full prop board under the matchup. Whole-fight markets stack on the
  * left and the round-by-round grid sits beside them once the panel is wide
  * enough; on a narrow panel everything stacks. */
-export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american", fightId = "", moneyline, books, prediction, compact = false }: { odds: MethodOdds; f1Name: string; f2Name: string; result?: FightResult; format?: OddsFormat; fightId?: string; /** The fight's own price, opening and closing, when the board carries it. */ moneyline?: { f1: { open: string | null; close: string | null }; f2: { open: string | null; close: string | null } } | null; /** Each sportsbook's current moneyline, for the best on offer. */ books?: NonNullable<FightOdds>["books"]; /** The chosen prediction market, beside the books' chance. */ prediction?: Prediction; /** Denser spacing for a page that lists every matchup's board at once. */ compact?: boolean }) {
+export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american", fightId = "", moneyline, books, compact = false }: { odds: MethodOdds; f1Name: string; f2Name: string; result?: FightResult; format?: OddsFormat; fightId?: string; /** The fight's own price, opening and closing, when the board carries it. */ moneyline?: { f1: { open: string | null; close: string | null }; f2: { open: string | null; close: string | null } } | null; /** Each sportsbook's current moneyline, for the best on offer. */ books?: NonNullable<FightOdds>["books"]; /** Denser spacing for a page that lists every matchup's board at once. */ compact?: boolean }) {
   const fightLabel = `${f1Name} vs ${f2Name}`;
   const extra = organizeAdditionalOdds(odds.additional, f1Name, f2Name);
   const rounds = [...new Set([...extra.roundMethods, ...extra.roundFinishes].map(row => row.round))].sort();
@@ -439,9 +348,6 @@ export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american",
     }))
     .filter(shown);
 
-  // Each fighter's chance as the sportsbooks price it, margin taken out,
-  // beside the chosen prediction market's traders'.
-  const booksChance = moneyline ? fairChances(moneyline.f1.close, moneyline.f2.close) : null;
 
   const distanceRows = [{
     label: "",
@@ -477,7 +383,7 @@ export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american",
     .map(([name, who]): Group => ({ name, rows: (["KO/TKO", "SUB"] as const).map(method => ({ label: method, cells: byRound(name, who, method) })).filter(shown) }))
     .filter(group => group.rows.length);
 
-  const fightLevel = moneylineRows.length || booksChance || prediction || methodRows.length || distanceRows.length || totalRows.length;
+  const fightLevel = moneylineRows.length || methodRows.length || distanceRows.length || totalRows.length;
 
   return (
     <div className={`grid w-full @[48rem]:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] ${compact ? "gap-x-6 gap-y-2.5 px-4 pb-3 pt-2" : "gap-x-8 gap-y-5 px-4 pb-4 pt-3"} ${CHART_TEXT}`}>
@@ -485,7 +391,6 @@ export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american",
           each side and the column headers under it read as one row. */}
       {fightLevel ? <div className={`flex min-w-0 flex-col self-start ${compact ? "gap-2.5" : "gap-4"}`}>
         {moneylineRows.length ? <OddsTable title="Moneyline" columns={[...(openedMoneyline ? ["Open"] : []), live ? "Current" : "Close", ...(bestBook ? ["Best"] : [])]} groups={[{ rows: moneylineRows }]} live={live} format={format} compact={compact} /> : null}
-        {booksChance || prediction ? <ChanceTable f1Name={f1Name} f2Name={f2Name} books={booksChance} prediction={prediction} live={live} compact={compact} /> : null}
         {methodRows.length ? <OddsTable title="Method" columns={[...methods]} groups={[{ rows: methodRows }]} live={live} format={format} compact={compact} /> : null}
         {/* Two small two-price boards share a row rather than each taking one. */}
         {distanceRows.length || totalRows.length ? <div className={`grid items-start gap-x-4 ${distanceRows.length && totalRows.length ? "grid-cols-2" : ""}`}>

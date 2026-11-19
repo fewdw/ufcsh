@@ -16,6 +16,7 @@ import {
   isFightDay,
 } from "./live-state.ts";
 import { log } from "./util.ts";
+import { externalPicks } from "./predictions.ts";
 import { updateMarketBooks } from "./polymarket-stream.ts";
 import { noVig, parseHistory, probability } from "./polymarket-math.ts";
 import type {
@@ -197,8 +198,12 @@ export class PolymarketMarkets {
       fighter: string;
       n: number;
     }[];
-    const n1 = picks.find((p) => p.fighter === f.f1_id)?.n ?? 0,
-      n2 = picks.find((p) => p.fighter === f.f2_id)?.n ?? 0;
+    // Fans' picks: ours, and Verdict MMA's for the same two fighters.
+    const verdict = externalPicks(f.verdict_picks_json, f, finished || fightIsUnderway(f));
+    const theirs = (side: "f1" | "f2") =>
+      verdict ? verdict[side].ko + verdict[side].submission + verdict[side].decision : 0;
+    const n1 = (picks.find((p) => p.fighter === f.f1_id)?.n ?? 0) + theirs("f1"),
+      n2 = (picks.find((p) => p.fighter === f.f2_id)?.n ?? 0) + theirs("f2");
     return {
       id,
       eventId: f.event_id,

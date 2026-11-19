@@ -1,4 +1,5 @@
 import { fightPay } from "./fight-pay.ts";
+import { kalshiDetail, sideBySide } from "./odds-sides.ts";
 import { eventCrew } from "./event-crew.ts";
 import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight, potentialTakesBets } from "./potential-matchups.ts";
 import { careerStatistics } from "./career-statistics.ts";
@@ -271,24 +272,6 @@ function fightOdds(fightId: string, includeMethodOdds = false): unknown {
   };
 }
 
-/** A stored pair of sides (books_json, kalshi_json) on the bout's corners as
- *  they are now: turned round if the corners swapped since, and dropped if
- *  either fighter changed or it can't be read. */
-function sideBySide<T>(
-  json: string | null,
-  fight: { f1_id: string; f2_id: string },
-  shape: (stored: { f1: any; f2: any; [key: string]: any }) => T,
-): T | Record<string, never> {
-  if (!json) return {};
-  try {
-    const stored = JSON.parse(json);
-    if (stored.f1_id === fight.f1_id && stored.f2_id === fight.f2_id) return shape(stored);
-    if (stored.f1_id === fight.f2_id && stored.f2_id === fight.f1_id && fight.f1_id !== fight.f2_id) return shape({ ...stored, f1: stored.f2, f2: stored.f1 });
-  } catch {
-    // Never expose a malformed payload.
-  }
-  return {};
-}
 
 /** What a card row can say about a fighter beyond the name: age on fight
  * night, the last five professional results entering the bout, and the streak they
@@ -2878,6 +2861,11 @@ export function startApi(port: number): http.Server {
           /^[a-f0-9]{12}$/.test(url.searchParams.get("v") ?? ""));
       }
       if ((url.searchParams.get("q")?.length ?? 0) > 120) return await sendJson(req, res, { error: "search query too long" }, 400);
+      const kalshi = /^\/api\/kalshi\/fights\/([a-f0-9]{16})$/i.exec(p);
+      if (kalshi) {
+        const detail = kalshiDetail(kalshi[1]);
+        return await sendJson(req, res, detail ?? { error: "Fight not found." }, detail ? 200 : 404);
+      }
       if (p.startsWith("/api/polymarket/")) {
         if (req.method !== "GET" && req.method !== "HEAD") {
           res.setHeader("Allow", "GET, HEAD");
