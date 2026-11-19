@@ -27,6 +27,10 @@ test("an event page with a bout row it can't tie to a fight is rejected, not rea
   t.mock.method(globalThis, "fetch", async () => new Response(page(row('data-link="http://ufcstats.com/fight-details/cccc"')
     .replace('<a href="http://ufcstats.com/fighter-details/bbbb">B Fixture</a>', "B Fixture"))));
   await assert.rejects(scrapeEventDetail("face0000000000s3"), /Incomplete event page/);
+  // Nor is a row with its fight link and neither fighter's.
+  t.mock.method(globalThis, "fetch", async () => new Response(page(row('data-link="http://ufcstats.com/fight-details/cccc"')
+    + '<tr class="js-fight-details-click" data-link="http://ufcstats.com/fight-details/dddd"><td></td><td>A Damaged row</td></tr>')));
+  await assert.rejects(scrapeEventDetail("face0000000000s4"), /Incomplete event page/);
   t.mock.method(globalThis, "fetch", async () => new Response(page(row('data-link="http://ufcstats.com/fight-details/cccc"'))));
   assert.equal((await scrapeEventDetail("face0000000000s2")).fights.length, 1);
 });

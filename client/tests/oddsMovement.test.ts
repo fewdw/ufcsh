@@ -41,4 +41,7 @@ test("a card's biggest moves name the fighter the line moved toward, largest fir
     ["c", "Brian Ortega", "+201", "+153"],
   ]);
   assert.equal(biggestMoves([bout("a", ["A", "-135", "-205"], ["B", "+116", "+164"])], 3, 20).length, 0);
+  // A fighter drifting out while the other stays put is told from the one who moved.
+  const [drift] = biggestMoves([bout("x", ["A", "-150", "-120"], ["B", "+110", "+110"])]);
+  assert.deepEqual([drift.name, drift.open, drift.close, drift.points, drift.up], ["A", "-150", "-120", 5.5, false]);
 });

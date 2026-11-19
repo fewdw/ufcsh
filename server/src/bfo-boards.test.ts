@@ -134,7 +134,9 @@ test("an upcoming card's board sets each bout's line on its own fighters, fills 
   assert.equal(line(live).f1_close, "-185");
 });
 
-test("Kalshi prices a bout no book has, on its own fighters, never replaces a book's line, and lists bouts we can't match", (t) => {
+test("Kalshi prices a bout no book has, on its own fighters, never replaces a book's line, and lists bouts we can't match", async (t) => {
+  // Its chart is the only request: an empty one.
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ candlesticks: [] })));
   const eventId = "face0000000000k1", [open, priced, misspelt] = ["face0000000000k2", "face0000000000k3", "face0000000000k4"];
   const unmatched = getMeta("odds_unmatched");
   t.after(() => {
@@ -159,14 +161,14 @@ test("Kalshi prices a bout no book has, on its own fighters, never replaces a bo
   });
   const bouts = [
     { ...bout("Jiri Prochazka", "Navajo Stirling", "+150", "-150"), f1: { ko: { label: "Jiri Prochazka wins by TKO/KO", prices: price("+200") } },
-      market: { f1: 0.4, f2: 0.58, volume: 1234 },
+      market: { f1: 0.4, f2: 0.58, volume: 1234, tickers: ["KJIR", "KNAV"] as [string, string] },
       extras: [{ id: "KXUFCMOV-X", question: "Will Jiri Prochazka win by KO/TKO/DQ?", url: "https://kalshi.com/markets/kxufcmov/x", type: "ufc_method_of_victory",
         outcomes: [{ name: "Yes", p: 0.3 }, { name: "No", p: 0.7 }], volume: 10, liquidity: null, closed: false }] },
     bout("First One", "Second Two", "-900", "+900"),
     bout("Zed Unknown", "Daniel Other", "+120", "-120"),
     bout("Max Nobody", "Rex Absent", "-110", "+110"),
   ];
-  syncKalshiOdds(bouts);
+  await syncKalshiOdds(bouts);
   const line = (id: string) => ({ ...db.prepare("SELECT f1_close, f2_close, source_url FROM odds WHERE fight_id = ?").get(id) });
   assert.deepEqual(line(open), { f1_close: "-150", f2_close: "+150", source_url: "https://kalshi.com/markets/kxufcfight/prochazka" });
   const props = JSON.parse((db.prepare("SELECT markets_json FROM method_odds WHERE fight_id = ?").get(open) as { markets_json: string }).markets_json);
@@ -185,21 +187,24 @@ test("Kalshi prices a bout no book has, on its own fighters, never replaces a bo
   assert.equal(kalshiDetail(misspelt)!.status, "missing");
   // The chart and the read both turn with the corners.
   db.prepare("UPDATE odds SET kalshi_history_json = ? WHERE fight_id = ?")
-    .run(JSON.stringify({ at: Date.now(), f1_id: "face0000000000k5", ticker: "T", points: [{ at: 1, p: 0.6 }] }), open);
+    .run(JSON.stringify({ at: Date.now(), f1_id: "face0000000000k5", f2_id: "face0000000000k6", ticker: "KNAV", points: [{ at: 1, p: 0.6 }] }), open);
   assert.equal(kalshiDetail(open)!.history[0].p, 0.6);
   const turn = db.prepare("UPDATE fights SET f1_id = f2_id, f2_id = f1_id, f1_name = f2_name, f2_name = f1_name WHERE id = ?");
   turn.run(open);
   assert.ok(Math.abs(kalshiDetail(open)!.history[0].p - 0.4) < 1e-9);
   assert.equal(Math.round(kalshiDetail(open)!.p! * 1000), 408);
   turn.run(open);
+  // A chart of another market (a different ticker) is never shown.
+  db.prepare("UPDATE odds SET kalshi_history_json = json_set(kalshi_history_json, '$.ticker', 'KOTHER') WHERE fight_id = ?").run(open);
+  assert.deepEqual(kalshiDetail(open)!.history, []);
   // Kalshi standing in every five minutes doesn't make the card's book lines
   // look fresh: the newest is still the book's own, long ago.
   assert.equal(comingOddsFreshness(Date.parse("2099-06-05T12:00:00Z")).odds.at, 1);
 
   // Once a book prices it, Kalshi stands aside, but its read stays beside the line.
   db.prepare("UPDATE odds SET f1_close = '-170', f2_close = '+140', source_url = ? WHERE fight_id = ?").run(book, open);
-  bouts[0].market = { f1: 0.35, f2: 0.63, volume: 2000 };
-  syncKalshiOdds(bouts);
+  bouts[0].market = { f1: 0.35, f2: 0.63, volume: 2000, tickers: ["KJIR", "KNAV"] as [string, string] };
+  await syncKalshiOdds(bouts);
   assert.equal(line(open).f1_close, "-170");
   assert.deepEqual(market(), ["face0000000000k5", 0.63, 0.35, 2000]);
 

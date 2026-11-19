@@ -33,19 +33,24 @@ type MovingBout = {
   odds?: { f1: { open: string | null; close: string | null }; f2: { open: string | null; close: string | null } } | null;
 };
 
-/** A bout whose line moved since it opened, told from the side it moved
- *  toward: that fighter's opening and current price. */
-export type CardMove = { fightId: string; name: string; open: string; close: string; points: number };
+/** A bout whose line moved since it opened, told from the fighter whose own
+ *  price moved most: their opening and current price, how many points of win
+ *  chance it moved, and which way. */
+export type CardMove = { fightId: string; name: string; open: string; close: string; points: number; up: boolean };
 
 /** The card's largest moves since the open, at least `threshold` points of
  *  win chance, largest first. */
 export function biggestMoves(fights: MovingBout[], limit = 3, threshold = 3): CardMove[] {
   return fights.flatMap((fight): CardMove[] => {
-    const odds = fight.odds;
-    const movement = odds && oddsMovement(odds.f1.open, odds.f1.close, odds.f2.open, odds.f2.close);
-    if (!odds || !movement || movement.points < threshold) return [];
-    const side = odds[movement.toward];
-    if (!side.open || !side.close) return [];
-    return [{ fightId: fight.id, name: fight[movement.toward].name, open: side.open, close: side.close, points: movement.points }];
+    if (!fight.odds) return [];
+    const sides = (["f1", "f2"] as const).flatMap((side) => {
+      const { open, close } = fight.odds![side];
+      const from = implied(open), to = implied(close);
+      return open && close && from != null && to != null ? [{ side, open, close, shift: to - from }] : [];
+    });
+    const moved = sides.sort((a, b) => Math.abs(b.shift) - Math.abs(a.shift))[0];
+    const points = moved ? Math.round(Math.abs(moved.shift) * 1000) / 10 : 0;
+    if (!moved || points < threshold) return [];
+    return [{ fightId: fight.id, name: fight[moved.side].name, open: moved.open, close: moved.close, points, up: moved.shift > 0 }];
   }).sort((a, b) => b.points - a.points).slice(0, limit);
 }

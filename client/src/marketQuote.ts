@@ -36,7 +36,22 @@ export function kalshiRead(kalshi: NonNullable<FightOdds>["kalshi"] | undefined,
  *  read as the chart's last point, and prop markets in place of Polymarket's.
  *  Kalshi is read up to the bell, so a bout under way charts its pre-fight
  *  market. */
-export function kalshiView(data: MarketDetail, kalshi: KalshiDetail | null): MarketDetail {
+/** Kalshi's answer on the corners Polymarket's has: turned round if the
+ *  corners swapped between the two polls, dropped if a fighter changed. */
+export function alignedKalshi(kalshi: KalshiDetail | null | undefined, fight: { f1: { id: string }; f2: { id: string } }): KalshiDetail | null {
+  if (!kalshi) return null;
+  if (kalshi.f1_id === fight.f1.id && kalshi.f2_id === fight.f2.id) return kalshi;
+  if (kalshi.f1_id === fight.f2.id && kalshi.f2_id === fight.f1.id && fight.f1.id !== fight.f2.id) {
+    return {
+      ...kalshi, f1_id: kalshi.f2_id, f2_id: kalshi.f1_id, p: kalshi.p == null ? null : 1 - kalshi.p,
+      history: kalshi.history.map((point) => ({ ...point, p: 1 - point.p })),
+    };
+  }
+  return null;
+}
+
+export function kalshiView(data: MarketDetail, answer: KalshiDetail | null): MarketDetail {
+  const kalshi = alignedKalshi(answer, data.fight);
   const priced = kalshi?.status === "open" && kalshi.p != null && kalshi.at != null;
   const history = kalshi?.history ?? [];
   const current = priced ? [{ at: kalshi!.at!, p: kalshi!.p!, phase: "prefight" as const, source: "observed" as const }] : [];
@@ -44,7 +59,7 @@ export function kalshiView(data: MarketDetail, kalshi: KalshiDetail | null): Mar
     ...data,
     fight: data.fight.state === "live" ? { ...data.fight, state: "finished" } : data.fight,
     url: kalshi?.url ?? null,
-    status: priced ? (data.fight.state === "upcoming" ? "open" : "closed") : "missing",
+    status: kalshi?.status === "open" ? (data.fight.state === "upcoming" ? "open" : "closed") : "missing",
     quote: priced ? { at: kalshi!.at!, p: kalshi!.p!, bid: null, ask: null, spread: null, depth: null, method: "midpoint" } : null,
     quoteMaxAge: KALSHI_FRESH_MS,
     volume: kalshi?.volume ?? null,

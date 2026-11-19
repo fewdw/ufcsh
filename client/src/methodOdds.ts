@@ -53,8 +53,8 @@ export function fairChances(f1: string | null | undefined, f2: string | null | u
 }
 
 /** Two chances that add up to one, e.g. a prediction market's two sides. */
-export function normalizedChances(f1: number, f2: number): [number, number] | null {
-  return f1 > 0 && f2 > 0 ? [f1 / (f1 + f2), f2 / (f1 + f2)] : null;
+export function normalizedChances(f1: number | null, f2: number | null): [number, number] | null {
+  return f1 != null && f2 != null && f1 > 0 && f2 > 0 ? [f1 / (f1 + f2), f2 / (f1 + f2)] : null;
 }
 
 /** Two chances that add up to one as whole percents that add up to 100:

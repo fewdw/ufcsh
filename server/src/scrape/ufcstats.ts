@@ -85,7 +85,9 @@ export async function scrapeEventDetail(eventId: string, options?: { timeoutMs?:
   // is a page in a shape we can't read, and a card read without that bout, or
   // with a corner blank, would drop it.
   let unreadable = 0;
-  $("tr").filter((_, tr) => $(tr).find("a[href*='fighter-details']").length > 0).each((ord, tr) => {
+  // A row is a bout's when it links a fighter or its fight page: one carrying
+  // only the fight link is a damaged bout row, not something else.
+  $("tr").filter((_, tr) => $(tr).find("a[href*='fighter-details']").length > 0 || /fight-details/.test($(tr).attr("data-link") ?? "")).each((ord, tr) => {
     const row = $(tr);
     const cols = row.find("td");
     const fightId = idFromUrl(row.attr("data-link"), "fight-details");

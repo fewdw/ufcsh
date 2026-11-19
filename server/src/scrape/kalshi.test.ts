@@ -45,5 +45,20 @@ test("a market with no bid, a crossed book or a settled status is no price", () 
   assert.equal(marketProbability(market("A", "A", "0.5", "0.5")), null);
   assert.equal(marketProbability({ ...market("A", "A", "0.4", "0.45"), status: "finalized" }), null);
   assert.ok(Math.abs(marketProbability(market("A", "A", "0.4", "0.45"))! - 0.425) < 1e-9);
+  // Exactly ten cents is a price, whatever floating point makes of it.
+  assert.ok(marketProbability(market("A", "A", "0.30", "0.40")));
+  assert.ok(marketProbability(market("A", "A", "0.20", "0.30")));
+  assert.equal(marketProbability(market("A", "A", "0.30", "0.41")), null);
   assert.deepEqual([americanFromProbability(0.5), americanFromProbability(0.25), americanFromProbability(0.995)], ["+100", "+300", null]);
+});
+
+test("a winner market too thin to price still carries its tickers and props", () => {
+  const [bout] = parseKalshiBouts(
+    [event("KXUFCFIGHT", [market("NUR", "Diyar Nurgozhay", "0.10", "0.90"), market("LOR", "Alik Lorenz", "0.30", "0.31")])],
+    [event("KXUFCMOV", [market("NURKO", "Diyar Nurgozhay by KO/TKO/DQ", "0.30", "0.32")])],
+    [],
+  );
+  assert.equal(bout.moneyline, undefined);
+  assert.deepEqual(bout.market, { f1: null, f2: null, volume: 0, tickers: ["NUR", "LOR"] });
+  assert.equal(bout.extras.length, 1);
 });

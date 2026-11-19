@@ -1,4 +1,5 @@
 import { fetchHtml } from "../http.ts";
+import { log } from "../util.ts";
 import type { EventMethodMatchup, MethodOddsQuote } from "./odds.ts";
 
 /** Kalshi's public market data: no key, and documented for programs to read.
@@ -34,7 +35,8 @@ export type KalshiBout = EventMethodMatchup & { date: string; extras: KalshiExtr
 export function marketProbability(market: KalshiMarket): number | null {
   const bid = Number(market.yes_bid_dollars), ask = Number(market.yes_ask_dollars);
   if (market.status && market.status !== "active") return null;
-  if (!(bid > 0) || !(ask > bid) || ask >= 1 || ask - bid > 0.1) return null;
+  // In whole cents: 0.40 - 0.30 is 0.10000000000000003 in floating point.
+  if (!(bid > 0) || !(ask > bid) || ask >= 1 || Math.round(ask * 100) - Math.round(bid * 100) > 10) return null;
   return (bid + ask) / 2;
 }
 
@@ -117,7 +119,9 @@ export function parseKalshiBouts(winner: KalshiEvent[], method: KalshiEvent[], d
     if (line1 && line2) bout.moneyline = { f1: [{ bookmaker: "Kalshi", line: line1 }], f2: [{ bookmaker: "Kalshi", line: line2 }] };
     // Each corner's market is its own contract; together they are the bout's.
     const volume = Math.round((Number(one.volume_fp) || 0) + (Number(two.volume_fp) || 0));
-    if (p1 && p2) bout.market = { f1: p1, f2: p2, volume, tickers: [one.ticker, two.ticker] };
+    // Kept even when a side is too thin to price: its tickers find the chart,
+    // and its props still trade.
+    bout.market = { f1: p1 && p2 ? p1 : null, f2: p1 && p2 ? p2 : null, volume, tickers: [one.ticker, two.ticker] };
 
     const byMethod = methods.get(suffix(event))?.markets ?? [];
     for (const [side, name] of [["f1", f1Name], ["f2", f2Name]] as const) {
@@ -160,10 +164,12 @@ async function openEvents(series: string): Promise<KalshiEvent[]> {
 export async function scrapeKalshiBouts(): Promise<KalshiBout[]> {
   const winner = await openEvents(SERIES.winner);
   if (!winner.length) return [];
-  const method = await openEvents(SERIES.method), distance = await openEvents(SERIES.distance);
-  const others = [
-    ...await openEvents(SERIES.finish), ...await openEvents(SERIES.victoryRound), ...await openEvents(SERIES.finishRound),
-  ];
+  // A prop series that can't be read costs only its props, never the prices.
+  const props = async (series: string) => {
+    try { return await openEvents(series); } catch (err) { log(`kalshi ${series} unreadable:`, String(err)); return []; }
+  };
+  const method = await props(SERIES.method), distance = await props(SERIES.distance);
+  const others = [...await props(SERIES.finish), ...await props(SERIES.victoryRound), ...await props(SERIES.finishRound)];
   return parseKalshiBouts(winner, method, distance, others);
 }
 
@@ -177,7 +183,7 @@ export async function kalshiHistory(ticker: string, since: number): Promise<{ at
   )) as { candlesticks?: { end_period_ts: number; yes_bid?: { close_dollars?: string }; yes_ask?: { close_dollars?: string }; price?: { close_dollars?: string } }[] };
   return (body.candlesticks ?? []).flatMap((candle) => {
     const bid = Number(candle.yes_bid?.close_dollars), ask = Number(candle.yes_ask?.close_dollars), last = Number(candle.price?.close_dollars);
-    const p = bid > 0 && ask > bid && ask < 1 && ask - bid <= 0.1 ? (bid + ask) / 2 : last > 0 && last < 1 ? last : null;
+    const p = bid > 0 && ask > bid && ask < 1 && Math.round(ask * 100) - Math.round(bid * 100) <= 10 ? (bid + ask) / 2 : last > 0 && last < 1 ? last : null;
     return p == null ? [] : [{ at: candle.end_period_ts * 1000, p }];
   });
 }

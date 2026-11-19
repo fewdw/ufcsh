@@ -918,8 +918,8 @@ function StepLink({ event, direction, className = STEP }: { event: EventListItem
 
 /** One event's card. */
 /** The coming card's largest line moves since the books opened, each told
- *  from the fighter the money moved toward. Hidden until a bout has moved
- *  three points of win chance or more. */
+ *  from the fighter whose price moved most, up or down. Hidden until a bout
+ *  has moved three points of win chance or more. */
 function CardMoves({ fights, eventId, format }: { fights: EventFight[]; eventId: string; format: OddsFormat }) {
   const moves = biggestMoves(fights.filter((fight) => fight.f1.outcome == null && fight.f2.outcome == null));
   if (!moves.length) return null;
@@ -938,7 +938,7 @@ function CardMoves({ fights, eventId, format }: { fights: EventFight[]; eventId:
               >
                 <span className="font-medium text-zinc-800 dark:text-zinc-200">{lastName(move.name)}</span>
                 <span className="tabular-nums">{formatPrice(move.open, format)} → <span className="font-semibold text-zinc-900 dark:text-zinc-100">{formatPrice(move.close, format)}</span></span>
-                <span className="text-[10px] tabular-nums text-emerald-600 dark:text-emerald-400">▲{Math.round(move.points)}</span>
+                <span className={`text-[10px] tabular-nums ${move.up ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`} aria-label={`${move.up ? "up" : "down"} ${Math.round(move.points)} points`}>{move.up ? "▲" : "▼"}{Math.round(move.points)}</span>
               </Link>
             </li>
           ))}

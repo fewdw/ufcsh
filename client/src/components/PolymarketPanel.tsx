@@ -13,7 +13,7 @@ import type {
 } from "../polymarket-types";
 import { useMarketData } from "../useMarketData";
 import { useNow } from "../useNow";
-import { freshMarketQuote, kalshiView } from "../marketQuote";
+import { alignedKalshi, freshMarketQuote, kalshiView } from "../marketQuote";
 import MarketSourceTabs from "./MarketSourceTabs";
 import { useSettings, type PredictionMarket } from "../settings";
 
@@ -177,7 +177,8 @@ function ExtraMarkets({
 
 /** Every source side by side, whichever market the panel shows: Polymarket,
  *  Kalshi, the sportsbooks and the fans' picks. */
-function Comparison({ data, kalshi, now }: { data: MarketDetail; kalshi: KalshiDetail | null; now: number }) {
+function Comparison({ data, kalshi: answer, now }: { data: MarketDetail; kalshi: KalshiDetail | null; now: number }) {
+  const kalshi = alignedKalshi(answer, data.fight);
   const q = freshMarketQuote(data, now);
   const live = data.fight.state === "live";
   const kalshiQuote = kalshi && kalshi.status === "open" ? freshMarketQuote(kalshiView(data, kalshi), now) : null;

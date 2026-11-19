@@ -463,3 +463,36 @@ test("a missing bout marked live or decided goes when one of its fighters is in 
   store(bout("face0000000000k1", x, y, true), bout("face0000000000k4", a, d, true));
   assert.deepEqual(rows(), ["k1", "k4"]);
 });
+
+test("a suspect page read again stays held for its six hours, though the bouts it added make its losses a minority", t => {
+  const eventId = "face00000000c2c2";
+  let clock = Date.parse("2099-02-20T00:00:00Z");
+  t.mock.method(Date, "now", () => clock);
+  t.after(() => {
+    db.prepare("DELETE FROM fights WHERE event_id = ?").run(eventId);
+    db.prepare("DELETE FROM dropped_bouts WHERE event_id = ?").run(eventId);
+    db.prepare("DELETE FROM events WHERE id = ?").run(eventId);
+  });
+  db.prepare("INSERT INTO events (id, name, date) VALUES (?, 'UFC Suspect fixture', '2099-03-01')").run(eventId);
+  const corner = (id: string) => ({ id, name: `Suspect ${id.slice(-2)} fixture`, outcome: null, kd: "", str: "", td: "", sub: "" });
+  const bout = (i: number): ScrapedEventDetail["fights"][number] => ({
+    id: `face00000000aa${i}${i}`, ord: i, weightClass: "Lightweight", titleFight: false,
+    f1: corner(`face00000000ab${i}${i}`), f2: corner(`face00000000ac${i}${i}`),
+    method: null, methodDetails: null, round: null, time: null, bonuses: { perf: false, fotn: false },
+  });
+  const store = (...fights: ScrapedEventDetail["fights"]) => {
+    storeEventDetail({ id: eventId, name: "UFC Suspect fixture", date: "2099-03-01", location: "Las Vegas", fights });
+    clock += 10 * 60_000;
+  };
+  const count = () => (db.prepare("SELECT count(*) AS n FROM fights WHERE event_id = ?").get(eventId) as { n: number }).n;
+  store(bout(1), bout(2), bout(3), bout(4));
+  // Keeps one, loses three, adds two: held, with the two new bouts stored.
+  store(bout(1), bout(5), bout(6));
+  assert.equal(count(), 6);
+  // The same page again: three of six is no longer most, but it is the same suspect page.
+  store(bout(1), bout(5), bout(6));
+  assert.equal(count(), 6);
+  clock += 6 * 60 * 60_000;
+  store(bout(1), bout(5), bout(6));
+  assert.equal(count(), 3);
+});

@@ -34,7 +34,7 @@ export type BoardMatchup = ScrapedMethodOdds & {
   moneyline?: { f1: MethodOddsPrice[]; f2: MethodOddsPrice[] };
   /** A prediction market's own read of the bout: each side's chance, the
    *  middle of its bid and ask, and contracts traded on both. */
-  market?: { f1: number; f2: number; volume: number; tickers?: [string, string] };
+  market?: { f1: number | null; f2: number | null; volume: number; tickers?: [string, string] };
 };
 export type EventMethodMatchup = BoardMatchup & { f1Name: string; f2Name: string };
 
@@ -759,15 +759,20 @@ export async function scrapeOdds(
   // record a completed look.
   let readPages = 0;
   let failures = 0;
+  // An undated row is kept until every page has been looked through: another
+  // page may hold the bout filed under its card.
+  let undatedFallback: ScrapedOdds | null = null;
   const tryPages = async (pages: string[]) => {
     for (const pageUrl of pages) {
       if (tried.has(pageUrl)) continue;
       tried.add(pageUrl);
       const found = await scrapeOddsPage(pageUrl);
-      if (found) return found;
+      if (found && !undatedRows.has(found)) return found;
+      if (found) undatedFallback ??= found;
     }
     return null;
   };
+  const undatedRows = new WeakSet<ScrapedOdds>();
   if (cachedPageUrl) {
     const found = await tryPages([cachedPageUrl]);
     if (found) return found;
@@ -785,6 +790,7 @@ export async function scrapeOdds(
     const found = await tryPages(pages);
     if (found) return found;
   }
+  if (undatedFallback) return undatedFallback;
   if (!readPages && failures) throw new Error("odds source unreachable");
   return null;
 
@@ -855,6 +861,10 @@ export async function scrapeOdds(
       if (fullPair && !rowDate && row1.find("a[href^='/events/future-events']").length) undated.push(found);
     }
     if (moved.length === 1) return moved[0];
-    return moved.length === 0 && undated.length === 1 ? undated[0] : null;
+    if (moved.length === 0 && undated.length === 1) {
+      undatedRows.add(undated[0]);
+      return undated[0];
+    }
+    return null;
   }
 }

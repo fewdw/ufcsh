@@ -50,7 +50,7 @@ import { consistentMoneyline } from "./method-odds.ts";
 import { decisionFromCards } from "./judge-scorecards.ts";
 import { syncCancelledBouts } from "./cancelled-bouts.ts";
 import { frozenAtBell, frozenNow } from "./odds-freeze.ts";
-import { recordUnmatched, partnerFight, type UnmatchedBout } from "./odds-unmatched.ts";
+import { recordUnmatched, partnerFight, unmatchedBouts, type UnmatchedBout } from "./odds-unmatched.ts";
 import { kalshiHistory, scrapeKalshiBouts, type KalshiBout } from "./scrape/kalshi.ts";
 import { syncAntidopingTests } from "./antidoping.ts";
 import { boutLines, boutProps, fightOddsBoard, fightOddsEvents, fightOddsOpeners, fightOddsProps, matchBout } from "./scrape/fightodds.ts";
@@ -157,9 +157,11 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
     // `SUSPECT_PAGE_MS`.
     const lost = existing.filter(row => !fought(row) && !detail.fights.some(f => samePairing(row, f)));
     let holdRemovals = false;
-    if (existing.length >= 4 && lost.length > existing.length / 2) {
-      const shape = detail.fights.map(f => [f.f1.id, f.f2.id].sort().join(":")).sort().join(",");
-      const seen = suspectPages.get(detail.id);
+    const shape = detail.fights.map(f => [f.f1.id, f.f2.id].sort().join(":")).sort().join(",");
+    const seen = suspectPages.get(detail.id);
+    // The same page read again stays suspect until it has stood its time, even
+    // though the bouts it added on the first read now make its losses a minority.
+    if (lost.length && ((existing.length >= 4 && lost.length > existing.length / 2) || seen?.shape === shape)) {
       if (!seen || seen.shape !== shape) suspectPages.set(detail.id, { shape, since: now });
       holdRemovals = !seen || seen.shape !== shape || now - seen.since < SUSPECT_PAGE_MS;
       if (holdRemovals) log(`card ${detail.id}: page missing ${lost.length} of ${existing.length} pairings; keeping them until it stands for ${SUSPECT_PAGE_MS / 3_600_000} h`);
@@ -1242,6 +1244,8 @@ export async function syncOddsForFight(fight: { id: string; f1_id?: string | nul
   const current = db.prepare("SELECT f1_name, f2_name FROM fights WHERE id = ?").get(fight.id) as
     { f1_name: string; f2_name: string } | undefined;
   if (!current) return false;
+  // The bell may have gone while the page loaded: the line it closed at stays.
+  if (frozenNow().has(fight.id)) return false;
   const result = alignScrapedOdds(scraped, fight, current);
   if (!consistentMoneyline(result.f1.close, result.f2.close)) return false;
   // An open the board chart already corrected is not put back by a fighter
@@ -1411,14 +1415,18 @@ export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: stri
   const writeBooks = db.prepare("UPDATE odds SET books_json = ? WHERE fight_id = ?");
   const sportsbooks = (prices: { bookmaker: string; line: string }[]) =>
     prices.filter((price) => !/^(kalshi|polymarket)$/i.test(price.bookmaker)).map(({ bookmaker, line }) => ({ bookmaker, line }));
-  const frozen = event.complete ? new Set<string>() : frozenNow();
+  // Read again per bout: the chart and prop requests below can outlast a bell.
+  const frozenNowIfOpen = () => event.complete ? new Set<string>() : frozenNow();
   let stored = 0;
   for (const { fight, odds } of found.values()) {
     // A bout on or over keeps the line and props it had at the bell.
-    if (frozen.has(fight.id)) continue;
+    if (frozenNowIfOpen().has(fight.id)) continue;
     if (!event.complete && odds.moneyline && !freshFightOddsLine.get(fight.id, Date.now() - 30 * 60_000)) {
-      const f1Close = rangeMiddle(odds.moneyline.f1.map((price) => price.line));
-      const f2Close = rangeMiddle(odds.moneyline.f2.map((price) => price.line));
+      // The sportsbooks' range; the prediction markets on the board only
+      // when no book prices the bout.
+      const booked = (prices: { bookmaker: string; line: string }[]) => (sportsbooks(prices).length ? sportsbooks(prices) : prices).map((price) => price.line);
+      const f1Close = rangeMiddle(booked(odds.moneyline.f1));
+      const f2Close = rangeMiddle(booked(odds.moneyline.f2));
       const now = current.get(fight.id, eventId) as { f1_id: string; f2_id: string } | undefined;
       const reversed = now?.f1_id === fight.f2_id && now?.f2_id === fight.f1_id && fight.f1_id !== fight.f2_id;
       if (now && consistentMoneyline(f1Close, f2Close) && (reversed || (now.f1_id === fight.f1_id && now.f2_id === fight.f2_id))) {
@@ -1440,12 +1448,11 @@ export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: stri
         }
       }
     }
-    // After the line, so the bout's row is there to hold them.
-    if (!event.complete && odds.moneyline) {
-      const books = { f1: sportsbooks(odds.moneyline.f1), f2: sportsbooks(odds.moneyline.f2) };
-      if (books.f1.length && books.f2.length) {
-        writeBooks.run(JSON.stringify({ f1_id: fight.f1_id, f2_id: fight.f2_id, at: Date.now(), ...books }), fight.id);
-      }
+    // After the line, so the bout's row is there to hold them; a read with no
+    // book pricing both sides leaves no offer standing.
+    if (!event.complete && !frozenNowIfOpen().has(fight.id)) {
+      const books = { f1: sportsbooks(odds.moneyline?.f1 ?? []), f2: sportsbooks(odds.moneyline?.f2 ?? []) };
+      writeBooks.run(books.f1.length && books.f2.length ? JSON.stringify({ f1_id: fight.f1_id, f2_id: fight.f2_id, at: Date.now(), ...books }) : null, fight.id);
     }
     if (odds.moneylineKeys && !missingMoneyline.get(fight.id) && storedOpenFlipped(fight.id)) {
       try {
@@ -1618,9 +1625,9 @@ export async function syncUpcomingOdds(
 
   let stored = 0;
   let failed = 0;
-  const frozen = frozenNow();
   for (const fight of targets) {
-    if (frozen.has(fight.id)) continue;
+    // Read per bout: a pass of many pages can outlast a bell.
+    if (frozenNow().has(fight.id)) continue;
     try {
       if (await syncOddsForFight(fight)) stored++;
     } catch (err) {
@@ -1666,7 +1673,7 @@ export async function syncKalshiOdds(scraped?: KalshiBout[]): Promise<{ bouts: n
   const writeMarket = db.prepare("UPDATE odds SET kalshi_json = ? WHERE fight_id = ?");
   const frozen = frozenNow();
   const used = new Set<KalshiBout>();
-  const charts: { fightId: string; f1Id: string; ticker: string }[] = [];
+  const charts: { fightId: string; f1Id: string; f2Id: string; ticker: string }[] = [];
   const unmatchedLater: { eventId: string; onDate: KalshiBout[]; fights: MethodOddsFight[]; matched: Set<string> }[] = [];
   let lines = 0, stored = 0;
   for (const event of events) {
@@ -1689,7 +1696,7 @@ export async function syncKalshiOdds(scraped?: KalshiBout[]): Promise<{ bouts: n
       if (odds.market) {
         const extras = (odds as Partial<KalshiBout>).extras ?? [];
         writeMarket.run(JSON.stringify({ f1_id: fight.f1_id, f2_id: fight.f2_id, at: now, url: odds.sourceUrl, ...odds.market, extras }), fight.id);
-        if (odds.market.tickers) charts.push({ fightId: fight.id, f1Id: fight.f1_id, ticker: odds.market.tickers[0] });
+        if (odds.market.tickers) charts.push({ fightId: fight.id, f1Id: fight.f1_id, f2Id: fight.f2_id, ticker: odds.market.tickers[0] });
       }
       const held = props.get(fight.id) as { source_url: string | null } | undefined;
       if ((Object.keys(odds.f1).length || Object.keys(odds.f2).length || odds.additional.length) && (!held || kalshiOrNone(held.source_url))) {
@@ -1708,9 +1715,12 @@ export async function syncKalshiOdds(scraped?: KalshiBout[]): Promise<{ bouts: n
       partner: partnerFight(fights, matched, bout.f1Name, bout.f2Name),
     })));
   }
+  // A card Kalshi no longer lists anything near has nothing left unmatched.
+  const visited = new Set(unmatchedLater.map((entry) => entry.eventId));
+  for (const { source, eventId } of unmatchedBouts()) if (source === "Kalshi" && !visited.has(eventId)) recordUnmatched("Kalshi", eventId, []);
   // Each bout's chart is read again every half hour, after the prices above
   // are written: its first corner's market by the hour since it opened.
-  const chartAt = db.prepare("SELECT kalshi_history_json FROM odds WHERE fight_id = ?");
+  const chartAt = db.prepare("SELECT o.kalshi_history_json, f.f1_id, f.f2_id FROM odds o JOIN fights f ON f.id = o.fight_id WHERE o.fight_id = ?");
   const writeChart = db.prepare("UPDATE odds SET kalshi_history_json = ? WHERE fight_id = ?");
   for (const chart of charts) {
     let held: { at?: number; ticker?: string } | null = null;
@@ -1718,7 +1728,11 @@ export async function syncKalshiOdds(scraped?: KalshiBout[]): Promise<{ bouts: n
     if (held?.ticker === chart.ticker && Date.now() - (held.at ?? 0) < 30 * 60_000) continue;
     try {
       const points = await kalshiHistory(chart.ticker, Date.now() - 30 * DAY);
-      writeChart.run(JSON.stringify({ at: Date.now(), f1_id: chart.f1Id, ticker: chart.ticker, points }), chart.fightId);
+      // Only onto the same two fighters it was read for, whichever corners
+      // they have now: a bout re-matched meanwhile gets no one else's chart.
+      const now = chartAt.get(chart.fightId) as { f1_id: string; f2_id: string } | undefined;
+      if (!now || [now.f1_id, now.f2_id].sort().join() !== [chart.f1Id, chart.f2Id].sort().join()) continue;
+      writeChart.run(JSON.stringify({ at: Date.now(), f1_id: chart.f1Id, f2_id: chart.f2Id, ticker: chart.ticker, points }), chart.fightId);
     } catch (err) {
       log(`kalshi history failed [${chart.fightId}]:`, String(err));
     }
