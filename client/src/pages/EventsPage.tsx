@@ -1047,8 +1047,7 @@ function EventPane({ eventId, oddsMode, nav, home = false }: { eventId: string; 
             <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[34rem]:gap-x-2 @[34rem]:text-xs">
               {event.date ? (
                 <span className="whitespace-nowrap font-medium text-zinc-600">
-                  <span className="@[48rem]:hidden">{formatDateShort(event.date)}</span>
-                  <span className="hidden @[48rem]:inline">{formatDate(event.date)}</span>
+                  {formatDate(event.date)}
                 </span>
               ) : <span className="whitespace-nowrap font-medium text-zinc-600">No date</span>}
               <EventPlace venue={event.venue} location={event.location} locationSlug={event.location_slug} />
