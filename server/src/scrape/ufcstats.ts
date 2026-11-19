@@ -87,7 +87,8 @@ export async function scrapeEventDetail(eventId: string, options?: { timeoutMs?:
   let unreadable = 0;
   // A row is a bout's when it links a fighter or its fight page: one carrying
   // only the fight link is a damaged bout row, not something else.
-  $("tr").filter((_, tr) => $(tr).find("a[href*='fighter-details']").length > 0 || /fight-details/.test($(tr).attr("data-link") ?? "")).each((ord, tr) => {
+  $("tr").filter((_, tr) => $(tr).find("a[href*='fighter-details'], a[href*='fight-details']").length > 0
+    || $(tr).hasClass("js-fight-details-click") || /fight-details/.test($(tr).attr("data-link") ?? "")).each((ord, tr) => {
     const row = $(tr);
     const cols = row.find("td");
     const fightId = idFromUrl(row.attr("data-link"), "fight-details");

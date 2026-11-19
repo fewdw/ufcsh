@@ -23,17 +23,21 @@ test("Kalshi's view keeps the bout's own facts and swaps in Kalshi's price, char
   const view = kalshiView(polymarket, {
     status: "open", f1_id: "a", f2_id: "b", url: "https://kalshi.com/markets/kxufcfight/x", at: 5_000, p: 0.39, volume: 100,
     history: [{ at: 1_000, p: 0.42, phase: "prefight", source: "history" }, { at: 6_000, p: 0.5, phase: "prefight", source: "history" }],
-    extras: [{ id: "KXUFCMOV-1" } as never],
-  });
+    extras: [{ id: "KXUFCMOV-1", outcomes: [{ name: "Yes", p: 0.3 }, { name: "No", p: 0.7 }] } as never],
+  }, 6_000);
   assert.equal(view.url, "https://kalshi.com/markets/kxufcfight/x");
   assert.deepEqual(view.history.map((point) => [point.at, point.p]), [[1_000, 0.42], [5_000, 0.39]]);
-  assert.deepEqual(view.extras.map((market) => market.id), ["KXUFCMOV-1"]);
+  assert.deepEqual(view.extras.map((market) => [market.id, market.outcomes[0].p]), [["KXUFCMOV-1", 0.3]]);
+  // A read gone stale on a bout still to come lists its props without their old prices.
+  const stale = kalshiView(polymarket, { status: "open", f1_id: "a", f2_id: "b", url: "u", at: 5_000, p: 0.39, volume: 1, history: [],
+    extras: [{ id: "K", outcomes: [{ name: "Yes", p: 0.3 }, { name: "No", p: 0.7 }] } as never] }, 5_000 + KALSHI_FRESH_MS + 1);
+  assert.equal(stale.extras[0].outcomes[0].p, null);
   assert.equal(view.sports, polymarket.sports);
   assert.equal(view.community, polymarket.community);
   assert.equal(kalshiView(polymarket, null).status, "missing");
   // Answered before UFCStats turned the corners: turned with them; for another pairing, dropped.
   const answer = { status: "open" as const, f1_id: "b", f2_id: "a", url: "u", at: 5_000, p: 0.7, volume: 1, history: [{ at: 1_000, p: 0.7, phase: "prefight" as const, source: "history" as const }], extras: [] };
-  const turned = kalshiView(polymarket, answer);
+  const turned = kalshiView(polymarket, answer, 6_000);
   assert.ok(Math.abs(turned.quote!.p - 0.3) < 1e-9 && Math.abs(turned.history[0].p - 0.3) < 1e-9);
   assert.equal(kalshiView(polymarket, { ...answer, f1_id: "c" }).quote, null);
   // A bout under way charts Kalshi's pre-fight market.

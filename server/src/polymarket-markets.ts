@@ -193,10 +193,11 @@ export class PolymarketMarkets {
       .prepare(
         `SELECT json_extract(pick_json, '$.fighterId') AS fighter, COUNT(*) AS n
       FROM predictions WHERE fight_id = ? AND pick_json IS NOT NULL AND json_valid(pick_json)
-      AND json_extract(pick_json, '$.eventId') = ? AND json_extract(pick_json, '$.f1Id') = ?
-      AND json_extract(pick_json, '$.f2Id') = ? GROUP BY fighter`,
+      AND json_extract(pick_json, '$.eventId') = ?
+      AND ((json_extract(pick_json, '$.f1Id') = ? AND json_extract(pick_json, '$.f2Id') = ?)
+        OR (json_extract(pick_json, '$.f1Id') = ? AND json_extract(pick_json, '$.f2Id') = ?)) GROUP BY fighter`,
       )
-      .all(id, f.event_id, f.f1_id, f.f2_id) as {
+      .all(id, f.event_id, f.f1_id, f.f2_id, f.f2_id, f.f1_id) as {
       fighter: string;
       n: number;
     }[];

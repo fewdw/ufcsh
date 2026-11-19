@@ -50,8 +50,11 @@ export function alignedKalshi(kalshi: KalshiDetail | null | undefined, fight: { 
   return null;
 }
 
-export function kalshiView(data: MarketDetail, answer: KalshiDetail | null): MarketDetail {
+export function kalshiView(data: MarketDetail, answer: KalshiDetail | null, now = Date.now()): MarketDetail {
   const kalshi = alignedKalshi(answer, data.fight);
+  // Props are as current as the read they came with: a stale read on a bout
+  // still to come lists its markets without their old prices.
+  const staleProps = data.fight.state === "upcoming" && (kalshi?.at == null || now - kalshi.at > KALSHI_FRESH_MS);
   const priced = kalshi?.status === "open" && kalshi.p != null && kalshi.at != null;
   const history = kalshi?.history ?? [];
   const current = priced ? [{ at: kalshi!.at!, p: kalshi!.p!, phase: "prefight" as const, source: "observed" as const }] : [];
@@ -68,7 +71,7 @@ export function kalshiView(data: MarketDetail, answer: KalshiDetail | null): Mar
     error: null,
     snapshot: null,
     history: [...history.filter((point) => !current.length || point.at < current[0].at), ...current],
-    extras: kalshi?.extras ?? [],
+    extras: (kalshi?.extras ?? []).map((market) => staleProps ? { ...market, outcomes: market.outcomes.map((outcome) => ({ ...outcome, p: null })) } : market),
     stream: false,
     rounds: [],
   };

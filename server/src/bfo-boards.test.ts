@@ -79,11 +79,18 @@ test("an upcoming card's board sets each bout's line on its own fighters, fills 
     return n >= 33 && n <= 126 ? String.fromCharCode(33 + (n - 33 + 47) % 94) : c;
   }).join("")).toString("base64");
   let prices = { one: ["+132", "+150"], two: ["-170", "-180"] };
+  // "books": both books price Prochazka–Stirling; "kalshi": only Kalshi does;
+  // "gone": the bout is off the board.
+  let mode: "books" | "kalshi" | "gone" = "books";
+  const jiri = () => mode === "gone" ? "" : mode === "kalshi"
+    ? `<tr><th scope="row" data-admin-matchup="45574"><a href="/fighters/jiri-prochazka-6058">Jiri Prochazka</a></th><td data-li="[30,1,45574]"><span>+300</span></td><td class="but-si" data-li="[1,45574]"></td></tr>
+      <tr><th scope="row"><a href="/fighters/navajo-stirling-18344">Navajo Stirling</a></th><td data-li="[30,2,45574]"><span>-400</span></td><td class="but-si" data-li="[2,45574]"></td></tr>`
+    : `<tr><th scope="row" data-admin-matchup="45574"><a href="/fighters/jiri-prochazka-6058">Jiri Prochazka</a></th><td data-li="[21,1,45574]"><span>${prices.one[0]}</span></td><td data-li="[25,1,45574]"><span>${prices.one[1]}</span></td><td class="but-si" data-li="[1,45574]"></td></tr>
+      <tr><th scope="row"><a href="/fighters/navajo-stirling-18344">Navajo Stirling</a></th><td data-li="[21,2,45574]"><span>${prices.two[0]}</span></td><td data-li="[25,2,45574]"><span>${prices.two[1]}</span></td><td class="but-si" data-li="[2,45574]"></td></tr>`;
   const html = () => `<table class="odds-table">
-    <thead><tr><th></th><th data-b="21">FanDuel</th><th data-b="25">BetMGM</th></tr></thead>
+    <thead><tr><th></th><th data-b="21">FanDuel</th><th data-b="25">BetMGM</th><th data-b="30">Kalshi</th></tr></thead>
     <tbody>
-      <tr><th scope="row" data-admin-matchup="45574"><a href="/fighters/jiri-prochazka-6058">Jiri Prochazka</a></th><td data-li="[21,1,45574]"><span>${prices.one[0]}</span></td><td data-li="[25,1,45574]"><span>${prices.one[1]}</span></td><td class="but-si" data-li="[1,45574]"></td></tr>
-      <tr><th scope="row"><a href="/fighters/navajo-stirling-18344">Navajo Stirling</a></th><td data-li="[21,2,45574]"><span>${prices.two[0]}</span></td><td data-li="[25,2,45574]"><span>${prices.two[1]}</span></td><td class="but-si" data-li="[2,45574]"></td></tr>
+      ${jiri()}
       <tr><th scope="row" data-admin-matchup="45575"><a href="/fighters/first-one-1">First One</a></th><td data-li="[21,1,45575]"><span>-900</span></td><td class="but-si" data-li="[1,45575]"></td></tr>
       <tr><th scope="row"><a href="/fighters/second-two-2">Second Two</a></th><td data-li="[21,2,45575]"><span>+600</span></td><td class="but-si" data-li="[2,45575]"></td></tr>
       <tr><th scope="row" data-admin-matchup="45576"><a href="/fighters/max-nobody-3">Max Nobody</a></th><td data-li="[21,1,45576]"><span>-130</span></td><td class="but-si" data-li="[1,45576]"></td></tr>
@@ -127,6 +134,21 @@ test("an upcoming card's board sets each bout's line on its own fighters, fills 
   assert.deepEqual(line(live), { f1_open: "-167", f1_close: "-185", f2_open: "+140", f2_close: "+155", source_url: "https://www.bestfightodds.com/fighters/jiri-prochazka-6058" });
   assert.equal(charts.length, 2, "the open is read from the chart once");
 
+  // Only Kalshi prices it on the board: no book line is made of an exchange's.
+  const booksOf = () => (db.prepare("SELECT books_json FROM odds WHERE fight_id = ?").get(live) as { books_json: string | null }).books_json;
+  mode = "kalshi";
+  await syncMethodOddsForEvent(eventId);
+  assert.equal(line(live).f1_close, "-185");
+  assert.equal(booksOf(), null, "no book prices it, so no offer stands");
+  // Off a board read in full: no offer stands either.
+  mode = "books";
+  await syncMethodOddsForEvent(eventId);
+  assert.ok(booksOf());
+  mode = "gone";
+  await syncMethodOddsForEvent(eventId);
+  assert.equal(booksOf(), null);
+  mode = "books";
+
   // Once the bout is under way its line is the one it had at the bell.
   db.prepare(`UPDATE fights SET detail_json = '{"type":"past"}' WHERE id = ?`).run(live);
   prices = { one: ["+400", "+400"], two: ["-500", "-500"] };
@@ -137,12 +159,12 @@ test("an upcoming card's board sets each bout's line on its own fighters, fills 
 test("Kalshi prices a bout no book has, on its own fighters, never replaces a book's line, and lists bouts we can't match", async (t) => {
   // Its chart is the only request: an empty one.
   t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ candlesticks: [] })));
-  const eventId = "face0000000000k1", [open, priced, misspelt] = ["face0000000000k2", "face0000000000k3", "face0000000000k4"];
+  const eventId = "face0000000000k1", [open, priced, misspelt, thin] = ["face0000000000k2", "face0000000000k3", "face0000000000k4", "face0000000000kb"];
   const unmatched = getMeta("odds_unmatched");
   t.after(() => {
     setMeta("odds_unmatched", unmatched ?? "{}");
-    db.prepare("DELETE FROM odds WHERE fight_id IN (?, ?, ?)").run(open, priced, misspelt);
-    db.prepare("DELETE FROM method_odds WHERE fight_id IN (?, ?, ?)").run(open, priced, misspelt);
+    db.prepare("DELETE FROM odds WHERE fight_id IN (?, ?, ?, ?)").run(open, priced, misspelt, thin);
+    db.prepare("DELETE FROM method_odds WHERE fight_id IN (?, ?, ?, ?)").run(open, priced, misspelt, thin);
     db.prepare("DELETE FROM fights WHERE event_id = ?").run(eventId);
     db.prepare("DELETE FROM events WHERE id = ?").run(eventId);
   });
@@ -151,6 +173,7 @@ test("Kalshi prices a bout no book has, on its own fighters, never replaces a bo
   insert.run(open, eventId, 0, "face0000000000k5", "face0000000000k6", "Navajo Stirling", "Jiri Prochazka");
   insert.run(priced, eventId, 1, "face0000000000k7", "face0000000000k8", "First One", "Second Two");
   insert.run(misspelt, eventId, 2, "face0000000000k9", "face0000000000ka", "Cal Mismatch", "Dan Other");
+  insert.run(thin, eventId, 3, "face0000000000kc", "face0000000000kd", "Gus Thinmarket", "Hal Quietbook");
   const book = "https://www.bestfightodds.com/fighters/first-one-1";
   db.prepare("INSERT INTO odds (fight_id, f1_close, f2_close, source_url, fetched_at) VALUES (?, '-300', '+250', ?, 1)").run(priced, book);
   db.prepare("INSERT INTO method_odds (fight_id, markets_json, source_url, final, fetched_at) VALUES (?, '{}', ?, 0, 1)").run(priced, book);
@@ -167,6 +190,11 @@ test("Kalshi prices a bout no book has, on its own fighters, never replaces a bo
     bout("First One", "Second Two", "-900", "+900"),
     bout("Zed Unknown", "Daniel Other", "+120", "-120"),
     bout("Max Nobody", "Rex Absent", "-110", "+110"),
+    // A winner market too thin to price, with one prop that trades.
+    { ...bout("Gus Thinmarket", "Hal Quietbook", "+100", "-100"), moneyline: undefined,
+      market: { f1: null, f2: null, volume: 0, tickers: ["KGUS", "KHAL"] as [string, string] },
+      extras: [{ id: "KXUFCMOV-G", question: "Will Gus Thinmarket win by Decision?", url: "https://kalshi.com/markets/kxufcmov/g", type: "ufc_method_of_victory",
+        outcomes: [{ name: "Yes", p: 0.2 }, { name: "No", p: 0.8 }], volume: 5, liquidity: null, closed: false }] },
   ];
   await syncKalshiOdds(bouts);
   const line = (id: string) => ({ ...db.prepare("SELECT f1_close, f2_close, source_url FROM odds WHERE fight_id = ?").get(id) });
@@ -185,6 +213,8 @@ test("Kalshi prices a bout no book has, on its own fighters, never replaces a bo
   const detail = kalshiDetail(open)!;
   assert.deepEqual([detail.status, Math.round(detail.p! * 1000), detail.extras.length, detail.url], ["open", 592, 1, "https://kalshi.com/markets/kxufcfight/prochazka"]);
   assert.equal(kalshiDetail(misspelt)!.status, "missing");
+  // A bout with no line yet still gets Kalshi's read, priced or not.
+  assert.deepEqual([kalshiDetail(thin)!.status, kalshiDetail(thin)!.p, kalshiDetail(thin)!.extras.length], ["open", null, 1]);
   // The chart and the read both turn with the corners.
   db.prepare("UPDATE odds SET kalshi_history_json = ? WHERE fight_id = ?")
     .run(JSON.stringify({ at: Date.now(), f1_id: "face0000000000k5", f2_id: "face0000000000k6", ticker: "KNAV", points: [{ at: 1, p: 0.6 }] }), open);

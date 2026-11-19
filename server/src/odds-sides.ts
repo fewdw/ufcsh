@@ -42,7 +42,9 @@ export function kalshiDetail(fightId: string): {
     { f1?: number | null; f2?: number | null; at?: number; url?: string; volume?: number; extras?: unknown[]; tickers?: [string, string] };
   const priced = typeof read.f1 === "number" && typeof read.f2 === "number" && read.f1 > 0 && read.f2 > 0;
   const missing = { status: "missing" as const, f1_id: row.f1_id, f2_id: row.f2_id, url: null, at: null, p: null, volume: null, history: [], extras: [] };
-  if (!read.url || (!priced && !read.extras?.length)) return missing;
+  // Kalshi lists the bout once its winner market is matched (its tickers),
+  // priced or not.
+  if (!read.url || (!priced && !read.extras?.length && !read.tickers)) return missing;
   let history: HistoryPoint[] = [];
   try {
     // The chart of this pairing's own market: both fighters, and the first

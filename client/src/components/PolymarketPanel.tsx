@@ -181,7 +181,7 @@ function Comparison({ data, kalshi: answer, now }: { data: MarketDetail; kalshi:
   const kalshi = alignedKalshi(answer, data.fight);
   const q = freshMarketQuote(data, now);
   const live = data.fight.state === "live";
-  const kalshiQuote = kalshi && kalshi.status === "open" ? freshMarketQuote(kalshiView(data, kalshi), now) : null;
+  const kalshiQuote = kalshi && kalshi.status === "open" ? freshMarketQuote(kalshiView(data, kalshi, now), now) : null;
   const rows = [
     {
       label: "Polymarket",
@@ -200,7 +200,7 @@ function Comparison({ data, kalshi: answer, now }: { data: MarketDetail; kalshi:
       detail: kalshi?.status !== "open"
         ? "No market on this bout"
         : data.fight.state !== "upcoming"
-          ? "As of the bell"
+          ? kalshi.at ? `As of ${new Date(kalshi.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "Pre-fight"
           : kalshiQuote
             ? null
             : "Current price unavailable",
@@ -404,7 +404,7 @@ export default function PolymarketPanel({
     return null;
   return data ? (
     <PolymarketView
-      data={source === "kalshi" ? kalshiView(data, kalshi) : data}
+      data={source === "kalshi" ? kalshiView(data, kalshi, Date.now()) : data}
       polymarket={data}
       kalshi={kalshi}
       source={source}
