@@ -1,4 +1,4 @@
-import { getMeta, setMeta } from "./db.ts";
+import { db, getMeta, setMeta } from "./db.ts";
 
 const MINUTE = 60_000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 
@@ -8,7 +8,6 @@ const SOURCES: { key: string; name: string; every: number }[] = [
   { key: "last_tick_at", name: "Scheduler pass", every: 5 * MINUTE },
   { key: "events_list_synced_at", name: "Events list (UFCStats)", every: 10 * MINUTE },
   { key: "event_schedules_synced_at", name: "Card schedules (ufc.com)", every: 10 * MINUTE },
-  { key: "fightodds_read_at", name: "Odds (FightOdds.io)", every: 5 * MINUTE },
   { key: "potential_matchups_read_at", name: "Potential matchups", every: 5 * MINUTE },
   { key: "news_checked_at", name: "News feeds", every: 10 * MINUTE },
   { key: "roster_moves_synced_at", name: "Roster moves", every: 10 * MINUTE },
@@ -17,6 +16,19 @@ const SOURCES: { key: string; name: string; every: number }[] = [
   { key: "roster_synced_at", name: "Roster", every: DAY },
   { key: "fightodds_past_at", name: "Past odds", every: DAY },
   { key: "athlete_dir_synced_at", name: "Athlete photo directory", every: 7 * DAY },
+];
+
+/** Odds come from whichever source answers (FightOdds.io every few minutes,
+ *  BestFightOdds every few hours), so their freshness is the newest price
+ *  stored for a coming bout, not one source's last read: a source that "reads"
+ *  but stores nothing (BestFightOdds' markup change, October 2026) shows late. */
+const MEASURED: { name: string; every: number; newest: string }[] = [
+  { name: "Odds (coming bouts)", every: 3 * HOUR, newest: `SELECT max(o.fetched_at) AS at FROM odds o
+    JOIN fights f ON f.id = o.fight_id JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 0 AND e.date >= date('now', '-1 day')` },
+  { name: "Props (coming bouts)", every: 2 * HOUR, newest: `SELECT max(m.fetched_at) AS at FROM method_odds m
+    JOIN fights f ON f.id = m.fight_id JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 0 AND e.date >= date('now', '-1 day')` },
 ];
 
 const KEPT = 50;
@@ -74,6 +86,8 @@ export function isTransientUpstream(err: unknown): boolean {
 export const OUTAGE_MS = 15 * 60_000;
 /** A failure that goes on is recorded again this often, so Admin still shows it. */
 const REMIND_MS = 6 * HOUR;
+/** A firewall block lasts days and its host is tried at most hourly: once a day per host is news enough. */
+const BLOCKED_REMIND_MS = DAY;
 const outages = new Map<string, { since: number; reportedAt: number | null }>();
 
 /** Whether this failure is worth a sync error now, or is a moment to wait out.
@@ -83,12 +97,17 @@ export function outageReport(name: string, err: unknown, now = Date.now(), answe
   // ufc.com lists a new card's bouts on its event page minutes before its live
   // feed carries them: a lag to wait out, not a fault, unless it lasts.
   const transient = isTransientUpstream(err) || /database is locked|SQLITE_BUSY|carried no fight card/i.test(String(err));
-  const outage = outages.get(name) ?? { since: now, reportedAt: null };
+  // A firewall block refuses every job that uses its host: one report a day
+  // for the host, not one per job.
+  const blockedHost = String(err).match(/HTTP 403 for https?:\/\/([^/\s;]+)[^\n]*Cloudflare blocked this server/)?.[1];
+  const key = blockedHost ? `blocked ${blockedHost}` : name;
+  const outage = outages.get(key) ?? { since: now, reportedAt: null };
   if (outages.size > 2000) outages.clear();
-  outages.set(name, outage);
+  outages.set(key, outage);
   // A fault of our own is news at once; a source's moment only once it lasts.
   if (now - outage.since < (transient ? OUTAGE_MS : 0)) return false;
-  if (outage.reportedAt != null && now - outage.reportedAt < REMIND_MS) return false;
+  const remind = blockedHost ? BLOCKED_REMIND_MS : REMIND_MS;
+  if (outage.reportedAt != null && now - outage.reportedAt < remind) return false;
   outage.reportedAt = now;
   return true;
 }
@@ -110,11 +129,13 @@ export function syncStatus(now = Date.now()) {
   }
   return {
     generatedAt: now,
-    sources: SOURCES.map(source => {
-      const at = Number(getMeta(source.key)) || null;
+    sources: [
+      ...SOURCES.map(source => ({ name: source.name, every: source.every, at: Number(getMeta(source.key)) || null })),
+      ...MEASURED.map(source => ({ name: source.name, every: source.every,
+        at: (db.prepare(source.newest).get() as { at: number | null } | undefined)?.at ?? null })),
+    ].map(({ name, every, at }) =>
       // Three missed refreshes is late; a source never recorded is unknown.
-      return { name: source.name, at, everyMs: source.every, late: at != null && now - at > 3 * source.every + MINUTE };
-    }),
+      ({ name, at, everyMs: every, late: at != null && now - at > 3 * every + MINUTE })),
     errors: errors.slice(0, 30),
     errorsLastDay: lastDay.length,
     failingLastDay: [...kinds.values()].sort((a, b) => b.count - a.count),

@@ -463,12 +463,44 @@ const ROUND_METHOD_MARKET = /^(.+) wins by (?:TKO\/KO|submission) in round [1-5]
 const METHOD_MARKET = /^(.+) wins by (TKO\/KO|submission|decision)$/i;
 const METHOD_TYPE = { ko: 8, submission: 9, decision: 11 } as const;
 
+/** The matchup id on a bout's first row. BestFightOdds carried it on a
+ *  `/cnadm/matchups/ID` link until October 2026 and on `th[data-admin-matchup]`
+ *  since; the first corner's chart button, keyed [1, matchup], is the last
+ *  resort. Prop and second-corner rows have none. */
+export function boardMatchupId($: cheerio.CheerioAPI, row: cheerio.Cheerio<any>): number | null {
+  if (!row.find("th a[href^='/fighters/']").length) return null;
+  const admin = row.find("th[data-admin-matchup]").first().attr("data-admin-matchup")
+    ?? row.find("a[href^='/cnadm/matchups/']").first().attr("href")?.split("/").filter(Boolean).at(-1);
+  if (admin != null) return /^\d+$/.test(admin) && Number.isSafeInteger(Number(admin)) ? Number(admin) : null;
+  const key = dataKey($, row.find("td.but-si").first(), 2);
+  return key && key[0] === 1 ? key[1] : null;
+}
+
+/** A board in a shape this parser no longer reads: fighter rows, but not one
+ *  recognised bout. BestFightOdds changed its markup in October 2026 and both
+ *  parsers read nothing, silently, for a month. */
+export class BoardMarkupError extends Error {}
+
+/** The bout rows of a board's odds table, or null when it has none. Throws
+ *  when it lists fighters but no bout this parser recognises. */
+export function boardRows($: cheerio.CheerioAPI, sourceUrl: string): cheerio.Cheerio<any>[] | null {
+  const table = $("table.odds-table").filter((_, element) => $(element).find("td").length > 0).first();
+  if (!table.length) return null;
+  const rows = table.find("tbody tr").toArray().map((row) => $(row));
+  const fighters = rows.filter((row) => row.find("th a[href^='/fighters/']").length).length;
+  if (fighters >= 2 && !rows.some((row) => boardMatchupId($, row) != null)) {
+    throw new BoardMarkupError(`BestFightOdds board markup unrecognized: ${fighters} fighter rows, no matchup ids (${sourceUrl})`);
+  }
+  return rows;
+}
+
 /** Parse one archived/current event board. The result remains in the source's
  * fighter order until methodOddsForFight verifies and aligns an exact pair. */
 export function parseEventMethodOddsHtml(html: string, sourceUrl: string): EventMethodMatchup[] {
   const $ = cheerio.load(html);
   const table = $("table.odds-table").filter((_, element) => $(element).find("td").length > 0).first();
-  if (!table.length) return [];
+  const rows = boardRows($, sourceUrl);
+  if (!rows) return [];
 
   const books = new Map<number, string>();
   table.find("thead th[data-b]").each((_, element) => {
@@ -477,17 +509,15 @@ export function parseEventMethodOddsHtml(html: string, sourceUrl: string): Event
     if (Number.isInteger(id) && name) books.set(id, name);
   });
 
-  const rows = table.find("tbody tr").toArray();
   const matchups: EventMethodMatchup[] = [];
   for (let i = 0; i < rows.length; i++) {
-    const firstRow = $(rows[i]);
-    if (!firstRow.find("a[href^='/cnadm/matchups/']").length) continue;
-    const secondRow = $(rows[i + 1]);
+    const firstRow = rows[i];
+    const matchupId = boardMatchupId($, firstRow);
+    if (matchupId == null || i + 1 >= rows.length) continue;
+    const secondRow = rows[i + 1];
     const f1Name = cleanText(firstRow.find("th a[href^='/fighters/']").last().text());
     const f2Name = cleanText(secondRow.find("th a[href^='/fighters/']").last().text());
     if (!f1Name || !f2Name) continue;
-    const matchupId = Number(firstRow.find("a[href^='/cnadm/matchups/']").first().attr("href")?.split("/").filter(Boolean).at(-1));
-    if (!Number.isSafeInteger(matchupId)) continue;
 
     const matchup: EventMethodMatchup = { f1Name, f2Name, f1: {}, f2: {}, additional: [], sourceUrl };
     const moneylineKey = (row: cheerio.Cheerio<any>, side: number) => {
@@ -505,8 +535,8 @@ export function parseEventMethodOddsHtml(html: string, sourceUrl: string): Event
     };
 
     for (let j = i + 2; j < rows.length; j++) {
-      const row = $(rows[j]);
-      if (row.find("a[href^='/cnadm/matchups/']").length) break;
+      const row = rows[j];
+      if (boardMatchupId($, row) != null) break;
       const label = cleanText(row.find("th").first().text());
 
       const method = METHOD_MARKET.exec(label);

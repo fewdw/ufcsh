@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import { fetchHtml } from "../http.ts";
 import { cleanText } from "../util.ts";
-import { parseEventMethodOddsHtml, type ScrapedMethodOdds } from "./odds.ts";
+import { boardMatchupId, boardRows, parseEventMethodOddsHtml, type ScrapedMethodOdds } from "./odds.ts";
 import type { FightOddsBout } from "./fightodds.ts";
 
 export type PotentialBout = FightOddsBout & { markets?: ScrapedMethodOdds };
@@ -11,10 +11,9 @@ export const BFO_FUTURE_URL = "https://www.bestfightodds.com/events/future-event
  * Moneyline cells identify [book, corner, matchup], independently of column order. */
 export function parsePotentialOdds(html: string, sourceUrl = BFO_FUTURE_URL): PotentialBout[] {
   const $ = cheerio.load(html);
-  const table = $("table.odds-table").filter((_, el) => $(el).find("td").length > 0).first();
-  if (!table.length) throw new Error("BestFightOdds future board is missing");
+  const rows = boardRows($, sourceUrl);
+  if (!rows) throw new Error("BestFightOdds future board is missing");
   const methods = parseEventMethodOddsHtml(html, sourceUrl);
-  const rows = table.find("tbody tr").toArray();
   const bouts: PotentialBout[] = [];
   const corner = (row: cheerio.Cheerio<any>) => {
     const name = cleanText(row.find("th a[href^='/fighters/']").last().text());
@@ -33,13 +32,12 @@ export function parsePotentialOdds(html: string, sourceUrl = BFO_FUTURE_URL): Po
     return found;
   };
   for (let i = 0; i + 1 < rows.length; i++) {
-    const first = $(rows[i]);
-    const link = first.find("a[href^='/cnadm/matchups/']").first();
-    if (!link.length) continue;
-    const id = Number(link.attr("href")?.split("/").at(-1));
-    const second = $(rows[i + 1]);
+    const first = rows[i];
+    const id = boardMatchupId($, first);
+    if (id == null) continue;
+    const second = rows[i + 1];
     const f1 = corner(first), f2 = corner(second);
-    if (!Number.isSafeInteger(id) || !f1.name || !f2.name) continue;
+    if (!f1.name || !f2.name) continue;
     const one = prices(first, id, 1), two = prices(second, id, 2);
     const quotes = [...one].flatMap(([book, a]) => two.has(book) ? [{ now: [a, two.get(book)!] as [number, number], open: [null, null] as [null, null] }] : []);
     const methodsForPair = methods.find(row => row.f1Name === f1.name && row.f2Name === f2.name);

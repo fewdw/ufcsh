@@ -788,6 +788,23 @@ db.exec(`CREATE TABLE IF NOT EXISTS cancelled_bouts (
 db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_f1 ON cancelled_bouts(f1_id)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_f2 ON cancelled_bouts(f2_id)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_board ON cancelled_bouts(board_pk)");
+// Pairings UFCStats listed on a coming card and then dropped (or gave one
+// corner a new opponent): cancellations seen at first hand, with both
+// fighters' ids, whatever FightOdds.io or an article says. A pairing listed
+// on the card again is no longer dropped and its row goes.
+db.exec(`CREATE TABLE IF NOT EXISTS dropped_bouts (
+  event_id     TEXT NOT NULL,
+  f1_id        TEXT NOT NULL,
+  f2_id        TEXT NOT NULL,
+  fight_id     TEXT NOT NULL,
+  weight_class TEXT NOT NULL DEFAULT '',
+  f1_name      TEXT NOT NULL,
+  f2_name      TEXT NOT NULL,
+  dropped_at   INTEGER NOT NULL,
+  PRIMARY KEY (event_id, f1_id, f2_id)
+) WITHOUT ROWID`);
+db.exec("CREATE INDEX IF NOT EXISTS idx_dropped_bouts_f1 ON dropped_bouts(f1_id)");
+db.exec("CREATE INDEX IF NOT EXISTS idx_dropped_bouts_f2 ON dropped_bouts(f2_id)");
 // Whom a fighter replaced, for the bookings a profile lists as fallen through.
 db.exec("CREATE INDEX IF NOT EXISTS idx_fights_f1_replaced ON fights(f1_replaced_id) WHERE f1_replaced_id IS NOT NULL");
 db.exec("CREATE INDEX IF NOT EXISTS idx_fights_f2_replaced ON fights(f2_replaced_id) WHERE f2_replaced_id IS NOT NULL");
@@ -826,6 +843,7 @@ const revisionTables: Record<string, string[]> = {
   rankings: ["profiles"],
   ranking_history: ["profiles"],
   cancelled_bouts: ["profiles"],
+  dropped_bouts: ["profiles"],
   antidoping_tests: ["profiles"],
 };
 for (const [table, revisions] of Object.entries(revisionTables)) {

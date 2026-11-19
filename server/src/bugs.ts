@@ -992,6 +992,9 @@ function cancelledBoutsUnread(): BugCheck {
   const items: BugItem[] = [];
   const listedAt = Number(getMeta("cancelled_boards_listed_at")) || null;
   const listError = getMeta("cancelled_boards_error");
+  // Blocked by FightOdds.io's firewall, its boards wait; UFCStats card drops
+  // and event articles still list each card's cancellations meanwhile.
+  const blocked = /Cloudflare blocked this server/.test(`${listError} ${getMeta("fightodds_error") ?? ""}`);
   if (listError || !listedAt || Date.now() - listedAt > 2 * 86_400_000) {
     items.push({
       key: "list",
@@ -1051,8 +1054,9 @@ function cancelledBoutsUnread(): BugCheck {
     id: "cancelled-unread",
     group: "Fights & events",
     label: "Cancelled bouts not read",
-    description: "Profiles list a fighter's cancelled bouts (behind the Cancelled switch on Fights) from FightOdds.io, which keeps every bout ever posted to a UFC card and flags the ones that fell through, with both fighters linked to their UFCStats page. It began keeping them in October 2013: an earlier card's cancellations are only on its event page, from Wikipedia. Its board list is read daily, each coming card every six hours and every past card once after it's over. Listed here: the board list or a board that failed (check the error; \"Unknown query\" means FightOdds.io rebuilt its app, see the FightOdds.io check under Odds), boards the archive pass hasn't reached yet, and cards we list that have no board on their date, whose cancellations are missing.",
-    grade: (item) => item.key === "list" ? "must"
+    description: "Profiles list a fighter's cancelled bouts (behind the Cancelled switch on Fights) from FightOdds.io, which keeps every bout ever posted to a UFC card and flags the ones that fell through, with both fighters linked to their UFCStats page. It began keeping them in October 2013: an earlier card's cancellations are only on its event page, from Wikipedia. Its board list is read daily, each coming card every six hours and every past card once after it's over. Listed here: the board list or a board that failed (check the error; \"Unknown query\" means FightOdds.io rebuilt its app, see the FightOdds.io check under Odds), boards the archive pass hasn't reached yet, and cards we list that have no board on their date, whose cancellations are missing. Bouts UFCStats drops from a coming card, and the article's scrapped bouts, are listed without it, so while FightOdds.io's firewall blocks this server everything here is minor.",
+    grade: (item) => blocked && item.key !== "unread" ? "minor"
+      : item.key === "list" ? "must"
       : item.key === "unread" ? "ok"
         : (daysFrom(item.date) ?? -999) >= -3 ? "must" : "minor",
   }, items);
@@ -2387,15 +2391,24 @@ function potentialMatchupGaps(): BugCheck {
   }
   return check({ id: "odds-potential-matchups", group: "Odds", label: "Potential matchup coverage",
     description: "The BestFightOdds and FightOdds.io future boards supply unconfirmed matchup prices at startup and every five minutes. Stale reads preserve the last snapshot. Missing fighter identities leave career comparisons incomplete; re-reading retries identity matching.",
-    grade: item => item.key.startsWith("board:") ? "must" : "minor",
+    // FightOdds.io's board is the extra one: while BestFightOdds' reads, its
+    // loss costs a few unconfirmed pairings, not the list.
+    grade: item => item.key === "board:fightodds" && items.every(other => other.key !== "board:bestfightodds") ? "minor"
+      : item.key.startsWith("board:") ? "must" : "minor",
   }, items);
 }
 
 /** FightOdds.io prices upcoming bouts every five minutes. Unread for half an
  *  hour, lines fall back to BestFightOdds' slower pass: the app's API moved,
- *  rebuilt the queries it accepts, or started asking for its bot check. */
+ *  rebuilt the queries it accepts, started asking for its bot check, or its
+ *  Cloudflare blocked this server (since 2026-11-17). With BestFightOdds still
+ *  storing prices for coming bouts it's a minor loss of pace, not missing odds. */
 function fightOddsUnread(): BugCheck {
   const readAt = Number(getMeta("fightodds_read_at")) || null;
+  const newest = (sql: string) => (db.prepare(sql).get() as { at: number | null }).at ?? 0;
+  const coming = "JOIN fights f ON f.id = x.fight_id JOIN events e ON e.id = f.event_id WHERE e.complete = 0 AND e.date >= date('now', '-1 day')";
+  const covered = Date.now() - newest(`SELECT max(x.fetched_at) AS at FROM odds x ${coming} AND x.source_url LIKE 'https://www.bestfightodds.com/%'`) < 9 * 3_600_000
+    && Date.now() - newest(`SELECT max(x.fetched_at) AS at FROM method_odds x ${coming} AND x.source_url LIKE 'https://www.bestfightodds.com/%'`) < 6 * 3_600_000;
   const items: BugItem[] = readAt && Date.now() - readAt < 30 * 60_000 ? [] : [{
     key: "fightodds",
     title: "FightOdds.io",
@@ -2408,8 +2421,8 @@ function fightOddsUnread(): BugCheck {
     id: "odds-fightodds-unread",
     group: "Odds",
     label: "FightOdds.io not read",
-    description: "Upcoming moneylines come from FightOdds.io's event boards every five minutes, matched by UFCStats id; BestFightOdds fills anything they miss every few hours. While FightOdds.io is unread, lines only move at BestFightOdds' pace. HTTP 429 means the host is rate limiting us: all requests in the worker pause until Retry-After (five minutes when omitted), then the next scheduled pass retries. \"Unknown query\" (HTTP 403) means FightOdds.io rebuilt its app: it only answers its app's own query texts, so copy the new ones into server/src/scrape/fightodds-queries.ts. Otherwise: a changed field, or the API now requiring its Cloudflare Turnstile token.",
-    grade: "must",
+    description: "Upcoming moneylines come from FightOdds.io's event boards every five minutes, matched by UFCStats id; BestFightOdds fills anything they miss every few hours, and its props every hour while FightOdds.io's have stopped. While FightOdds.io is unread, lines only move at BestFightOdds' pace and its cancelled-bout boards wait (UFCStats card drops and event articles still list cancellations). Minor while BestFightOdds is storing both lines and props for coming bouts. HTTP 429 means the host is rate limiting us: all requests in the worker pause until Retry-After (five minutes when omitted), then the next scheduled pass retries. \"Cloudflare blocked this server\" is a firewall rule against our address: the host is tried after an hour, then each block in a row doubles the wait up to a day; only FightOdds.io can lift it. \"Unknown query\" (HTTP 403) means FightOdds.io rebuilt its app: it only answers its app's own query texts, so copy the new ones into server/src/scrape/fightodds-queries.ts. Otherwise: a changed field, or the API now requiring its Cloudflare Turnstile token.",
+    grade: covered ? "minor" : "must",
   }, items);
 }
 

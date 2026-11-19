@@ -20,6 +20,7 @@ import { scrapeAthleteDirectoryPage, scrapeEventCard, scrapeEventSchedules, scra
 import { assignPerBout, assignPositions, assignRounds, assignSegments, cardOrder, CARD_REFRESH_INTERVAL as CARD_INTERVAL, matchEventSchedule, sharesBout, upcomingSegmentTargets } from "./card-schedule.ts";
 import {
   alignScrapedOdds,
+  BoardMarkupError,
   findOddsEventPages,
   methodOddsForFight,
   fetchMeanMoneyline,
@@ -107,8 +108,9 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
 
     const currentIds = new Set(detail.fights.map((f) => f.id));
     const existing = db
-      .prepare("SELECT id, f1_id, f2_id, f1_outcome, f2_outcome, detail_json FROM fights WHERE event_id = ?")
-      .all(detail.id) as { id: string; f1_id: string; f2_id: string; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null }[];
+      .prepare("SELECT id, f1_id, f2_id, f1_name, f2_name, weight_class, f1_outcome, f2_outcome, detail_json FROM fights WHERE event_id = ?")
+      .all(detail.id) as { id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; weight_class: string;
+        f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null }[];
     const previous = new Map(existing.map(f => [f.id, f]));
     if (existing.length !== currentIds.size || detail.fights.some(f => !previous.has(f.id))) {
       db.prepare("UPDATE events SET segments_fetched_at = NULL WHERE id = ?").run(detail.id);
@@ -117,8 +119,22 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
       const old = previous.get(f.id);
       return !old || old.f1_outcome !== f.f1.outcome || old.f2_outcome !== f.f2.outcome;
     });
+    // Pairings that fell through before the card was fought, seen first hand.
+    // UFCStats re-creating a bout under a new id is the same pairing, and a
+    // read that drops most of a full card is a bad page, not a wave of
+    // cancellations (an empty one never gets here).
+    const gone = existing.filter(row => !currentIds.has(row.id));
+    const listedPair = (a: string, b: string) => detail.fights.some(f => (f.f1.id === a && f.f2.id === b) || (f.f1.id === b && f.f2.id === a));
+    const trustDrops = !complete && !wasComplete && !(existing.length >= 6 && gone.length > existing.length / 2);
+    const recordDrop = (row: (typeof existing)[number]) => {
+      if (!trustDrops || !row.f1_id || !row.f2_id || row.f1_id === row.f2_id || listedPair(row.f1_id, row.f2_id)) return;
+      db.prepare(`INSERT OR IGNORE INTO dropped_bouts (event_id, f1_id, f2_id, fight_id, weight_class, f1_name, f2_name, dropped_at)
+        SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM dropped_bouts WHERE event_id = ? AND f1_id = ? AND f2_id = ?)`)
+        .run(detail.id, row.f1_id, row.f2_id, row.id, row.weight_class ?? "", row.f1_name, row.f2_name, Date.now(), detail.id, row.f2_id, row.f1_id);
+    };
     for (const row of existing) {
       if (!currentIds.has(row.id)) {
+        recordDrop(row);
         db.prepare("DELETE FROM fights WHERE id = ?").run(row.id);
         db.prepare("DELETE FROM odds WHERE fight_id = ?").run(row.id);
         db.prepare("DELETE FROM method_odds WHERE fight_id = ?").run(row.id);
@@ -145,10 +161,17 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
         perf_bonus = excluded.perf_bonus, fotn_bonus = excluded.fotn_bonus
     `);
 
+    const relisted = db.prepare("DELETE FROM dropped_bouts WHERE event_id = ? AND ((f1_id = ? AND f2_id = ?) OR (f1_id = ? AND f2_id = ?))");
     for (const f of detail.fights) {
       const old = previous.get(f.id);
       // A briefly stale source page must not erase a result already published.
       if (old && fightIsComplete(old) && f.f1.outcome == null && f.f2.outcome == null) continue;
+      relisted.run(detail.id, f.f1.id, f.f2.id, f.f2.id, f.f1.id);
+      // A corner given a new opponent breaks up the old pairing. The same
+      // name under a new id is UFCStats correcting a fighter's page, not a change.
+      if (old && !(old.f1_id === f.f2.id && old.f2_id === f.f1.id)
+        && ((old.f1_id !== f.f1.id && normName(old.f1_name) !== normName(f.f1.name))
+          || (old.f2_id !== f.f2.id && normName(old.f2_name) !== normName(f.f2.name)))) recordDrop(old);
       if (old && (old.f1_id !== f.f1.id || old.f2_id !== f.f2.id)) {
         const row = db.prepare("SELECT markets_json FROM method_odds WHERE fight_id = ?").get(f.id) as { markets_json: string } | undefined;
         if (row) {
@@ -1205,6 +1228,9 @@ export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: stri
     try {
       board = await scrapeEventMethodOdds(sourceUrl);
     } catch (err) {
+      // A board in a shape the parser no longer reads is a fault here, not the
+      // source's moment: the scheduled passes surface it as a sync error.
+      if (err instanceof BoardMarkupError && !onlyFightId) throw err;
       log(`method odds scrape failed [${sourceUrl}]:`, String(err));
       failed++;
       continue;

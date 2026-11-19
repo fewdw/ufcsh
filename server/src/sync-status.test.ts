@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
-import { DATA_DIR, getMeta, setMeta } from "./db.ts";
+import { DATA_DIR, db, getMeta, setMeta } from "./db.ts";
 import { clearSyncErrors, OUTAGE_MS, outageReport, recentSyncError, recordSyncError, syncStatus } from "./sync-status.ts";
 
 test("sync errors are kept newest first, grouped by job, and sources say when they are late", () => {
@@ -31,6 +31,26 @@ test("sync errors are kept newest first, grouped by job, and sources say when th
   }
 });
 
+
+test("odds are late when no source has stored a price for a coming bout lately, whichever source it is", t => {
+  const eventId = "face000000000081", fightId = "face000000000082";
+  t.after(() => {
+    db.prepare("DELETE FROM odds WHERE fight_id = ?").run(fightId);
+    db.prepare("DELETE FROM method_odds WHERE fight_id = ?").run(fightId);
+    db.prepare("DELETE FROM fights WHERE id = ?").run(fightId);
+    db.prepare("DELETE FROM events WHERE id = ?").run(eventId);
+  });
+  // Far enough ahead that it holds the newest stored prices of any coming bout.
+  const now = Date.now() + 365 * 86_400_000;
+  db.prepare("INSERT INTO events (id, name, date, complete) VALUES (?, 'UFC Odds health fixture', '2199-01-01', 0)").run(eventId);
+  db.prepare("INSERT INTO fights (id, event_id, ord, weight_class, f1_id, f2_id, f1_name, f2_name) VALUES (?, ?, 0, 'Lightweight', 'x1', 'x2', 'X One', 'X Two')").run(fightId, eventId);
+  db.prepare("INSERT INTO odds (fight_id, f1_close, f2_close, source_url, fetched_at) VALUES (?, '-150', '+130', 'https://www.bestfightodds.com/x', ?)").run(fightId, now - 60_000);
+  db.prepare("INSERT INTO method_odds (fight_id, markets_json, source_url, fetched_at) VALUES (?, '{}', 'https://www.bestfightodds.com/x', ?)").run(fightId, now - 7 * 3_600_000);
+  const source = (name: string) => syncStatus(now).sources.find(entry => entry.name === name);
+  assert.equal(source("Odds (FightOdds.io)"), undefined, "no one source stands for odds");
+  assert.deepEqual([source("Odds (coming bouts)")?.at, source("Odds (coming bouts)")?.late], [now - 60_000, false]);
+  assert.deepEqual([source("Props (coming bouts)")?.at, source("Props (coming bouts)")?.late], [now - 7 * 3_600_000, true]);
+});
 
 test("a locked error archive logs the original failure without rejecting, then resumes saving", (t) => {
   const saved = { errors: getMeta("sync_errors"), last: getMeta("last_sync_error") };
@@ -104,6 +124,18 @@ test("a source's passing failure waits to see whether it lasts; an answer in bet
   const lag = new Error("Error: ufc.com event 1351 carried no fight card");
   assert.equal(outageReport("card_feed x", lag, t0), false);
   assert.equal(outageReport("card_feed x", lag, t0 + OUTAGE_MS), true);
+});
+
+test("a firewall block that goes on is reported once a day for its host, not every six hours per job", () => {
+  const HOUR = 3_600_000, t0 = 3_000_000_000;
+  const blocked = (job: string) => new Error(`HTTP 403 for https://blocked-host.example/gql; retry after 2026-11-18T23:12:18.851Z: Cloudflare blocked this server (Ray ID ${job})`);
+  assert.equal(outageReport("blocked job", blocked("a5"), t0), true);
+  assert.equal(outageReport("other job", blocked("a6"), t0 + HOUR), false, "the host was reported already");
+  assert.equal(outageReport("blocked job", blocked("a7"), t0 + 6 * HOUR), false);
+  assert.equal(outageReport("other job", blocked("a8"), t0 + 23 * HOUR), false);
+  assert.equal(outageReport("other job", blocked("a9"), t0 + 24 * HOUR), true);
+  const elsewhere = new Error("HTTP 403 for https://another-host.example/x; retry after 2026-11-18T23:12:18.851Z: Cloudflare blocked this server");
+  assert.equal(outageReport("third job", elsewhere, t0 + 25 * HOUR), true, "another host is its own news");
 });
 
 test("a fault of our own is reported at once, then not again on every pass", () => {

@@ -130,9 +130,10 @@ export function storeCancelledBoard(board: Pick<Board, "pk" | "date" | "name">, 
 type Corner = { id: string | null; name: string };
 
 /** A booking that fell through on one card, from whichever source lists it:
- *  FightOdds.io's board (by UFCStats id), the card's Wikipedia article
- *  (a bout it says was scrapped), or the replacement the article names (the
- *  fighter replaced, against the opponent who stayed). */
+ *  FightOdds.io's board (by UFCStats id), a pairing UFCStats listed on the
+ *  card and dropped before it was fought (`dropped_bouts`), the card's
+ *  Wikipedia article (a bout it says was scrapped), or the replacement the
+ *  article names (the fighter replaced, against the opponent who stayed). */
 export type Cancellation = {
   key: string;
   date: string;
@@ -175,6 +176,7 @@ const samePair = (a: { f1: Corner; f2: Corner }, b: { f1: Corner; f2: Corner }) 
   (samePerson(a.f1, b.f1) && samePerson(a.f2, b.f2)) || (samePerson(a.f1, b.f2) && samePerson(a.f2, b.f1));
 
 const cardColumns = "id, name, date, wiki_title, cancelled_json";
+const UFCSTATS_EVENT = "http://ufcstats.com/event-details/";
 const wikiUrl = (title: string) => `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`;
 
 /** The card a board is for: ours within a day of it (FightOdds.io dates some
@@ -203,8 +205,9 @@ function divisionAt(id: string | null, date: string): string | undefined {
 }
 
 /** Every booking that fell through on one card, each pairing once: the
- *  board's first (its ids are UFCStats'), then the article's scrapped bouts,
- *  then the pairings its replacements broke up. */
+ *  board's first (its ids are UFCStats'), then the pairings UFCStats itself
+ *  dropped, then the article's scrapped bouts, then the pairings its
+ *  replacements broke up. */
 export function cardCancellations(card: Card): Cancellation[] {
   const fights = prepared(`SELECT weight_class, f1_id, f2_id, f1_name, f2_name, f1_replaced, f2_replaced, f1_replaced_id, f2_replaced_id,
     f1_outcome IS NOT NULL OR f2_outcome IS NOT NULL AS fought FROM fights WHERE event_id = ? ORDER BY ord`).all(card.id) as {
@@ -241,6 +244,17 @@ export function cardCancellations(card: Card): Cancellation[] {
       const f2 = { id: row.f2_id, name: row.f2_name };
       add({ key: row.slug, f1, f2, division: checked(row.weight_class, f1, f2), reason: null, source_url: `https://fightodds.io/fights/${row.slug}/odds` }, true);
     }
+  }
+
+  // Seen first hand, so it needs no other source's word; a pairing back on
+  // the card is skipped like an article's.
+  const dropped = prepared(`SELECT f1_id, f2_id, f1_name, f2_name, weight_class FROM dropped_bouts
+    WHERE event_id = ? ORDER BY dropped_at, f1_id`).all(card.id) as { f1_id: string; f2_id: string; f1_name: string; f2_name: string; weight_class: string }[];
+  for (const row of dropped) {
+    const f1 = { id: row.f1_id, name: row.f1_name };
+    const f2 = { id: row.f2_id, name: row.f2_name };
+    add({ key: `${card.id}:dropped:${row.f1_id}:${row.f2_id}`, f1, f2, division: checked(row.weight_class, f1, f2), reason: null,
+      source_url: `${UFCSTATS_EVENT}${card.id}` });
   }
 
   let scrapped: { f1: string; f2: string; f1_id?: string | null; f2_id?: string | null; division?: string | null; reason?: string | null }[] = [];
@@ -327,7 +341,9 @@ export function cancelledBoutsOf(fighterId: string, fought: Fought[]): Cancelled
     UNION SELECT ${cardColumns} FROM events WHERE id IN (SELECT event_id FROM fights WHERE f1_replaced_id = ?2
       UNION SELECT event_id FROM fights WHERE f2_replaced_id = ?2
       UNION SELECT event_id FROM fights WHERE f1_id = ?2 AND f2_replaced <> ''
-      UNION SELECT event_id FROM fights WHERE f2_id = ?2 AND f1_replaced <> '')`);
+      UNION SELECT event_id FROM fights WHERE f2_id = ?2 AND f1_replaced <> ''
+      UNION SELECT event_id FROM dropped_bouts WHERE f1_id = ?2
+      UNION SELECT event_id FROM dropped_bouts WHERE f2_id = ?2)`);
   for (const card of others.all(`%"${fighterId}"%`, fighterId) as Card[]) cards.set(card.id, card);
   for (const card of cards.values()) entries.push(...cardCancellations(card).filter((entry) => entry.f1.id === fighterId || entry.f2.id === fighterId));
   if (!entries.length) return [];

@@ -23,3 +23,16 @@ test("BestFightOdds future prices pair the same book and correct corners, ignori
   assert.deepEqual(rows[1].quotes, []);
   assert.throws(() => parsePotentialOdds("<html>Unavailable</html>"), /board is missing/);
 });
+
+test("the future board's current markup (matchup id on the row header) still reads both corners' prices", () => {
+  const html = `<table class="odds-table"><tbody>
+    <tr ><th scope="row" data-admin-matchup="45000"><a href="/fighters/first-1"><span class="t-b-fcc">First Fighter</span></a></th><td class="but-sg" data-li="[21,1,45000]"><span>-150</span></td><td class="button-cell but-si" data-li="[1,45000]"></td></tr>
+    <tr ><th scope="row"><a href="/fighters/second-2"><span class="t-b-fcc">Second Fighter</span></a></th><td class="but-sg" data-li="[21,2,45000]"><span>+130</span></td><td class="button-cell but-si" data-li="[2,45000]"></td></tr>
+    </tbody></table>`;
+  const rows = parsePotentialOdds(html);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].slug, "bfo-45000");
+  assert.deepEqual([rows[0].f1.name, rows[0].f2.name], ["First Fighter", "Second Fighter"]);
+  assert.deepEqual(rows[0].quotes.map(quote => quote.now), [[-150, 130]]);
+  assert.throws(() => parsePotentialOdds(html.replace(' data-admin-matchup="45000"', "").replaceAll(/ class="button-cell but-si" data-li="\[\d,45000\]"/g, "")), /markup unrecognized/);
+});
