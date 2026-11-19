@@ -115,6 +115,12 @@ test("a board whose priced bouts can't be read fails loudly; one with no prices 
     .replace('<tr ><th scope="row"><a href="/fighters/navajo-stirling', '<tr><td></td></tr><tr ><th scope="row"><a href="/fighters/navajo-stirling'), url), BoardMarkupError);
   // A blank or malformed id falls through to the chart key.
   assert.equal(parseEventMethodOddsHtml(currentBoard(() => `scope="row" data-admin-matchup=""`), url).length, 2);
+  // A second corner whose first corner is gone, and a price shown in a bare cell.
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard((id) => `scope="row" data-admin-matchup="${id}"`)
+    .replace(/<tr ><th scope="row" data-admin-matchup="45574">[\s\S]*?<\/tr>/, ""), url), BoardMarkupError);
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard(() => `scope="row"`).replace("<td></td><td class=\"button-cell but-sip\" data-li=\"[1,45574,8,1]\">", "<td>+150</td><td class=\"button-cell but-sip\" data-li=\"[1,45574,8,1]\">"), url), BoardMarkupError);
+  // Prices shown with keys in a shape this parser doesn't know.
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard(() => `scope="row"`).replaceAll(/data-li="\[(\d+),(\d),(\d+)\]"/g, 'data-li="$1-$2-$3"'), url), BoardMarkupError);
   // Prices shown without the keys that tie them to a corner and bout.
   assert.throws(() => parseEventMethodOddsHtml(currentBoard(() => `scope="row"`).replaceAll(/ data-li="[^"]*"/g, ""), url), BoardMarkupError);
   // A second corner missing before the next bout: that bout's first corner is not it.

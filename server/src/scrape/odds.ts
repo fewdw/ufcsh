@@ -502,11 +502,18 @@ export function boardRows($: cheerio.CheerioAPI, sourceUrl: string): cheerio.Che
   const secondCorner = (row: cheerio.Cheerio<any> | undefined, id: number) => !!row && row.find("th a[href^='/fighters/']").length > 0
     && boardMatchupId($, row) == null
     && row.find("td[data-li]").toArray().every((cell) => { const key = dataKey($, cell, 3); return !key || (key[1] === 2 && key[2] === id); });
+  // Shown prices are keyed [book, corner, bout] or, on a prop, [book, outcome, bout, market, corner].
   const unkeyedPrice = (row: cheerio.Cheerio<any>) => row.find("td").toArray()
-    .some((cell) => /^[+−–-]\d{3,}$/.test(cleanText($(cell).find("span").first().text())) && !$(cell).attr("data-li"));
+    .some((cell) => /^[+−–-]\d{3,}/.test(cleanText($(cell).text())) && !dataKey($, cell, 3) && !dataKey($, cell, 5));
+  // A second corner's row belongs to the bout on the row above.
+  const orphanSecond = (row: cheerio.Cheerio<any>, i: number) => row.find("th a[href^='/fighters/']").length > 0
+    && row.find("td[data-li]").toArray().some((cell) => {
+      const key = dataKey($, cell, 3);
+      return !!key && key[1] === 2 && (i === 0 || boardMatchupId($, rows[i - 1]) !== key[2]);
+    });
   const unreadable = rows.filter((row, i) => {
     const id = boardMatchupId($, row);
-    return unkeyedPrice(row) || (id == null ? firstCornerKeys($, row).length > 0 : !secondCorner(rows[i + 1], id));
+    return unkeyedPrice(row) || (id == null ? firstCornerKeys($, row).length > 0 || orphanSecond(row, i) : !secondCorner(rows[i + 1], id));
   }).length;
   if (unreadable) {
     throw new BoardMarkupError(`BestFightOdds board markup unrecognized: ${unreadable} priced ${unreadable === 1 ? "bout" : "bouts"} without both fighters or a matchup id (${sourceUrl})`);
