@@ -6,6 +6,8 @@ import {
   closingLine,
   methodOddsForFight,
   parseEventMethodOddsHtml,
+  rangeMiddle,
+  scrapeOdds,
   upcomingEventBoards,
   type ScrapedOdds,
 } from "./odds.ts";
@@ -97,6 +99,12 @@ test("the current board markup keys each bout by its row header, and its props s
     const odds = methodOddsForFight(board, "Navajo Stirling", "Jiri Prochazka");
     assert.ok(odds);
     assert.deepEqual(odds.moneylineKeys, { f1: [2, 45574], f2: [1, 45574] });
+    // Each book's moneyline stays with its fighter: the close is their middle.
+    assert.deepEqual(odds.moneyline, {
+      f1: [{ bookmaker: "FanDuel", line: "-170" }, { bookmaker: "BetMGM", line: "-162" }],
+      f2: [{ bookmaker: "FanDuel", line: "+132" }, { bookmaker: "BetMGM", line: "+130" }],
+    });
+    assert.deepEqual([rangeMiddle(["-170", "-162"]), rangeMiddle(["+132", "+130"])], ["-166", "+131"]);
     assert.equal(odds.f2.ko?.prices[0].line, "+250");
     assert.equal(odds.f1.ko, undefined);
     assert.deepEqual(odds.additional.map((quote) => quote.prices.map((price) => price.line)), [["-152", "-167"]]);
@@ -284,4 +292,20 @@ test("front-page boards are dated to the nearest year, including a card split ov
     ["2026-10-04", "https://www.bestfightodds.com/events/ufc-332-4330"],
     ["2027-01-02", "https://www.bestfightodds.com/events/ufc-340-1"],
   ]);
+});
+
+test("a booked bout the source still keeps under Future Events takes that line until it is dated", async (t) => {
+  const row = (event: string, date: string, [one, two]: [string, string], [a, b]: [string[], string[]]) => `
+    <tr class="main-row"><th class="oppcell"><a href="/fighters/${one.toLowerCase().replace(" ", "-")}-1">${one}</a></th>${a.map((line) => `<td class="moneyline"><span>${line}</span></td>`).join("")}<td class="item-non-mobile">${event}</td></tr>
+    <tr><th class="oppcell"><a href="/fighters/${two.toLowerCase().replace(" ", "-")}-2">${two}</a></th>${b.map((line) => `<td class="moneyline"><span>${line}</span></td>`).join("")}<td class="item-non-mobile">${date}</td></tr>`;
+  const future = row('<a href="/events/future-events-197">Future Events</a>', "", ["Joshua Van", "Manel Kape"], [["-121", "-138", "-121"], ["-103", "-103", "+111"]]);
+  const old = row('<a href="/events/fury-fc-71-2703">Fury FC 71</a>', "Nov 6th 2022", ["Joshua Van", "Tyler Bialecki"], [["-500", "-1000", "-800"], ["+375", "+500", "+500"]]);
+  let page = `<table>${old}<tr class="event-header"><td><a href="/events/future-events-197">Future Events</a></td></tr>${future}</table>`;
+  t.mock.method(globalThis, "fetch", async () => new Response(page));
+  const url = "https://www.bestfightodds.com/fighters/joshua-van-undated";
+  const found = await scrapeOdds("Joshua Van", "Manel Kape", "2099-01-30", url);
+  assert.deepEqual(found && [found.f1.open, found.f1.close, found.f2.close], ["-121", closingLine(["-121", "-138", "-121"]), closingLine(["-103", "-103", "+111"])]);
+  // Two undated rows for the pair: neither can be told to be this booking.
+  page = `<table>${future}${future}</table>`;
+  assert.equal(await scrapeOdds("Joshua Van", "Manel Kape", "2099-01-30", `${url}-twice`), null);
 });

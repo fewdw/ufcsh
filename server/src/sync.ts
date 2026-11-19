@@ -24,6 +24,7 @@ import {
   findOddsEventPages,
   methodOddsForFight,
   fetchMeanMoneyline,
+  rangeMiddle,
   resolveMeanPrices,
   scrapeEventMethodOdds,
   scrapeFighterOddsHistory,
@@ -1221,7 +1222,7 @@ export async function syncOddsForFight(fight: { id: string; f1_id?: string | nul
     oddsNames(fight.f2_id, fight.f2_name),
     fight.date,
     // The fighter page that last held the bout; a FightOdds.io line has none.
-    prior?.source_url?.startsWith("https://www.bestfightodds.com/") ? prior.source_url : null,
+    prior?.source_url?.startsWith("https://www.bestfightodds.com/fighters/") ? prior.source_url : null,
   );
   // Record the look either way. A row with no prices is invisible everywhere
   // else (every reader requires a closing line), so this only dates the check.
@@ -1369,8 +1370,50 @@ export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: stri
     const row = storedLine.get(fightId) as { f1_open: string | null; f1_close: string | null } | undefined;
     return flippedOpen(row?.f1_open, row?.f1_close);
   };
+  // An upcoming card's board is its freshest moneyline, every bout in one
+  // request: the close is the middle of the books' prices, as on a fighter
+  // page. The open stays the fighter page's or, for a bout seen here first,
+  // comes from the board chart once.
+  const boardLine = db.prepare(`
+    INSERT INTO odds (fight_id, f1_close, f2_close, source_url, checked_at, fetched_at) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(fight_id) DO UPDATE SET
+      f1_close = excluded.f1_close, f2_close = excluded.f2_close,
+      -- A fighter page stays the source, so the fighter-page pass reads it first.
+      source_url = CASE WHEN odds.source_url LIKE 'https://www.bestfightodds.com/fighters/%' THEN odds.source_url ELSE excluded.source_url END,
+      checked_at = excluded.checked_at, fetched_at = excluded.fetched_at
+  `);
+  const freshFightOddsLine = db.prepare("SELECT 1 FROM odds WHERE fight_id = ? AND source_url LIKE 'https://fightodds.io/%' AND fetched_at > ?");
+  const missingOpen = db.prepare("SELECT 1 FROM odds WHERE fight_id = ? AND f1_close IS NOT NULL AND (f1_open IS NULL OR f2_open IS NULL)");
+  const fillOpen = db.prepare("UPDATE odds SET f1_open = ?, f2_open = ? WHERE fight_id = ? AND (f1_open IS NULL OR f2_open IS NULL)");
+  const frozen = event.complete ? new Set<string>() : frozenNow();
   let stored = 0;
   for (const { fight, odds } of found.values()) {
+    // A bout on or over keeps the line and props it had at the bell.
+    if (frozen.has(fight.id)) continue;
+    if (!event.complete && odds.moneyline && !freshFightOddsLine.get(fight.id, Date.now() - 30 * 60_000)) {
+      const f1Close = rangeMiddle(odds.moneyline.f1.map((price) => price.line));
+      const f2Close = rangeMiddle(odds.moneyline.f2.map((price) => price.line));
+      const now = current.get(fight.id, eventId) as { f1_id: string; f2_id: string } | undefined;
+      const reversed = now?.f1_id === fight.f2_id && now?.f2_id === fight.f1_id && fight.f1_id !== fight.f2_id;
+      if (now && consistentMoneyline(f1Close, f2Close) && (reversed || (now.f1_id === fight.f1_id && now.f2_id === fight.f2_id))) {
+        const [a, b] = reversed ? [f2Close, f1Close] : [f1Close, f2Close];
+        boardLine.run(fight.id, a, b, odds.sourceUrl, Date.now(), Date.now());
+      }
+      if (odds.moneylineKeys && missingOpen.get(fight.id)) {
+        try {
+          if (!onlyFightId) await yieldToOpenedFights();
+          const prices = await fetchMeanMoneyline(odds.moneylineKeys);
+          const after = current.get(fight.id, eventId) as { f1_id: string; f2_id: string } | undefined;
+          const turned = after?.f1_id === fight.f2_id && after?.f2_id === fight.f1_id && fight.f1_id !== fight.f2_id;
+          if (prices && after && (turned || (after.f1_id === fight.f1_id && after.f2_id === fight.f2_id))) {
+            const [a, b] = turned ? [prices.f2, prices.f1] : [prices.f1, prices.f2];
+            fillOpen.run(a.open, b.open, fight.id);
+          }
+        } catch (err) {
+          log(`mean opening line failed [${fight.id}]:`, String(err));
+        }
+      }
+    }
     if (odds.moneylineKeys && !missingMoneyline.get(fight.id) && storedOpenFlipped(fight.id)) {
       try {
         const prices = await fetchMeanMoneyline(odds.moneylineKeys);
@@ -1496,14 +1539,18 @@ export async function syncMethodOddsBackfill(limitEvents = 20): Promise<MethodOd
 }
 
 export async function syncUpcomingMethodOdds(limitEvents = 12): Promise<MethodOddsSyncResult> {
-  // Hourly while FightOdds.io's props have stopped, so this board takes over.
-  const every = metaAgeMs("fightodds_props_at") > HOUR ? HOUR : 6 * HOUR;
+  // A card's board carries its moneylines and props in one request: every five
+  // minutes on fight day, every fifteen in fight week, and further out hourly
+  // while FightOdds.io's props have stopped (six-hourly while they run).
+  const now = Date.now();
+  const later = metaAgeMs("fightodds_props_at") > HOUR ? HOUR : 6 * HOUR;
   const targets = db.prepare(`
     SELECT id FROM events
     WHERE complete = 0 AND date >= date('now', '-1 day')
-      AND (bfo_checked_at IS NULL OR bfo_checked_at < ?)
+      AND (bfo_checked_at IS NULL OR bfo_checked_at < CASE
+        WHEN date <= date('now') THEN ? WHEN date <= date('now', '+7 days') THEN ? ELSE ? END)
     ORDER BY date ASC LIMIT ?
-  `).all(Date.now() - every, limitEvents) as { id: string }[];
+  `).all(now - 5 * 60_000, now - 15 * 60_000, now - later, limitEvents) as { id: string }[];
   const total = { events: 0, fights: 0, failed: 0 };
   for (const target of targets) {
     const result = await syncMethodOddsForEvent(target.id);
@@ -1536,7 +1583,9 @@ export async function syncUpcomingOdds(
 
   let stored = 0;
   let failed = 0;
+  const frozen = frozenNow();
   for (const fight of targets) {
+    if (frozen.has(fight.id)) continue;
     try {
       if (await syncOddsForFight(fight)) stored++;
     } catch (err) {
@@ -1548,6 +1597,34 @@ export async function syncUpcomingOdds(
 }
 
 let fightOddsRunning = false;
+
+type BellRow = {
+  id: string; event_id: string; date: string; ord: number; segment: string | null; card_pos: number | null;
+  f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; verdict_live_json?: string | null;
+};
+
+/** On fight night a price stops at the bell: a bout that is on or over, and
+ *  the next one up once the card has started, keeps the price it closed at. */
+function frozenAtBell(fights: BellRow[]): Set<string> {
+  const frozen = new Set<string>();
+  for (const row of fights) {
+    if (!isFightDay(row.date)) continue;
+    if (fightIsComplete(row) || fightIsUnderway(row)) frozen.add(row.id);
+    const same = fights.filter((other) => other.event_id === row.event_id);
+    const next = cardOrder(same).findLast((other) => !fightIsComplete(other));
+    if (next?.id === row.id && same.some((other) => fightIsComplete(other))) frozen.add(row.id);
+  }
+  return frozen;
+}
+
+/** The bouts frozenAtBell holds on the cards being fought now. */
+function frozenNow(): Set<string> {
+  return frozenAtBell(db.prepare(`
+    SELECT f.id, f.event_id, e.date, f.ord, f.segment, f.card_pos, f.f1_outcome, f.f2_outcome, f.detail_json, f.verdict_live_json
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 0 AND e.date BETWEEN date('now', '-1 day') AND date('now')
+  `).all() as BellRow[]);
+}
 
 /** Upcoming lines from FightOdds.io's boards, matched by UFCStats id: each
  *  card's moneylines in two requests (plus one per new bout for its openers),
@@ -1585,17 +1662,7 @@ export async function syncFightOdds({ props = false }: { props?: boolean } = {})
   const card = (date: string) => {
     const fights = (selectFights.all(date, date) as Row[])
       .map((row) => ({ ...row, names1: oddsNames(row.f1_id, row.f1_name), names2: oddsNames(row.f2_id, row.f2_name) }));
-    // On fight night a price stops at the bell: a bout that is on or over, and
-    // the next one up once the card has started, keeps the price it closed at.
-    const frozen = new Set<string>();
-    for (const row of fights) {
-      if (!isFightDay(row.date)) continue;
-      if (fightIsComplete(row) || fightIsUnderway(row)) frozen.add(row.id);
-      const same = fights.filter((other) => other.event_id === row.event_id);
-      const next = cardOrder(same).findLast((other) => !fightIsComplete(other));
-      if (next?.id === row.id && same.some((other) => fightIsComplete(other))) frozen.add(row.id);
-    }
-    return { fights, frozen };
+    return { fights, frozen: frozenAtBell(fights) };
   };
   const inTransaction = (write: () => void) => {
     db.exec("BEGIN IMMEDIATE");
@@ -2154,8 +2221,10 @@ export async function tick(): Promise<void> {
     void guarded("event_crew", () => syncCrew());
 
     // 8. Odds: FightOdds.io's boards every five minutes (props every thirty),
-    //    alongside the tick; then BestFightOdds for any bout without a line
-    //    fetched in the last 6h (fetched_at), so that step self-regulates.
+    //    alongside the tick; BestFightOdds's fighter pages for any bout without
+    //    a line fetched in the last 6h (fetched_at); then each card's
+    //    BestFightOdds board, every five minutes on fight day and fifteen in
+    //    fight week, for its moneylines and props.
     if (!fightOddsRunning && metaAgeMs("fightodds_tried_at") > 5 * 60_000) {
       fightOddsRunning = true;
       touchMeta("fightodds_tried_at");

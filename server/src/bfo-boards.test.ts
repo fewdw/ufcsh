@@ -47,3 +47,65 @@ test("one unreadable board on a date is reported, and the readable one's props a
   const checked = db.prepare("SELECT bfo_checked_at AS at FROM events WHERE id = ?").get(eventId) as { at: number | null };
   assert.ok(checked.at, "checked, so the next pass doesn't re-read it at once");
 });
+
+test("an upcoming card's board sets each bout's line on its own fighters, fills a missing open once, and leaves a bout at the bell alone", async (t) => {
+  const eventId = "face0000000000b9", live = "face0000000000ba", over = "face0000000000bb";
+  const url = "https://www.bestfightodds.com/events/ufc-board-fixture-9003";
+  const today = new Date().toISOString().slice(0, 10);
+  t.after(() => {
+    db.prepare("DELETE FROM odds WHERE fight_id IN (?, ?)").run(live, over);
+    db.prepare("DELETE FROM method_odds WHERE fight_id IN (?, ?)").run(live, over);
+    db.prepare("DELETE FROM fights WHERE event_id = ?").run(eventId);
+    db.prepare("DELETE FROM events WHERE id = ?").run(eventId);
+  });
+  db.prepare("INSERT INTO events (id, name, date, complete, bfo_url) VALUES (?, 'UFC Board fixture', ?, 0, ?)").run(eventId, today, url);
+  // UFCStats has the corners the other way round from the board.
+  db.prepare(`INSERT INTO fights (id, event_id, ord, weight_class, f1_id, f2_id, f1_name, f2_name)
+    VALUES (?, ?, 0, 'Light Heavyweight', 'face0000000000c7', 'face0000000000c6', 'Navajo Stirling', 'Jiri Prochazka')`).run(live, eventId);
+  // This one is being fought.
+  db.prepare(`INSERT INTO fights (id, event_id, ord, weight_class, f1_id, f2_id, f1_name, f2_name, detail_json)
+    VALUES (?, ?, 1, 'Lightweight', 'face0000000000c8', 'face0000000000c9', 'First One', 'Second Two', '{"type":"past"}')`).run(over, eventId);
+  db.prepare("INSERT INTO odds (fight_id, f1_open, f1_close, f2_open, f2_close, source_url, fetched_at) VALUES (?, '-280', '-300', '+230', '+250', 'https://www.bestfightodds.com/fighters/first-one-1', 1)").run(over);
+  const encode = (value: unknown) => Buffer.from([...JSON.stringify(value)].map((c) => {
+    const n = c.charCodeAt(0);
+    return n >= 33 && n <= 126 ? String.fromCharCode(33 + (n - 33 + 47) % 94) : c;
+  }).join("")).toString("base64");
+  let prices = { one: ["+132", "+150"], two: ["-170", "-180"] };
+  const html = () => `<table class="odds-table">
+    <thead><tr><th></th><th data-b="21">FanDuel</th><th data-b="25">BetMGM</th></tr></thead>
+    <tbody>
+      <tr><th scope="row" data-admin-matchup="45574"><a href="/fighters/jiri-prochazka-6058">Jiri Prochazka</a></th><td data-li="[21,1,45574]"><span>${prices.one[0]}</span></td><td data-li="[25,1,45574]"><span>${prices.one[1]}</span></td><td class="but-si" data-li="[1,45574]"></td></tr>
+      <tr><th scope="row"><a href="/fighters/navajo-stirling-18344">Navajo Stirling</a></th><td data-li="[21,2,45574]"><span>${prices.two[0]}</span></td><td data-li="[25,2,45574]"><span>${prices.two[1]}</span></td><td class="but-si" data-li="[2,45574]"></td></tr>
+      <tr><th scope="row" data-admin-matchup="45575"><a href="/fighters/first-one-1">First One</a></th><td data-li="[21,1,45575]"><span>-900</span></td><td class="but-si" data-li="[1,45575]"></td></tr>
+      <tr><th scope="row"><a href="/fighters/second-two-2">Second Two</a></th><td data-li="[21,2,45575]"><span>+600</span></td><td class="but-si" data-li="[2,45575]"></td></tr>
+    </tbody></table>`;
+  const charts: string[] = [];
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    const requested = String(input instanceof Request ? input.url : input);
+    if (requested === url) return new Response(html());
+    if (requested.includes("/api/ggd?m=45574")) {
+      charts.push(requested);
+      const y = requested.endsWith("p=1") ? 2.4 : 1.6;
+      return new Response(encode([{ name: "Mean", data: [{ x: 1, y }, { x: 2, y: y + 0.05 }] }]));
+    }
+    return new Response("");
+  });
+  const line = (id: string) => ({ ...db.prepare("SELECT f1_open, f1_close, f2_open, f2_close, source_url FROM odds WHERE fight_id = ?").get(id) });
+
+  await syncMethodOddsForEvent(eventId);
+  assert.deepEqual(line(live), { f1_open: "-167", f1_close: "-175", f2_open: "+140", f2_close: "+141", source_url: url });
+  assert.deepEqual(line(over), { f1_open: "-280", f1_close: "-300", f2_open: "+230", f2_close: "+250", source_url: "https://www.bestfightodds.com/fighters/first-one-1" });
+
+  // The next read moves the close only; a fighter page found since stays the source.
+  db.prepare("UPDATE odds SET source_url = 'https://www.bestfightodds.com/fighters/jiri-prochazka-6058' WHERE fight_id = ?").run(live);
+  prices = { one: ["+150", "+160"], two: ["-180", "-190"] };
+  await syncMethodOddsForEvent(eventId);
+  assert.deepEqual(line(live), { f1_open: "-167", f1_close: "-185", f2_open: "+140", f2_close: "+155", source_url: "https://www.bestfightodds.com/fighters/jiri-prochazka-6058" });
+  assert.equal(charts.length, 2, "the open is read from the chart once");
+
+  // Once the bout is under way its line is the one it had at the bell.
+  db.prepare(`UPDATE fights SET detail_json = '{"type":"past"}' WHERE id = ?`).run(live);
+  prices = { one: ["+400", "+400"], two: ["-500", "-500"] };
+  await syncMethodOddsForEvent(eventId);
+  assert.equal(line(live).f1_close, "-185");
+});
