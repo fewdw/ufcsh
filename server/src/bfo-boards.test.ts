@@ -122,6 +122,11 @@ test("an upcoming card's board sets each bout's line on its own fighters, fills 
   db.prepare("UPDATE fights SET f1_id = f2_id, f2_id = f1_id, f1_name = f2_name, f2_name = f1_name WHERE id = ?").run(live);
   assert.deepEqual((await served()).f1.map((price: { line: string }) => price.line), ["+132", "+150"]);
   db.prepare("UPDATE fights SET f1_id = f2_id, f2_id = f1_id, f1_name = f2_name, f2_name = f1_name WHERE id = ?").run(live);
+  // In fight week the board is read every 15 minutes: books three hours old are no offer.
+  const booksRow = db.prepare("SELECT books_json FROM odds WHERE fight_id = ?").get(live) as { books_json: string };
+  db.prepare("UPDATE odds SET books_json = json_set(books_json, '$.at', ?) WHERE fight_id = ?").run(Date.now() - 3 * 3_600_000, live);
+  assert.equal(await served(), undefined);
+  db.prepare("UPDATE odds SET books_json = ? WHERE fight_id = ?").run(booksRow.books_json, live);
   assert.deepEqual(line(over), { f1_open: "-280", f1_close: "-300", f2_open: "+230", f2_close: "+250", source_url: "https://www.bestfightodds.com/fighters/first-one-1" });
   // A priced bout on the card's board that isn't on our card is kept for Admin.
   assert.deepEqual(unmatchedBouts().filter((entry) => entry.eventId === eventId).map(({ source, bout }) => [source, bout.f1, bout.f2, bout.f1Line, bout.partner]),

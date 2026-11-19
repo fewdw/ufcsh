@@ -240,8 +240,12 @@ function fightOdds(fightId: string, includeMethodOdds = false): unknown {
     : null;
   if ((!o || (!o.f1_close && !o.f2_close)) && !method) return null;
   const corners = (o?.books_json || o?.kalshi_json)
-    ? prepared("SELECT f1_id, f2_id FROM fights WHERE id = ?").get(fightId) as { f1_id: string; f2_id: string } | undefined
+    ? prepared("SELECT f.f1_id, f.f2_id, e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?").get(fightId) as { f1_id: string; f2_id: string; date: string } | undefined
     : undefined;
+  // A card's board is read every 15 minutes in fight week and at least every
+  // 6 hours further out (syncUpcomingMethodOdds); books older than twice that
+  // are no offer.
+  const booksFor = corners && Date.parse(`${corners.date}T00:00:00Z`) - Date.now() <= 7 * 86_400_000 ? 2 * 3_600_000 : 12 * 3_600_000;
   let props = null;
   if (method) {
     try {
@@ -267,7 +271,7 @@ function fightOdds(fightId: string, includeMethodOdds = false): unknown {
     f2: { open: o?.f2_open ?? null, close: o?.f2_close ?? null },
     source_url: o?.source_url ?? null,
     ...(props ? { props } : {}),
-    ...(corners ? sideBySide(o.books_json, corners, ({ f1, f2, at }) => ({ books: { f1, f2, at } })) : {}),
+    ...(corners ? sideBySide(o.books_json, corners, ({ f1, f2, at }) => Date.now() - at < booksFor ? { books: { f1, f2, at } } : {}) : {}),
     ...(corners ? sideBySide(o.kalshi_json, corners, ({ f1, f2, at, url, volume }) => ({ kalshi: { f1, f2, at, url, volume } })) : {}),
   };
 }

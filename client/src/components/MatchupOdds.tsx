@@ -273,8 +273,8 @@ function OddsTable({ title, columns, groups, wideLabel = true, live, format, com
   );
 }
 
-/** The board is read hourly at most; twice that and its books are no offer. */
-const BOOKS_FRESH_MS = 2 * 60 * 60_000;
+/** Twice the slowest board interval (6 hours, for cards over a week out). */
+const BOOKS_FRESH_MS = 12 * 60 * 60_000;
 
 /** The full prop board under the matchup. Whole-fight markets stack on the
  * left and the round-by-round grid sits beside them once the panel is wide
@@ -334,8 +334,9 @@ export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american",
     line && /^[+-]\d+$/.test(line) ? { label: "Moneyline", prices: [{ bookmaker: "Mean", line }] } : undefined;
   const openedMoneyline = Boolean(asQuote(moneyline?.f1.open) || asQuote(moneyline?.f2.open));
   // The best price any sportsbook offers now, and which one: only while the
-  // bout can still be bet, and only from a recent read of the board (it is
-  // read at least hourly), so a line the books took down isn't still offered.
+  // bout can still be bet. The server drops books older than twice the card's
+  // board interval; a page kept open longer than the slowest of those drops
+  // them here too.
   const bestBook = live && fightId && books?.f1.length && books.f2.length && Date.now() - books.at < BOOKS_FRESH_MS ? books : null;
   const moneylineRows = (moneyline ? ([[f1Name, 1, moneyline.f1, bestBook?.f1], [f2Name, 2, moneyline.f2, bestBook?.f2]] as const) : [])
     .map(([label, who, side, offered]): Row => ({
