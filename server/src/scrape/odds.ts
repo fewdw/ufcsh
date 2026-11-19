@@ -33,7 +33,7 @@ export type BoardMatchup = ScrapedMethodOdds & {
   moneylineKeys?: { f1: number[]; f2: number[] };
   moneyline?: { f1: MethodOddsPrice[]; f2: MethodOddsPrice[] };
 };
-type EventMethodMatchup = BoardMatchup & { f1Name: string; f2Name: string };
+export type EventMethodMatchup = BoardMatchup & { f1Name: string; f2Name: string };
 
 export type ScrapedOdds = {
   f1: { open: string | null; close: string | null; history: string[] };

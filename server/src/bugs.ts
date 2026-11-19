@@ -3,6 +3,7 @@ import { completedScorecardRounds, parseCommunityScorecard } from "./community-s
 import { fightIsComplete, fightIsUnderway } from "./live-state.ts";
 import { potentialMatchups, syncPotentialMatchups } from "./potential-matchups.ts";
 import { db, getMeta, setMeta } from "./db.ts";
+import { unmatchedBouts } from "./odds-unmatched.ts";
 import { comingOddsFreshness } from "./sync-status.ts";
 import { confirmedTitleResults, missingCurrentRankingHistory, relinkRankingHistory } from "./ranking-history.ts";
 import { validateFightActions } from "./action-stats.ts";
@@ -229,6 +230,49 @@ function upcomingMoneyline(): BugCheck {
     ],
     actions: [{ id: "odds", label: "Re-fetch odds", target: fight.id }],
   })));
+}
+
+/** Priced bouts an odds source lists for one of our coming cards that no bout
+ *  on the card matched. One sharing a surname with an unpriced bout of ours is
+ *  that bout under a spelling we don't match: its price is being missed. */
+export function unmatchedSourceBouts(): BugCheck {
+  const fight = db.prepare(`SELECT ${FIGHT_COLUMNS} FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?`);
+  const event = db.prepare("SELECT id, name, date FROM events WHERE id = ? AND complete = 0");
+  const items: BugItem[] = [];
+  const missed = new Set<string>();
+  for (const { source, eventId, at, bout } of unmatchedBouts()) {
+    const card = event.get(eventId) as { id: string; name: string; date: string } | undefined;
+    if (!card) continue;
+    const ours = bout.partner ? fight.get(bout.partner) as FightRow | undefined : undefined;
+    const theirs = `${bout.f1} vs ${bout.f2}${bout.f1Line && bout.f2Line ? ` (${bout.f1Line} / ${bout.f2Line})` : ""}`;
+    const facts: [string, string][] = [[`${source} lists`, theirs], ["Read", ago(at)]];
+    const links = [{ label: `${source} page`, href: bout.url }];
+    if (ours) {
+      items.push({ ...fightItem(ours, {
+        facts: [...facts, ["Ours", "no match on this card: check the names and aliases, then fix the name matching"], ...aliasFact(ours)],
+        links: [...links, ...fighterBfoLinks(ours)],
+        actions: [{ id: "odds", label: "Re-fetch odds", target: ours.id }],
+      }), key: `${source} ${ours.id} ${bout.f1} ${bout.f2}` });
+      missed.add(`${source} ${ours.id} ${bout.f1} ${bout.f2}`);
+    } else {
+      items.push({
+        key: `${source} ${eventId} ${bout.f1} ${bout.f2}`, title: theirs, subtitle: `${card.name} · not on our UFCStats card`, date: card.date,
+        facts: [...facts, ["Ours", "no bout with either fighter: UFCStats hasn't listed it, or the source still lists a bout that fell through"]],
+        links: [eventLink(eventId), ...links], actions: [],
+      });
+    }
+  }
+  return check({
+    id: "odds-source-unmatched",
+    group: "Odds",
+    label: "Priced bouts on a source we didn't match",
+    description: "Bouts BestFightOdds (on the card's own board) or Kalshi prices for a coming card that no bout on our card matched, re-read with each pass. One sharing a surname with a bout of ours is that bout under a spelling we don't match, so its price is being missed: critical in fight week. One with neither fighter on our card is a bout UFCStats hasn't listed yet or one the source still lists after it fell through.",
+    grade: (item) => {
+      const days = daysFrom(item.date);
+      if (missed.has(item.key)) return days != null && days <= 7 ? "critical" : "must";
+      return days != null && days <= 2 ? "must" : days != null && days <= 7 ? "minor" : "ok";
+    },
+  }, items);
 }
 
 /** Bouts this week Polymarket has no market for, from the API's half-hourly
@@ -2487,6 +2531,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     fightOddsUnread(),
     potentialMatchupGaps(),
     upcomingMoneyline(),
+    unmatchedSourceBouts(),
     polymarketMissing(),
     polymarketData(),
     pastMoneyline(),

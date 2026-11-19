@@ -1316,16 +1316,17 @@ export function oddsFreshness(eventId: string): { updated_at: number | null; fin
            COUNT(o.fight_id) AS priced,
            SUM(CASE WHEN o.final = 1 THEN 1 ELSE 0 END) AS frozen,
            MAX(o.source_url LIKE 'https://fightodds.io/%') AS fightodds,
-           MAX(o.source_url IS NULL OR o.source_url NOT LIKE 'https://fightodds.io/%') AS bestfightodds
+           MAX(o.source_url LIKE 'https://kalshi.com/%') AS kalshi,
+           MAX(o.source_url IS NULL OR (o.source_url NOT LIKE 'https://fightodds.io/%' AND o.source_url NOT LIKE 'https://kalshi.com/%')) AS bestfightodds
     FROM odds o JOIN fights f ON f.id = o.fight_id
     WHERE f.event_id = ? AND o.f1_close IS NOT NULL
-  `).get(eventId) as { updated_at: number | null; priced: number; frozen: number | null; fightodds: number | null; bestfightodds: number | null };
+  `).get(eventId) as { updated_at: number | null; priced: number; frozen: number | null; fightodds: number | null; kalshi: number | null; bestfightodds: number | null };
   return {
     updated_at: row.updated_at ?? null,
     final: Boolean(row.priced) && row.frozen === row.priced,
     priced: row.priced ?? 0,
     // Sources of the card's stored odds.
-    sources: [...(row.fightodds ? ["FightOdds.io"] : []), ...(row.bestfightodds ? ["BestFightOdds"] : [])],
+    sources: [...(row.fightodds ? ["FightOdds.io"] : []), ...(row.bestfightodds ? ["BestFightOdds"] : []), ...(row.kalshi ? ["Kalshi"] : [])],
   };
 }
 

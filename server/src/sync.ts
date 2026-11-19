@@ -49,6 +49,9 @@ import { americanLine, impliedProbability } from "./fight-index.ts";
 import { consistentMoneyline } from "./method-odds.ts";
 import { decisionFromCards } from "./judge-scorecards.ts";
 import { syncCancelledBouts } from "./cancelled-bouts.ts";
+import { frozenAtBell, frozenNow } from "./odds-freeze.ts";
+import { recordUnmatched, partnerFight, type UnmatchedBout } from "./odds-unmatched.ts";
+import { scrapeKalshiBouts, type KalshiBout } from "./scrape/kalshi.ts";
 import { syncAntidopingTests } from "./antidoping.ts";
 import { boutLines, boutProps, fightOddsBoard, fightOddsEvents, fightOddsOpeners, fightOddsProps, matchBout } from "./scrape/fightodds.ts";
 
@@ -1308,6 +1311,7 @@ export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: stri
 
   // Split cards and alternate names put one card on several same-day boards.
   const found = new Map<string, { fight: MethodOddsFight; odds: BoardMatchup }>();
+  const boardsRead: { url: string; board: Awaited<ReturnType<typeof scrapeEventMethodOdds>> }[] = [];
   let matchedUrl: string | null = null;
   let failed = 0;
   for (const sourceUrl of candidates) {
@@ -1325,6 +1329,7 @@ export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: stri
       failed++;
       continue;
     }
+    let matched = 0;
     for (const fight of fights) {
       const odds = found.has(fight.id)
         ? null
@@ -1332,7 +1337,23 @@ export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: stri
       if (!odds) continue;
       found.set(fight.id, { fight, odds });
       matchedUrl ??= sourceUrl;
+      matched++;
     }
+    // A board that matched any of our bouts is this card's, and every priced
+    // bout on it should be one of ours.
+    if (matched) boardsRead.push({ url: sourceUrl, board });
+  }
+  if (!onlyFightId && !event.complete && (boardsRead.length || !failed)) {
+    const names = fights.map((fight) => [oddsNames(fight.f1_id, fight.f1_name), oddsNames(fight.f2_id, fight.f2_name)] as const);
+    const missed: UnmatchedBout[] = boardsRead.flatMap(({ url, board }) => board
+      .filter((bout) => bout.moneyline && !names.some(([one, two]) => methodOddsForFight([bout], one, two)))
+      .map((bout) => ({
+        f1: bout.f1Name, f2: bout.f2Name, url,
+        f1Line: rangeMiddle(bout.moneyline!.f1.map((price) => price.line)),
+        f2Line: rangeMiddle(bout.moneyline!.f2.map((price) => price.line)),
+        partner: partnerFight(fights, new Set(found.keys()), bout.f1Name, bout.f2Name),
+      })));
+    recordUnmatched("BestFightOdds", eventId, missed);
   }
 
   const alreadyFinal = db.prepare("SELECT 1 FROM method_odds WHERE fight_id = ? AND final = 1");
@@ -1575,10 +1596,12 @@ export async function syncUpcomingOdds(
         -- FightOdds.io reads its lines every five minutes; one it hasn't read
         -- in half an hour has stopped, and this source takes over.
         OR (o.source_url LIKE 'https://fightodds.io/%' AND o.fetched_at < ? AND o.checked_at < ?)
+        -- A Kalshi line stands in until a book's is found: looked for like no line.
+        OR (o.source_url LIKE 'https://kalshi.com/%' AND (o.checked_at IS NULL OR o.checked_at < ?))
         OR ((o.source_url IS NULL OR o.source_url NOT LIKE 'https://fightodds.io/%')
           AND (o.fetched_at IS NULL OR o.fetched_at < ?) AND (o.checked_at IS NULL OR o.checked_at < ?)))
     ORDER BY e.date ASC LIMIT ?
-  `).all(force ? 1 : 0, now - 30 * 60_000, now - 30 * 60_000, now - 6 * HOUR, now - 2 * HOUR, limit) as
+  `).all(force ? 1 : 0, now - 30 * 60_000, now - 30 * 60_000, now - 2 * HOUR, now - 6 * HOUR, now - 2 * HOUR, limit) as
     { id: string; f1_id: string | null; f2_id: string | null; f1_name: string; f2_name: string; date: string }[];
 
   let stored = 0;
@@ -1598,32 +1621,65 @@ export async function syncUpcomingOdds(
 
 let fightOddsRunning = false;
 
-type BellRow = {
-  id: string; event_id: string; date: string; ord: number; segment: string | null; card_pos: number | null;
-  f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; verdict_live_json?: string | null;
-};
-
-/** On fight night a price stops at the bell: a bout that is on or over, and
- *  the next one up once the card has started, keeps the price it closed at. */
-function frozenAtBell(fights: BellRow[]): Set<string> {
-  const frozen = new Set<string>();
-  for (const row of fights) {
-    if (!isFightDay(row.date)) continue;
-    if (fightIsComplete(row) || fightIsUnderway(row)) frozen.add(row.id);
-    const same = fights.filter((other) => other.event_id === row.event_id);
-    const next = cardOrder(same).findLast((other) => !fightIsComplete(other));
-    if (next?.id === row.id && same.some((other) => fightIsComplete(other))) frozen.add(row.id);
+/** Kalshi's markets for the coming cards, a few days out: a bout's moneyline
+ *  when no other source has priced it, and its method and decision props when
+ *  no board has them. Every other source overwrites what this stores, and a
+ *  bout on or over keeps what it had at the bell. Bouts Kalshi prices that no
+ *  bout on our card matches are kept for Admin → Bugs. */
+export async function syncKalshiOdds(scraped?: KalshiBout[]): Promise<{ bouts: number; lines: number; props: number }> {
+  const bouts = scraped ?? await scrapeKalshiBouts();
+  const dates = [...new Set(bouts.map((bout) => bout.date))];
+  const near = (date: string, other: string) => Math.abs(Date.parse(date) - Date.parse(other)) <= 86_400_000;
+  // Read after the requests, then written without awaiting, so every price
+  // lands on the corners each bout has right now.
+  const events = (db.prepare("SELECT id, date FROM events WHERE complete = 0 AND date >= date('now', '-1 day')").all() as { id: string; date: string }[])
+    .filter((event) => dates.some((date) => near(date, event.date)));
+  const fightsOf = db.prepare("SELECT id, f1_id, f2_id, f1_name, f2_name FROM fights WHERE event_id = ?");
+  const kalshiOrNone = (source: string | null | undefined) => !source || source.startsWith("https://kalshi.com/");
+  const line = db.prepare("SELECT f1_close, source_url FROM odds WHERE fight_id = ?");
+  const props = db.prepare("SELECT source_url FROM method_odds WHERE fight_id = ?");
+  const writeLine = db.prepare(`
+    INSERT INTO odds (fight_id, f1_close, f2_close, source_url, fetched_at) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(fight_id) DO UPDATE SET
+      f1_close = excluded.f1_close, f2_close = excluded.f2_close, source_url = excluded.source_url, fetched_at = excluded.fetched_at
+  `);
+  const writeProps = db.prepare(`
+    INSERT INTO method_odds (fight_id, markets_json, source_url, final, fetched_at) VALUES (?, ?, ?, 0, ?)
+    ON CONFLICT(fight_id) DO UPDATE SET markets_json = excluded.markets_json, source_url = excluded.source_url, final = 0, fetched_at = excluded.fetched_at
+  `);
+  const frozen = frozenNow();
+  const used = new Set<KalshiBout>();
+  let lines = 0, stored = 0;
+  for (const event of events) {
+    const fights = fightsOf.all(event.id) as MethodOddsFight[];
+    const onDate = bouts.filter((bout) => near(bout.date, event.date));
+    const matched = new Set<string>();
+    for (const fight of fights) {
+      const names = [oddsNames(fight.f1_id, fight.f1_name), oddsNames(fight.f2_id, fight.f2_name)] as const;
+      const odds = methodOddsForFight(onDate, ...names);
+      if (!odds) continue;
+      matched.add(fight.id);
+      for (const bout of onDate) if (methodOddsForFight([bout], ...names)) used.add(bout);
+      if (frozen.has(fight.id)) continue;
+      const now = Date.now();
+      const current = line.get(fight.id) as { f1_close: string | null; source_url: string | null } | undefined;
+      if (odds.moneyline && (!current?.f1_close || kalshiOrNone(current.source_url))) {
+        const [a, b] = [odds.moneyline.f1[0].line, odds.moneyline.f2[0].line];
+        if (consistentMoneyline(a, b)) { writeLine.run(fight.id, a, b, odds.sourceUrl, now); lines++; }
+      }
+      const held = props.get(fight.id) as { source_url: string | null } | undefined;
+      if ((Object.keys(odds.f1).length || Object.keys(odds.f2).length || odds.additional.length) && (!held || kalshiOrNone(held.source_url))) {
+        writeProps.run(fight.id, JSON.stringify({ version: METHOD_ODDS_VERSION, f1_id: fight.f1_id, f2_id: fight.f2_id, f1: odds.f1, f2: odds.f2, additional: odds.additional }),
+          odds.sourceUrl, now);
+        stored++;
+      }
+    }
+    recordUnmatched("Kalshi", event.id, onDate.filter((bout) => bout.moneyline && !used.has(bout)).map((bout) => ({
+      f1: bout.f1Name, f2: bout.f2Name, f1Line: bout.moneyline!.f1[0].line, f2Line: bout.moneyline!.f2[0].line, url: bout.sourceUrl,
+      partner: partnerFight(fights, matched, bout.f1Name, bout.f2Name),
+    })));
   }
-  return frozen;
-}
-
-/** The bouts frozenAtBell holds on the cards being fought now. */
-function frozenNow(): Set<string> {
-  return frozenAtBell(db.prepare(`
-    SELECT f.id, f.event_id, e.date, f.ord, f.segment, f.card_pos, f.f1_outcome, f.f2_outcome, f.detail_json, f.verdict_live_json
-    FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 0 AND e.date BETWEEN date('now', '-1 day') AND date('now')
-  `).all() as BellRow[]);
+  return { bouts: bouts.length, lines, props: stored };
 }
 
 /** Upcoming lines from FightOdds.io's boards, matched by UFCStats id: each
@@ -2246,10 +2302,14 @@ export async function tick(): Promise<void> {
     }
     await guarded("upcoming_odds", async () => { await syncUpcomingOdds(); });
     await guarded("upcoming_method_odds", async () => { await syncUpcomingMethodOdds(); });
+    if (metaAgeMs("kalshi_odds_at") > 5 * 60_000) {
+      touchMeta("kalshi_odds_at");
+      void guarded("kalshi_odds", async () => { await syncKalshiOdds(); });
+    }
     db.prepare(
       "UPDATE odds SET final = 1 WHERE final = 0 AND fight_id IN (SELECT f.id FROM fights f JOIN events e ON e.id = f.event_id WHERE e.complete = 1)",
     ).run();
-    db.prepare(`UPDATE method_odds SET final = 1 WHERE final = 0 AND source_url LIKE 'https://fightodds.io/%'
+    db.prepare(`UPDATE method_odds SET final = 1 WHERE final = 0 AND (source_url LIKE 'https://fightodds.io/%' OR source_url LIKE 'https://kalshi.com/%')
       AND fight_id IN (SELECT f.id FROM fights f JOIN events e ON e.id = f.event_id WHERE e.complete = 1)`).run();
 
     // 9. Images: ufc.com is slow (~8s/page), so run this alongside the tick
