@@ -49,6 +49,8 @@ export type MarketSummary = {
   community: { p: number; n: number; at: number } | null;
   opening: MarketPoint | null;
   error: string | null;
+  /** How long a quote stays current, when not Polymarket's own 15s/90s. */
+  quoteMaxAge?: number;
   snapshot?: {
     at: number;
     p: number;
@@ -65,4 +67,18 @@ export type MarketDetail = MarketSummary & {
   historyError: string | null;
   marketCheckedAt?: number | null;
   rounds: { round: number; at: number }[];
+};
+
+/** Kalshi's read of a bout (`/api/kalshi/fights/:id`), in UFC.sh corner order. */
+export type KalshiDetail = {
+  status: "open" | "missing";
+  /** The corners it was answered for. */
+  f1_id: string;
+  f2_id: string;
+  url: string | null;
+  at: number | null;
+  p: number | null;
+  volume: number | null;
+  history: MarketPoint[];
+  extras: ExtraMarket[];
 };

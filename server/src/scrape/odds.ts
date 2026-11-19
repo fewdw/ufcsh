@@ -27,9 +27,16 @@ export type ScrapedMethodOdds = {
 };
 
 /** moneylineKeys address the source's mean moneyline chart per corner, used to
- * fill fights whose fighter pages never yielded a price. */
-export type BoardMatchup = ScrapedMethodOdds & { moneylineKeys?: { f1: number[]; f2: number[] } };
-type EventMethodMatchup = BoardMatchup & { f1Name: string; f2Name: string };
+ * fill fights whose fighter pages never yielded a price. moneyline is each
+ * book's current price per corner, as the board shows it. */
+export type BoardMatchup = ScrapedMethodOdds & {
+  moneylineKeys?: { f1: number[]; f2: number[] };
+  moneyline?: { f1: MethodOddsPrice[]; f2: MethodOddsPrice[] };
+  /** A prediction market's own read of the bout: each side's chance, the
+   *  middle of its bid and ask, and contracts traded on both. */
+  market?: { f1: number | null; f2: number | null; volume: number; tickers?: [string, string] };
+};
+export type EventMethodMatchup = BoardMatchup & { f1Name: string; f2Name: string };
 
 export type ScrapedOdds = {
   f1: { open: string | null; close: string | null; history: string[] };
@@ -42,10 +49,16 @@ type OddsMatchup = { f1_name: string; f2_name: string };
 /** A fighter-page row is [open, range low, range high]. The close is the
  * middle of the range in win probability; the top is one book's best price. */
 export function closingLine(values: string[]): string | null {
-  const prices = values.slice(values.length > 1 ? 1 : 0)
+  return rangeMiddle(values.slice(values.length > 1 ? 1 : 0)) ?? (values.length ? values[values.length - 1] : null);
+}
+
+/** The middle, in win probability, of the lowest and highest of these prices:
+ *  a fighter page's closing range, or every book's price on a board. */
+export function rangeMiddle(values: string[]): string | null {
+  const prices = values
     .map((value) => Number(value.replace(/[−–]/g, "-").replace(/[^0-9+\-]/g, "")))
     .filter((line) => Number.isFinite(line) && Math.abs(line) >= 100);
-  if (!prices.length) return values.length ? values[values.length - 1] : null;
+  if (!prices.length) return null;
   const probability = (line: number) => (line < 0 ? -line / (-line + 100) : 100 / (line + 100));
   const probabilities = prices.map(probability);
   const middle = (Math.min(...probabilities) + Math.max(...probabilities)) / 2;
@@ -424,18 +437,20 @@ function dataKey($: cheerio.CheerioAPI, cell: any, length: number): number[] | n
   }
 }
 
-/** Book cells are keyed [book, outcome, matchup, propType, fighter]. Only cells
- * whose key agrees with the expected market are kept, so a price can never be
- * attached to another matchup, method or corner. */
+/** Prop cells are keyed [book, outcome, matchup, propType, fighter] and
+ * moneyline cells [book, corner, matchup]. Only cells whose key agrees with the
+ * expected market are kept, so a price can never be attached to another
+ * matchup, method or corner. */
 function pricesFromRow(
   $: cheerio.CheerioAPI,
   row: cheerio.Cheerio<any>,
   books: Map<number, string>,
   accepts: (key: number[]) => boolean,
+  keyLength = 5,
 ): MethodOddsPrice[] {
   const prices: MethodOddsPrice[] = [];
   for (const cell of row.find("td[data-li]").toArray()) {
-    const key = dataKey($, cell, 5);
+    const key = dataKey($, cell, keyLength);
     if (!key || !accepts(key.slice(1))) continue;
     const bookmaker = books.get(key[0]) ?? "";
     const line = cleanText($(cell).find("span").first().text()).replace(/[−–]/g, "-");
@@ -463,12 +478,72 @@ const ROUND_METHOD_MARKET = /^(.+) wins by (?:TKO\/KO|submission) in round [1-5]
 const METHOD_MARKET = /^(.+) wins by (TKO\/KO|submission|decision)$/i;
 const METHOD_TYPE = { ko: 8, submission: 9, decision: 11 } as const;
 
+/** The matchup id on a bout's first row. BestFightOdds carried it on a
+ *  `/cnadm/matchups/ID` link until October 2026 and on `th[data-admin-matchup]`
+ *  since; the first corner's chart button or moneyline cells, keyed [1, id]
+ *  and [book, 1, id], are the fallbacks. A blank or malformed value falls
+ *  through. Prop and second-corner rows have none. */
+export function boardMatchupId($: cheerio.CheerioAPI, row: cheerio.Cheerio<any>): number | null {
+  if (!row.find("th a[href^='/fighters/']").length) return null;
+  const valid = (value: string | undefined) => value != null && /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : null;
+  const header = valid(row.find("th[data-admin-matchup]").first().attr("data-admin-matchup"))
+    ?? valid(row.find("a[href^='/cnadm/matchups/']").first().attr("href")?.split("/").filter(Boolean).at(-1));
+  if (header != null) return header;
+  const chart = dataKey($, row.find("td.but-si").first(), 2);
+  if (chart && chart[0] === 1) return chart[1];
+  return firstCornerKeys($, row)[0]?.[2] ?? null;
+}
+
+/** A row's first-corner moneyline cells, keyed [book, 1, matchup]. */
+function firstCornerKeys($: cheerio.CheerioAPI, row: cheerio.Cheerio<any>): number[][] {
+  return row.find("td[data-li]").toArray().map((cell) => dataKey($, cell, 3)).filter((key): key is number[] => !!key && key[1] === 1);
+}
+
+/** A board in a shape this parser no longer reads. BestFightOdds changed its
+ *  markup in October 2026 and both parsers read nothing, silently, for a month. */
+export class BoardMarkupError extends Error {}
+
+/** The rows of a board's odds table, or null when it has none. A board with no
+ *  prices yet reads as empty. Throws when a priced first corner can't be tied
+ *  to a fighter and bout, or a bout's first corner isn't followed by its
+ *  second: reading the rest would quietly drop that bout. */
+export function boardRows($: cheerio.CheerioAPI, sourceUrl: string): cheerio.Cheerio<any>[] | null {
+  const table = $("table.odds-table").filter((_, element) => $(element).find("td").length > 0).first();
+  if (!table.length) return null;
+  const rows = table.find("tbody tr").toArray().map((row) => $(row));
+  // A bout reads as two rows in a row, one per corner: the second has a
+  // fighter, no bout of its own, and any moneyline cells keyed to this bout's
+  // second corner. A price shown in a cell with no key can't be read at all.
+  const secondCorner = (row: cheerio.Cheerio<any> | undefined, id: number) => !!row && row.find("th a[href^='/fighters/']").length > 0
+    && boardMatchupId($, row) == null
+    && row.find("td[data-li]").toArray().every((cell) => { const key = dataKey($, cell, 3); return !key || (key[1] === 2 && key[2] === id); });
+  // Shown prices are keyed [book, corner, bout] or, on a prop, [book, outcome, bout, market, corner].
+  const unkeyedPrice = (row: cheerio.Cheerio<any>) => row.find("td").toArray()
+    .some((cell) => /^[+−–-]\d{3,}/.test(cleanText($(cell).text())) && !dataKey($, cell, 3) && !dataKey($, cell, 5));
+  // A second corner's row belongs to the bout on the row above.
+  const orphanSecond = (row: cheerio.Cheerio<any>, i: number) => row.find("th a[href^='/fighters/']").length > 0
+    && row.find("td[data-li]").toArray().some((cell) => {
+      const key = dataKey($, cell, 3);
+      return !!key && key[1] === 2 && (i === 0 || boardMatchupId($, rows[i - 1]) !== key[2]);
+    });
+  const unreadable = rows.filter((row, i) => {
+    const id = boardMatchupId($, row);
+    return unkeyedPrice(row) || (id == null ? firstCornerKeys($, row).length > 0 || orphanSecond(row, i)
+      : firstCornerKeys($, row).some((key) => key[2] !== id) || !secondCorner(rows[i + 1], id));
+  }).length;
+  if (unreadable) {
+    throw new BoardMarkupError(`BestFightOdds board markup unrecognized: ${unreadable} priced ${unreadable === 1 ? "bout" : "bouts"} without both fighters or a matchup id (${sourceUrl})`);
+  }
+  return rows;
+}
+
 /** Parse one archived/current event board. The result remains in the source's
  * fighter order until methodOddsForFight verifies and aligns an exact pair. */
 export function parseEventMethodOddsHtml(html: string, sourceUrl: string): EventMethodMatchup[] {
   const $ = cheerio.load(html);
   const table = $("table.odds-table").filter((_, element) => $(element).find("td").length > 0).first();
-  if (!table.length) return [];
+  const rows = boardRows($, sourceUrl);
+  if (!rows) return [];
 
   const books = new Map<number, string>();
   table.find("thead th[data-b]").each((_, element) => {
@@ -477,17 +552,15 @@ export function parseEventMethodOddsHtml(html: string, sourceUrl: string): Event
     if (Number.isInteger(id) && name) books.set(id, name);
   });
 
-  const rows = table.find("tbody tr").toArray();
   const matchups: EventMethodMatchup[] = [];
   for (let i = 0; i < rows.length; i++) {
-    const firstRow = $(rows[i]);
-    if (!firstRow.find("a[href^='/cnadm/matchups/']").length) continue;
-    const secondRow = $(rows[i + 1]);
+    const firstRow = rows[i];
+    const matchupId = boardMatchupId($, firstRow);
+    if (matchupId == null || i + 1 >= rows.length) continue;
+    const secondRow = rows[i + 1];
     const f1Name = cleanText(firstRow.find("th a[href^='/fighters/']").last().text());
     const f2Name = cleanText(secondRow.find("th a[href^='/fighters/']").last().text());
     if (!f1Name || !f2Name) continue;
-    const matchupId = Number(firstRow.find("a[href^='/cnadm/matchups/']").first().attr("href")?.split("/").filter(Boolean).at(-1));
-    if (!Number.isSafeInteger(matchupId)) continue;
 
     const matchup: EventMethodMatchup = { f1Name, f2Name, f1: {}, f2: {}, additional: [], sourceUrl };
     const moneylineKey = (row: cheerio.Cheerio<any>, side: number) => {
@@ -497,6 +570,11 @@ export function parseEventMethodOddsHtml(html: string, sourceUrl: string): Event
     const f1Moneyline = moneylineKey(firstRow, 1);
     const f2Moneyline = moneylineKey(secondRow, 2);
     if (f1Moneyline && f2Moneyline) matchup.moneylineKeys = { f1: f1Moneyline, f2: f2Moneyline };
+    // Book cells are keyed [book, corner, matchup]; boardRows has checked both rows'.
+    const moneylineAccepts = (side: number) => (key: number[]) => key[0] === side && key[1] === matchupId;
+    const f1Prices = pricesFromRow($, firstRow, books, moneylineAccepts(1), 3);
+    const f2Prices = pricesFromRow($, secondRow, books, moneylineAccepts(2), 3);
+    if (f1Prices.length && f2Prices.length) matchup.moneyline = { f1: f1Prices, f2: f2Prices };
     const quoteFor = (row: cheerio.Cheerio<any>, label: string, accepts: (key: number[]) => boolean): MethodOddsQuote | null => {
       const prices = pricesFromRow($, row, books, accepts);
       if (prices.length) return { label, prices };
@@ -505,8 +583,8 @@ export function parseEventMethodOddsHtml(html: string, sourceUrl: string): Event
     };
 
     for (let j = i + 2; j < rows.length; j++) {
-      const row = $(rows[j]);
-      if (row.find("a[href^='/cnadm/matchups/']").length) break;
+      const row = rows[j];
+      if (boardMatchupId($, row) != null) break;
       const label = cleanText(row.find("th").first().text());
 
       const method = METHOD_MARKET.exec(label);
@@ -525,7 +603,7 @@ export function parseEventMethodOddsHtml(html: string, sourceUrl: string): Event
       const quote = quoteFor(row, label, (k) => (k[0] === 1 || k[0] === 2) && k[1] === matchupId);
       if (quote) matchup.additional.push(quote);
     }
-    if (matchup.moneylineKeys || Object.keys(matchup.f1).length || Object.keys(matchup.f2).length || matchup.additional.length) {
+    if (matchup.moneylineKeys || matchup.moneyline || Object.keys(matchup.f1).length || Object.keys(matchup.f2).length || matchup.additional.length) {
       matchups.push(matchup);
     }
   }
@@ -604,7 +682,12 @@ export function methodOddsForFight(
     if (aligned === pair(f1Name, f2Name, fighter2, fighter1)) return null;
     if (aligned) return found;
     const moneylineKeys = found.moneylineKeys && { f1: found.moneylineKeys.f2, f2: found.moneylineKeys.f1 };
-    return { ...found, f1: found.f2, f2: found.f1, moneylineKeys };
+    const moneyline = found.moneyline && { f1: found.moneyline.f2, f2: found.moneyline.f1 };
+    const market = found.market && {
+      f1: found.market.f2, f2: found.market.f1, volume: found.market.volume,
+      ...(found.market.tickers ? { tickers: [found.market.tickers[1], found.market.tickers[0]] as [string, string] } : {}),
+    };
+    return { ...found, f1: found.f2, f2: found.f1, moneylineKeys, moneyline, market };
   }
   return null;
 }
@@ -676,15 +759,20 @@ export async function scrapeOdds(
   // record a completed look.
   let readPages = 0;
   let failures = 0;
+  // An undated row is kept until every page has been looked through: another
+  // page may hold the bout filed under its card.
+  let undatedFallback: ScrapedOdds | null = null;
   const tryPages = async (pages: string[]) => {
     for (const pageUrl of pages) {
       if (tried.has(pageUrl)) continue;
       tried.add(pageUrl);
       const found = await scrapeOddsPage(pageUrl);
-      if (found) return found;
+      if (found && !undatedRows.has(found)) return found;
+      if (found) undatedFallback ??= found;
     }
     return null;
   };
+  const undatedRows = new WeakSet<ScrapedOdds>();
   if (cachedPageUrl) {
     const found = await tryPages([cachedPageUrl]);
     if (found) return found;
@@ -702,6 +790,7 @@ export async function scrapeOdds(
     const found = await tryPages(pages);
     if (found) return found;
   }
+  if (undatedFallback) return undatedFallback;
   if (!readPages && failures) throw new Error("odds source unreachable");
   return null;
 
@@ -719,11 +808,11 @@ export async function scrapeOdds(
     // booked on. Such a row is kept aside and used only when no row matches
     // the date, both full names match, and it is the page's only such row.
     const moved: ScrapedOdds[] = [];
-    // A rematch's line sometimes stays on the undated "Future Events" page
-    // beside the dated first meeting. Used only for a bout already fought, when
-    // nothing dated matches and it is the pair's only undated row.
+    // A booked bout often sits on the undated "Future Events" page for weeks
+    // before the source files it under its card, and a rematch's line
+    // sometimes stays there beside the dated first meeting. Used when nothing
+    // dated matches and it is the pair's only undated row.
     const undated: ScrapedOdds[] = [];
-    const fought = dateIso < new Date().toISOString().slice(0, 10);
     for (const tr of $("tr.main-row").toArray()) {
       const row1 = $(tr);
       const row2 = row1.next("tr");
@@ -769,9 +858,13 @@ export async function scrapeOdds(
       const fullPair = (matchesAny(name1, targets1) && matchesAny(name2, targets2))
         || (matchesAny(name1, targets2) && matchesAny(name2, targets1));
       if (fullPair && rowDate && Math.abs(Date.parse(rowDate) - Date.parse(dateIso)) <= 14 * 86_400_000) moved.push(found);
-      if (fullPair && !rowDate && fought && row1.find("a[href^='/events/future-events']").length) undated.push(found);
+      if (fullPair && !rowDate && row1.find("a[href^='/events/future-events']").length) undated.push(found);
     }
     if (moved.length === 1) return moved[0];
-    return moved.length === 0 && undated.length === 1 ? undated[0] : null;
+    if (moved.length === 0 && undated.length === 1) {
+      undatedRows.add(undated[0]);
+      return undated[0];
+    }
+    return null;
   }
 }

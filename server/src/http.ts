@@ -31,6 +31,9 @@ const HOST_GAP_MS: Record<string, number> = {
   // FightOdds.io's Cloudflare rule blocked us (error 1015) for over 45 minutes
   // on 2026-10-26. The half-hourly props pass sends ~100 queries back to back.
   "api.fightodds.io": 2000,
+  // Kalshi's public market data allows far more; three requests every five
+  // minutes need no more than this.
+  "api.elections.kalshi.com": 500,
   // Wayback answers 429 to anything faster than a few pages a minute.
   "web.archive.org": 10000,
 };
@@ -40,20 +43,24 @@ const DEFAULT_GAP_MS = 1000;
  *  fails at once until `retryAt`, without retries. */
 export class HttpRateLimitError extends Error {
   readonly retryAt: number;
+  /** A firewall block: its host, and when this run of blocks began (reset by
+   *  any request that gets through), so each new block is its own news. */
+  readonly blocked: { host: string; since: number } | null;
 
-  constructor(url: string, retryAt: number, detail: string, status = 429) {
+  constructor(url: string, retryAt: number, detail: string, status = 429, blockedSince: number | null = null) {
     super(`HTTP ${status} for ${url}; retry after ${new Date(retryAt).toISOString()}: ${detail}`);
     this.retryAt = retryAt;
+    this.blocked = blockedSince == null ? null : { host: new URL(url).host, since: blockedSince };
   }
 }
 
-type HostState = { chain: Promise<void>; lastAt: number; cookie: string; rateLimit: HttpRateLimitError | null };
+type HostState = { chain: Promise<void>; lastAt: number; cookie: string; rateLimit: HttpRateLimitError | null; blocks: number; blockedSince: number };
 const hosts = new Map<string, HostState>();
 
 function hostState(host: string): HostState {
   let s = hosts.get(host);
   if (!s) {
-    s = { chain: Promise.resolve(), lastAt: 0, cookie: "", rateLimit: null };
+    s = { chain: Promise.resolve(), lastAt: 0, cookie: "", rateLimit: null, blocks: 0, blockedSince: 0 };
     hosts.set(host, s);
   }
   return s;
@@ -78,13 +85,19 @@ async function rateLimitError(state: HostState, res: Response, url: string): Pro
 /** Cloudflare's "Sorry, you have been blocked" page: a firewall rule refusing
  *  this server, not a passing error. FightOdds.io's blocked every request from
  *  the VPS from 2026-11-17 20:00 UTC; asking twice every five minutes only adds
- *  to the traffic that tripped it, so the host gets one try an hour. */
+ *  to the traffic that tripped it. The host gets one try an hour, then each
+ *  block in a row doubles the wait up to a day, until a request gets through.
+ *  A restart starts again at an hour. */
 const BLOCK_COOLDOWN_MS = 60 * 60_000;
+const BLOCK_COOLDOWN_MAX_MS = 24 * 60 * 60_000;
 
 function blockError(state: HostState, status: number, text: string, url: string): HttpRateLimitError | null {
   if (status !== 403 || !text.includes('data-translate="block_headline"')) return null;
   const ray = text.match(/Ray ID: <strong[^>]*>([0-9a-f]+)</)?.[1];
-  const error = new HttpRateLimitError(url, Date.now() + BLOCK_COOLDOWN_MS, `Cloudflare blocked this server${ray ? ` (Ray ID ${ray})` : ""}`, 403);
+  const cooldown = Math.min(BLOCK_COOLDOWN_MS * 2 ** state.blocks, BLOCK_COOLDOWN_MAX_MS);
+  if (!state.blocks) state.blockedSince = Date.now();
+  state.blocks++;
+  const error = new HttpRateLimitError(url, Date.now() + cooldown, `Cloudflare blocked this server${ray ? ` (Ray ID ${ray})` : ""}`, 403, state.blockedSince);
   state.rateLimit = error;
   return error;
 }
@@ -189,7 +202,9 @@ function throttled<T>(url: string, retries: number, run: (state: HostState) => P
     for (let attempt = 0; attempt <= retries; attempt++) {
       state.lastAt = Date.now();
       try {
-        return await run(state);
+        const value = await run(state);
+        state.blocks = 0;
+        return value;
       } catch (err) {
         if (err instanceof HttpRateLimitError) throw err;
         lastError = err;

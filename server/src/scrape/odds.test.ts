@@ -2,9 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   alignScrapedOdds,
+  BoardMarkupError,
   closingLine,
   methodOddsForFight,
   parseEventMethodOddsHtml,
+  rangeMiddle,
+  scrapeOdds,
   upcomingEventBoards,
   type ScrapedOdds,
 } from "./odds.ts";
@@ -71,6 +74,70 @@ test("method prices retain named-book provenance and align to exact UFCStats fig
   assert.equal(odds.f2.decision?.prices[0].line, "+800");
   assert.equal(odds.additional[0].label, "Fight goes to decision");
   assert.equal(odds.additional.length, 2);
+});
+
+// BestFightOdds since October 2026: the matchup id is on the first corner's
+// row header, with no /cnadm/ link (UFC Doha, 2026-11-21, trimmed).
+const currentBoard = (header: (id: number) => string) => `
+  <table class="odds-table">
+    <thead><tr><th></th><th data-b="21">FanDuel</th><th data-b="25">BetMGM</th><th>Props</th></tr></thead>
+    <tbody>
+      <tr ><th ${header(45574)}><a href="/fighters/jiri-prochazka-6058"><span class="t-b-fcc">Jiri Prochazka</span></a></th><td class="but-sg" data-li="[21,1,45574]"><span>+132</span></td><td class="but-sg" data-li="[25,1,45574]"><span>+130</span></td><td class="button-cell but-si" data-li="[1,45574]"></td><td class="prop-cell prop-cell-exp" data-mu="45574">92</td></tr>
+      <tr ><th scope="row"><a href="/fighters/navajo-stirling-18344"><span class="t-b-fcc">Navajo Stirling</span></a></th><td class="but-sg" data-li="[21,2,45574]"><span>-170</span></td><td class="but-sg" data-li="[25,2,45574]"><span>-162</span></td><td class="button-cell but-si" data-li="[2,45574]"></td><td class="prop-cell prop-cell-exp" data-mu="45574">92</td></tr>
+      <tr class="pr"><th scope="row">Over 1&#189; rounds</th><td class="but-sgp" data-li="[21,1,45574,32,0]"><span>-152</span></td><td class="but-sgp" data-li="[25,1,45574,32,0]"><span>-167</span></td><td class="button-cell but-sip" data-li="[1,45574,32,0]"></td></tr>
+      <tr class="pr"><th scope="row">Prochazka wins by TKO/KO</th><td class="but-sgp" data-li="[21,1,45574,8,1]"><span>+250</span></td><td></td><td class="button-cell but-sip" data-li="[1,45574,8,1]"></td></tr>
+      <tr ><th ${header(45575)}><a href="/fighters/first-one-1"><span class="t-b-fcc">First One</span></a></th><td class="but-sg" data-li="[21,1,45575]"><span>-200</span></td><td class="button-cell but-si" data-li="[1,45575]"></td></tr>
+      <tr ><th scope="row"><a href="/fighters/second-two-2"><span class="t-b-fcc">Second Two</span></a></th><td class="but-sg" data-li="[21,2,45575]"><span>+170</span></td><td class="button-cell but-si" data-li="[2,45575]"></td></tr>
+      <tr class="pr"><th scope="row">Two wins by submission</th><td class="but-sgp" data-li="[21,1,45575,9,2]"><span>+900</span></td><td class="button-cell but-sip" data-li="[1,45575,9,2]"></td></tr>
+    </tbody>
+  </table>`;
+
+test("the current board markup keys each bout by its row header, and its props stay with that bout", () => {
+  for (const header of [(id: number) => `scope="row" data-admin-matchup="${id}"`, () => `scope="row"`]) {
+    const board = parseEventMethodOddsHtml(currentBoard(header), "https://www.bestfightodds.com/events/ufc-doha-4440");
+    assert.deepEqual(board.map((bout) => [bout.f1Name, bout.f2Name]), [["Jiri Prochazka", "Navajo Stirling"], ["First One", "Second Two"]]);
+    const odds = methodOddsForFight(board, "Navajo Stirling", "Jiri Prochazka");
+    assert.ok(odds);
+    assert.deepEqual(odds.moneylineKeys, { f1: [2, 45574], f2: [1, 45574] });
+    // Each book's moneyline stays with its fighter: the close is their middle.
+    assert.deepEqual(odds.moneyline, {
+      f1: [{ bookmaker: "FanDuel", line: "-170" }, { bookmaker: "BetMGM", line: "-162" }],
+      f2: [{ bookmaker: "FanDuel", line: "+132" }, { bookmaker: "BetMGM", line: "+130" }],
+    });
+    assert.deepEqual([rangeMiddle(["-170", "-162"]), rangeMiddle(["+132", "+130"])], ["-166", "+131"]);
+    assert.equal(odds.f2.ko?.prices[0].line, "+250");
+    assert.equal(odds.f1.ko, undefined);
+    assert.deepEqual(odds.additional.map((quote) => quote.prices.map((price) => price.line)), [["-152", "-167"]]);
+    assert.equal(methodOddsForFight(board, "First One", "Second Two")?.f2.submission?.prices[0].line, "+900");
+  }
+});
+
+test("a board whose priced bouts can't be read fails loudly; one with no prices yet reads as empty", () => {
+  const url = "https://www.bestfightodds.com/events/ufc-doha-4440";
+  // Fighter links in a new shape: priced first corners tie to no fighter.
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard(() => `scope="row"`).replaceAll('href="/fighters/', 'href="/athletes/'), url), BoardMarkupError);
+  // One bout unreadable is still a broken board, not a shorter one.
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard(() => `scope="row"`).replace('href="/fighters/first-one-1"', 'href="/athletes/first-one-1"'), url), BoardMarkupError);
+  // A spacer between a bout's corners leaves its first corner without a second.
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard((id) => `scope="row" data-admin-matchup="${id}"`)
+    .replace('<tr ><th scope="row"><a href="/fighters/navajo-stirling', '<tr><td></td></tr><tr ><th scope="row"><a href="/fighters/navajo-stirling'), url), BoardMarkupError);
+  // A blank or malformed id falls through to the chart key.
+  assert.equal(parseEventMethodOddsHtml(currentBoard(() => `scope="row" data-admin-matchup=""`), url).length, 2);
+  // A second corner whose first corner is gone, and a price shown in a bare cell.
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard((id) => `scope="row" data-admin-matchup="${id}"`)
+    .replace(/<tr ><th scope="row" data-admin-matchup="45574">[\s\S]*?<\/tr>/, ""), url), BoardMarkupError);
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard(() => `scope="row"`).replace("<td></td><td class=\"button-cell but-sip\" data-li=\"[1,45574,8,1]\">", "<td>+150</td><td class=\"button-cell but-sip\" data-li=\"[1,45574,8,1]\">"), url), BoardMarkupError);
+  // Prices shown with keys in a shape this parser doesn't know.
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard(() => `scope="row"`).replaceAll(/data-li="\[(\d+),(\d),(\d+)\]"/g, 'data-li="$1-$2-$3"'), url), BoardMarkupError);
+  // Prices shown without the keys that tie them to a corner and bout.
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard(() => `scope="row"`).replaceAll(/ data-li="[^"]*"/g, ""), url), BoardMarkupError);
+  // A second corner missing before the next bout: that bout's first corner is not it.
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard((id) => `scope="row" data-admin-matchup="${id}"`)
+    .replace(/<tr ><th scope="row"><a href="\/fighters\/navajo-stirling[\s\S]*?<\/tr>/, "")
+    .replace(/<tr class="pr">[\s\S]*?<tr ><th scope="row" data-admin-matchup="45575">/, '<tr ><th scope="row" data-admin-matchup="45575">'), url), BoardMarkupError);
+  const unpriced = currentBoard(() => `scope="row"`).replaceAll(/ data-li="[^"]*"/g, "").replaceAll(/<span>[+-]\d+<\/span>/g, "<span></span>");
+  assert.deepEqual(parseEventMethodOddsHtml(unpriced, url), []);
+  assert.deepEqual(parseEventMethodOddsHtml("<html>No table</html>", "https://www.bestfightodds.com/events/x"), []);
 });
 
 test("method odds reject a merely similar fighter pair", () => {
@@ -225,4 +292,20 @@ test("front-page boards are dated to the nearest year, including a card split ov
     ["2026-10-04", "https://www.bestfightodds.com/events/ufc-332-4330"],
     ["2027-01-02", "https://www.bestfightodds.com/events/ufc-340-1"],
   ]);
+});
+
+test("a booked bout the source still keeps under Future Events takes that line until it is dated", async (t) => {
+  const row = (event: string, date: string, [one, two]: [string, string], [a, b]: [string[], string[]]) => `
+    <tr class="main-row"><th class="oppcell"><a href="/fighters/${one.toLowerCase().replace(" ", "-")}-1">${one}</a></th>${a.map((line) => `<td class="moneyline"><span>${line}</span></td>`).join("")}<td class="item-non-mobile">${event}</td></tr>
+    <tr><th class="oppcell"><a href="/fighters/${two.toLowerCase().replace(" ", "-")}-2">${two}</a></th>${b.map((line) => `<td class="moneyline"><span>${line}</span></td>`).join("")}<td class="item-non-mobile">${date}</td></tr>`;
+  const future = row('<a href="/events/future-events-197">Future Events</a>', "", ["Joshua Van", "Manel Kape"], [["-121", "-138", "-121"], ["-103", "-103", "+111"]]);
+  const old = row('<a href="/events/fury-fc-71-2703">Fury FC 71</a>', "Nov 6th 2022", ["Joshua Van", "Tyler Bialecki"], [["-500", "-1000", "-800"], ["+375", "+500", "+500"]]);
+  let page = `<table>${old}<tr class="event-header"><td><a href="/events/future-events-197">Future Events</a></td></tr>${future}</table>`;
+  t.mock.method(globalThis, "fetch", async () => new Response(page));
+  const url = "https://www.bestfightodds.com/fighters/joshua-van-undated";
+  const found = await scrapeOdds("Joshua Van", "Manel Kape", "2099-01-30", url);
+  assert.deepEqual(found && [found.f1.open, found.f1.close, found.f2.close], ["-121", closingLine(["-121", "-138", "-121"]), closingLine(["-103", "-103", "+111"])]);
+  // Two undated rows for the pair: neither can be told to be this booking.
+  page = `<table>${future}${future}</table>`;
+  assert.equal(await scrapeOdds("Joshua Van", "Manel Kape", "2099-01-30", `${url}-twice`), null);
 });

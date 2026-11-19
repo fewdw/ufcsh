@@ -74,6 +74,27 @@ test("a Cloudflare block page pauses the host for an hour with a readable error"
   assert.deepEqual(await postJson("https://blocked.example/gql", {}), { ok: true }, "the host is tried again after an hour");
 });
 
+test("a block that goes on doubles the wait up to a day, and a request that gets through resets it", async (t) => {
+  let now = Date.parse("2030-01-01T00:00:00Z");
+  t.mock.method(Date, "now", () => now);
+  const page = '<h1 data-translate="block_headline">Sorry, you have been blocked</h1>';
+  const request = t.mock.method(globalThis, "fetch", async () => new Response(page, { status: 403 }));
+  const waits: number[] = [];
+  for (let i = 0; i < 7; i++) {
+    const error = await postJson("https://still-blocked.example/gql", {}).catch((err: HttpRateLimitError) => err);
+    assert.ok(error instanceof HttpRateLimitError);
+    waits.push((error.retryAt - now) / 3_600_000);
+    now = error.retryAt;
+  }
+  assert.deepEqual(waits, [1, 2, 4, 8, 16, 24, 24]);
+  assert.equal(request.mock.callCount(), 7, "one request per cooldown");
+  request.mock.mockImplementationOnce(async () => Response.json({ ok: true }));
+  assert.deepEqual(await postJson("https://still-blocked.example/gql", {}), { ok: true });
+  const again = await postJson("https://still-blocked.example/gql", {}).catch((err: HttpRateLimitError) => err);
+  assert.ok(again instanceof HttpRateLimitError);
+  assert.equal(again.retryAt - now, 3_600_000);
+});
+
 test("an API's own 403 is not a block", async (t) => {
   const request = t.mock.method(globalThis, "fetch", async () => Response.json({ errors: [{ message: "Unknown query" }] }, { status: 403 }));
   await assert.rejects(postJson("https://api-403.example/gql", {}), /HTTP 403 for https:\/\/api-403\.example\/gql: \{"errors"/);

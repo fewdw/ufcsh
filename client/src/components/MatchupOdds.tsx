@@ -5,8 +5,8 @@ import { oddsMovement, type OddsMovement } from "../oddsMovement";
 import { lastName } from "../format";
 import { useTooltip } from "../tooltip";
 import { Tooltip } from "./Tooltip";
-import type { MethodOdds, OddsQuote } from "../api";
-import { bestPrice, formatPrice, impliedProbability, mostLikelyQuotes, percent } from "../methodOdds";
+import type { FightOdds, MethodOdds, OddsQuote } from "../api";
+import { bestPrice, fairChances, formatPrice, impliedProbability, mostLikelyQuotes, percent, percentPair } from "../methodOdds";
 import { organizeAdditionalOdds } from "../oddsLayout";
 import { CHART_TEXT } from "./FightStats";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
@@ -187,10 +187,19 @@ function settle(result: FightResult | undefined): Settled | null {
  * line last moved. Hover gives the implied chance. A price still open for
  * betting is a button: clicking it adds the pick to the parlay slip, or
  * removes it if it is already there. */
-function OddsCell({ quote, hit, favorite, live, format, bet, dense }: { quote: OddsQuote | undefined; hit?: boolean; favorite?: boolean; live?: boolean; format: OddsFormat; bet?: Bet; dense?: boolean }) {
+function OddsCell({ quote, hit, favorite, live, format, bet, dense, book }: { quote: OddsQuote | undefined; hit?: boolean; favorite?: boolean; live?: boolean; format: OddsFormat; bet?: Bet; dense?: boolean; /** Name the sportsbook offering the price under it. */ book?: boolean }) {
   const { toggle, isSelected } = useParlay();
   const price = bestPrice(quote);
   if (!price) return <span className="text-zinc-300 dark:text-zinc-600" aria-label="No price">—</span>;
+  if (book) {
+    const others = (quote?.prices.length ?? 1) - 1;
+    return (
+      <span className="inline-flex flex-col items-center px-1 leading-none" title={`Best of ${others + 1} sportsbooks: ${price.bookmaker}`}>
+        <span className="whitespace-nowrap font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">{formatPrice(price.line, format)}</span>
+        <span className="mt-0.5 max-w-full truncate text-[8px] text-zinc-500">{price.bookmaker}</span>
+      </span>
+    );
+  }
   const probability = impliedProbability(price.line);
   const move = price.move;
   const leg: ParlayLeg | null = live && bet?.fightId && bettable(bet.outcome) ? { id: outcomeId(bet.outcome), fightId: bet.fightId, fightLabel: bet.fightLabel, market: bet.market, selection: bet.selection, price: price.line, outcome: bet.outcome } : null;
@@ -224,7 +233,7 @@ function OddsCell({ quote, hit, favorite, live, format, bet, dense }: { quote: O
   );
 }
 
-type Cell = { quote: OddsQuote | undefined; hit: boolean; favorite?: boolean; bet?: Bet };
+type Cell = { quote: OddsQuote | undefined; hit: boolean; favorite?: boolean; bet?: Bet; book?: boolean };
 type Row = { label: string; cells: Cell[] };
 type Group = { name?: string; rows: Row[] };
 
@@ -255,7 +264,7 @@ function OddsTable({ title, columns, groups, wideLabel = true, live, format, com
           return <tr key={row.label} className="border-t border-zinc-100 dark:border-zinc-800">
             <th scope="row" className={`truncate pr-2 text-left font-normal text-zinc-500 ${rowPad}`} title={row.label}>{row.label}</th>
             {row.cells.map((cell, index) => <td key={columns[index]} className={`text-center ${rowPad}`}>
-              <OddsCell quote={cell.quote} hit={cell.hit} favorite={cell.favorite} live={live} format={format} bet={cell.bet} dense={compact} />
+              <OddsCell quote={cell.quote} hit={cell.hit} favorite={cell.favorite} live={live} format={format} bet={cell.bet} dense={compact} book={cell.book} />
             </td>)}
           </tr>;
         })}
@@ -264,10 +273,13 @@ function OddsTable({ title, columns, groups, wideLabel = true, live, format, com
   );
 }
 
+/** Twice the slowest board interval (6 hours, for cards over a week out). */
+const BOOKS_FRESH_MS = 12 * 60 * 60_000;
+
 /** The full prop board under the matchup. Whole-fight markets stack on the
  * left and the round-by-round grid sits beside them once the panel is wide
  * enough; on a narrow panel everything stacks. */
-export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american", fightId = "", moneyline, compact = false }: { odds: MethodOdds; f1Name: string; f2Name: string; result?: FightResult; format?: OddsFormat; fightId?: string; /** The fight's own price, opening and closing, when the board carries it. */ moneyline?: { f1: { open: string | null; close: string | null }; f2: { open: string | null; close: string | null } } | null; /** Denser spacing for a page that lists every matchup's board at once. */ compact?: boolean }) {
+export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american", fightId = "", moneyline, books, compact = false }: { odds: MethodOdds; f1Name: string; f2Name: string; result?: FightResult; format?: OddsFormat; fightId?: string; /** The fight's own price, opening and closing, when the board carries it. */ moneyline?: { f1: { open: string | null; close: string | null }; f2: { open: string | null; close: string | null } } | null; /** Each sportsbook's current moneyline, for the best on offer. */ books?: NonNullable<FightOdds>["books"]; /** Denser spacing for a page that lists every matchup's board at once. */ compact?: boolean }) {
   const fightLabel = `${f1Name} vs ${f2Name}`;
   const extra = organizeAdditionalOdds(odds.additional, f1Name, f2Name);
   const rounds = [...new Set([...extra.roundMethods, ...extra.roundFinishes].map(row => row.round))].sort();
@@ -321,8 +333,13 @@ export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american",
   const asQuote = (line: string | null | undefined): OddsQuote | undefined =>
     line && /^[+-]\d+$/.test(line) ? { label: "Moneyline", prices: [{ bookmaker: "Mean", line }] } : undefined;
   const openedMoneyline = Boolean(asQuote(moneyline?.f1.open) || asQuote(moneyline?.f2.open));
-  const moneylineRows = (moneyline ? ([[f1Name, 1, moneyline.f1], [f2Name, 2, moneyline.f2]] as const) : [])
-    .map(([label, who, side]): Row => ({
+  // The best price any sportsbook offers now, and which one: only while the
+  // bout can still be bet. The server drops books older than twice the card's
+  // board interval; a page kept open longer than the slowest of those drops
+  // them here too.
+  const bestBook = live && fightId && books?.f1.length && books.f2.length && Date.now() - books.at < BOOKS_FRESH_MS ? books : null;
+  const moneylineRows = (moneyline ? ([[f1Name, 1, moneyline.f1, bestBook?.f1], [f2Name, 2, moneyline.f2, bestBook?.f2]] as const) : [])
+    .map(([label, who, side, offered]): Row => ({
       label,
       cells: [
         ...(openedMoneyline ? [{ quote: asQuote(side.open), hit: false }] : []),
@@ -331,9 +348,11 @@ export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american",
           hit: settled?.winner === who,
           bet: { fightId, fightLabel, market: "Moneyline", selection: `${label} to win`, outcome: { fightId, winner: who } },
         },
+        ...(bestBook ? [{ quote: offered ? { label: "Moneyline", prices: offered } : undefined, hit: false, book: true }] : []),
       ],
     }))
     .filter(shown);
+
 
   const distanceRows = [{
     label: "",
@@ -376,7 +395,7 @@ export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american",
       {/* Both stacks start on the same line, so the first section heading on
           each side and the column headers under it read as one row. */}
       {fightLevel ? <div className={`flex min-w-0 flex-col self-start ${compact ? "gap-2.5" : "gap-4"}`}>
-        {moneylineRows.length ? <OddsTable title="Moneyline" columns={openedMoneyline ? ["Open", live ? "Current" : "Close"] : [live ? "Current" : "Close"]} groups={[{ rows: moneylineRows }]} live={live} format={format} compact={compact} /> : null}
+        {moneylineRows.length ? <OddsTable title="Moneyline" columns={[...(openedMoneyline ? ["Open"] : []), live ? "Current" : "Close", ...(bestBook ? ["Best"] : [])]} groups={[{ rows: moneylineRows }]} live={live} format={format} compact={compact} /> : null}
         {methodRows.length ? <OddsTable title="Method" columns={[...methods]} groups={[{ rows: methodRows }]} live={live} format={format} compact={compact} /> : null}
         {/* Two small two-price boards share a row rather than each taking one. */}
         {distanceRows.length || totalRows.length ? <div className={`grid items-start gap-x-4 ${distanceRows.length && totalRows.length ? "grid-cols-2" : ""}`}>
@@ -430,7 +449,7 @@ export function Moneyline({ leg, value, name, className, fill }: { leg: ParlayLe
   );
 }
 
-export default function MatchupOdds({ f1, f2, f1Open, f2Open, f1Name, f2Name, props, fightId }: {
+export default function MatchupOdds({ f1, f2, f1Open, f2Open, f1Name, f2Name, props, fightId, kalshiLine = false }: {
   f1: string | null | undefined;
   f2: string | null | undefined;
   f1Open?: string | null;
@@ -440,21 +459,30 @@ export default function MatchupOdds({ f1, f2, f1Open, f2Open, f1Name, f2Name, pr
   props?: MethodOdds;
   /** Present only for a fight still open for betting; enables click-to-parlay. */
   fightId?: string;
+  /** The line is Kalshi's, standing in while no book has priced the bout. */
+  kalshiLine?: boolean;
 }) {
   if (!f1 && !f2 && !props) return null;
   const movement = oddsMovement(f1Open, f1, f2Open, f2);
   const hasOpen = Boolean(f1Open || f2Open);
+  const chances = fairChances(f1, f2);
+  const fair = chances && percentPair(chances).map((value) => `${value}%`);
   const fightLabel = `${f1Name} vs ${f2Name}`;
+  const chanceNote = kalshiLine ? "Chance to win on Kalshi (no sportsbook has priced this bout yet)" : "Chance to win, with the sportsbooks' margin taken out";
   return (
     <div className="odds-pair w-full overflow-hidden rounded-lg border text-center" aria-label="Pre-fight betting odds">
       {f1 || f2 ? <div className="grid grid-cols-[minmax(0,1fr)_1rem_minmax(0,1fr)] items-center gap-y-0.5 px-1 py-1.5 @[40rem]:grid-cols-[minmax(0,1fr)_2rem_minmax(0,1fr)] @[40rem]:py-3">
         <Moneyline leg={moneylineLeg(fightId, fightLabel, 1, f1Name, f1)} value={f1} name={f1Name} className="col-start-1 row-start-1 text-[11px] font-semibold leading-4 tracking-tight tabular-nums @[40rem]:text-base @[40rem]:leading-6" />
         <Moneyline leg={moneylineLeg(fightId, fightLabel, 2, f2Name, f2)} value={f2} name={f2Name} className="col-start-3 row-start-1 text-[11px] font-semibold leading-4 tracking-tight tabular-nums @[40rem]:text-base @[40rem]:leading-6" />
-        {hasOpen ? <>
-          <span className="col-start-1 row-start-2 hidden whitespace-nowrap text-[9px] leading-3 tabular-nums text-zinc-500 @[40rem]:block">{f1Open ? `from ${f1Open}` : ""}</span>
-          <span className="col-start-3 row-start-2 hidden whitespace-nowrap text-[9px] leading-3 tabular-nums text-zinc-500 @[40rem]:block">{f2Open ? `from ${f2Open}` : ""}</span>
+        {fair ? <>
+          <span className="col-start-1 row-start-2 whitespace-nowrap text-[9px] font-medium leading-3 tabular-nums text-zinc-600 @[40rem]:text-[10px] dark:text-zinc-300" title={chanceNote} aria-label={`${f1Name}: ${fair[0]} chance to win`}>{fair[0]}</span>
+          <span className="col-start-3 row-start-2 whitespace-nowrap text-[9px] font-medium leading-3 tabular-nums text-zinc-600 @[40rem]:text-[10px] dark:text-zinc-300" title={chanceNote} aria-label={`${f2Name}: ${fair[1]} chance to win`}>{fair[1]}</span>
         </> : null}
-        <span className="col-start-2 row-start-1 row-span-2 grid self-stretch">
+        {hasOpen ? <>
+          <span className="col-start-1 row-start-3 hidden whitespace-nowrap text-[9px] leading-3 tabular-nums text-zinc-500 @[40rem]:block">{f1Open ? `from ${f1Open}` : ""}</span>
+          <span className="col-start-3 row-start-3 hidden whitespace-nowrap text-[9px] leading-3 tabular-nums text-zinc-500 @[40rem]:block">{f2Open ? `from ${f2Open}` : ""}</span>
+        </> : null}
+        <span className="col-start-2 row-start-1 row-span-3 grid self-stretch">
           {movement ? <Movement movement={movement} name={movement.toward === "f1" ? f1Name : f2Name} /> : <span className="self-center text-[9px] text-zinc-500" aria-hidden="true">vs</span>}
         </span>
       </div> : null}
