@@ -79,9 +79,11 @@ test("new, removed and changed bookings refresh sections immediately; unchanged 
   assert.deepEqual(Object.values(fight), [null, null, null, null], "a replacement cannot inherit the old booking's placement");
 });
 
-test("pairings UFCStats drops from a coming card are kept as its cancellations, and only those", t => {
+test("pairings UFCStats drops before they are fought become cancellations once a later read confirms it", t => {
   const eventId = "face000000000041";
-  const [a, b, c, d, e, f, g] = ["face000000000042", "face000000000043", "face000000000044", "face000000000045", "face000000000046", "face000000000047", "face000000000048"];
+  const [a, b, c, d, e, f, g, e2] = ["face000000000042", "face000000000043", "face000000000044", "face000000000045", "face000000000046", "face000000000047", "face000000000048", "face000000000049"];
+  let clock = Date.parse("2099-01-20T00:00:00Z");
+  t.mock.method(Date, "now", () => clock);
   t.after(() => {
     db.prepare("DELETE FROM fights WHERE event_id = ?").run(eventId);
     db.prepare("DELETE FROM dropped_bouts WHERE event_id = ?").run(eventId);
@@ -89,44 +91,124 @@ test("pairings UFCStats drops from a coming card are kept as its cancellations, 
   });
   db.prepare("INSERT INTO events (id, name, date) VALUES (?, 'UFC Dropped fixture', '2099-02-01')").run(eventId);
   const names: Record<string, string> = { [a]: "Ann Dropfixture", [b]: "Bea Dropfixture", [c]: "Cal Dropfixture", [d]: "Dan Dropfixture",
-    [e]: "Eve Dropfixture", [f]: "Fay Dropfixture", [g]: "Gus Dropfixture", face000000000049: "Eve Dropfixture",
-    face000000000070: "Hal Dropfixture", face000000000071: "Ivy Dropfixture", face000000000072: "Jon Dropfixture", face000000000073: "Kim Dropfixture" };
-  const corner = (id: string, outcome: string | null = null, name = names[id]) => ({ id, name, outcome, kd: "", str: "", td: "", sub: "" });
-  const bout = (id: string, first: string, second: string, outcome: [string, string] | null = null, firstName?: string): ScrapedEventDetail["fights"][number] => ({
-    id, ord: 0, weightClass: "Lightweight", titleFight: false, f1: corner(first, outcome?.[0] ?? null, firstName), f2: corner(second, outcome?.[1] ?? null),
+    [e]: "Eve Dropfixture", [f]: "Fay Dropfixture", [g]: "Gus Dropfixture", [e2]: "Eve Dropfixture" };
+  const corner = (id: string, outcome: string | null = null) => ({ id, name: names[id], outcome, kd: "", str: "", td: "", sub: "" });
+  const bout = (id: string, first: string, second: string, outcome: [string, string] | null = null): ScrapedEventDetail["fights"][number] => ({
+    id, ord: 0, weightClass: "Lightweight", titleFight: false, f1: corner(first, outcome?.[0] ?? null), f2: corner(second, outcome?.[1] ?? null),
     method: outcome ? "KO/TKO" : null, methodDetails: null, round: outcome ? "1" : null, time: outcome ? "1:00" : null, bonuses: { perf: false, fotn: false },
   });
-  const store = (...fights: ScrapedEventDetail["fights"]) => storeEventDetail({ id: eventId, name: "UFC Dropped fixture", date: "2099-02-01", location: "Las Vegas", fights });
-  const dropped = () => (db.prepare("SELECT f1_id, f2_id, fight_id FROM dropped_bouts WHERE event_id = ? ORDER BY f1_id").all(eventId) as
-    { f1_id: string; f2_id: string; fight_id: string }[]).map(row => `${names[row.f1_id].split(" ")[0]}-${names[row.f2_id].split(" ")[0]}@${row.fight_id.slice(-2)}`);
+  const store = (...fights: ScrapedEventDetail["fights"]) => {
+    storeEventDetail({ id: eventId, name: "UFC Dropped fixture", date: "2099-02-01", location: "Las Vegas", fights });
+    clock += 10 * 60_000;
+  };
+  const first = (id: string) => names[id].split(" ")[0];
+  const dropped = (confirmed = false) => (db.prepare(`SELECT f1_id, f2_id FROM dropped_bouts WHERE event_id = ? ${confirmed ? "AND confirmed = 1" : ""} ORDER BY f1_id, f2_id`)
+    .all(eventId) as { f1_id: string; f2_id: string }[]).map(row => `${first(row.f1_id)}-${first(row.f2_id)}`);
+  const card = () => db.prepare("SELECT id, name, date, wiki_title, cancelled_json FROM events WHERE id = ?").get(eventId) as Parameters<typeof cardCancellations>[0];
 
   store(bout("face000000000051", a, b), bout("face000000000052", c, d), bout("face000000000053", e, f));
   assert.deepEqual(dropped(), []);
   store(bout("face000000000051", a, b), bout("face000000000053", e, f));
-  assert.deepEqual(dropped(), ["Cal-Dan@52"], "a bout taken off the card");
+  assert.deepEqual(dropped(), ["Cal-Dan"], "a bout taken off the card");
+  assert.deepEqual(cardCancellations(card()), [], "not listed until a later read still misses it");
   store(bout("face000000000051", b, a), bout("face000000000053", e, f));
-  assert.deepEqual(dropped(), ["Cal-Dan@52"], "corners swapped are the same booking");
+  assert.deepEqual(dropped(true), ["Cal-Dan"], "confirmed by the next read; corners swapped are the same booking");
   store(bout("face000000000051", b, g), bout("face000000000053", e, f));
-  assert.deepEqual(dropped(), ["Bea-Ann@51", "Cal-Dan@52"], "a new opponent breaks up the old pairing");
-  store(bout("face000000000051", b, g), bout("face000000000053", "face000000000049", f, null, names[e]));
-  assert.deepEqual(dropped(), ["Bea-Ann@51", "Cal-Dan@52"], "the same fighter under a corrected id is no change");
-  store(bout("face000000000051", b, g), bout("face000000000053", "face000000000049", f, null, names[e]), bout("face000000000054", d, c));
-  assert.deepEqual(dropped(), ["Bea-Ann@51"], "a pairing back on the card, under any id, is no longer dropped");
+  assert.deepEqual(dropped(), ["Ann-Bea", "Cal-Dan"], "a new opponent breaks up the old pairing, stored in one order");
+  store(bout("face000000000051", b, g), bout("face000000000054", f, e2));
+  assert.deepEqual(dropped(), ["Ann-Bea", "Cal-Dan"], "a bout re-created with corners swapped and a corrected id is no change");
+  store(bout("face000000000051", b, g), bout("face000000000054", f, e2), bout("face000000000055", d, c));
+  assert.deepEqual(dropped(), ["Ann-Bea"], "a pairing back on the card, under any id, is no longer dropped");
 
-  const card = db.prepare("SELECT id, name, date, wiki_title, cancelled_json FROM events WHERE id = ?").get(eventId) as Parameters<typeof cardCancellations>[0];
-  const list = cardCancellations(card);
-  assert.deepEqual(list.map(entry => [entry.f1.id, entry.f2.id, entry.source_url]), [[b, a, `http://ufcstats.com/event-details/${eventId}`]]);
-  assert.deepEqual(cancelledBoutsOf(a, []).map(entry => [entry.event_id, entry.opponent.name]), [[eventId, names[b]]]);
+  const list = cardCancellations(card());
+  assert.deepEqual(list.map(entry => [entry.f1.id, entry.f2.id, entry.division, entry.source_url]), [[a, b, "Lightweight", `http://ufcstats.com/event-details/${eventId}`]],
+    "UFCStats' own division, even for fighters with no other bout to infer it from");
+  assert.deepEqual(cancelledBoutsOf(b, []).map(entry => [entry.event_id, entry.opponent.name]), [[eventId, names[a]]]);
 
-  // An empty read is a bad page, not every bout cancelled; nor is one that drops most of a full card.
-  const full = ["61", "62", "63", "64", "65", "66"].map((id, i) => bout(`face0000000000${id}`, [a, c, e, g, "face000000000070", "face000000000072"][i], [b, d, f, "face000000000049", "face000000000071", "face000000000073"][i]));
-  store(...full);
-  db.prepare("DELETE FROM dropped_bouts WHERE event_id = ?").run(eventId);
-  assert.throws(() => store(), /Incomplete event page/);
-  store(full[0], full[1]);
-  assert.deepEqual(dropped(), []);
-  // A card that has been fought keeps no new drops.
-  store(...full.map(fight => ({ ...fight, ...bout(fight.id, fight.f1.id, fight.f2.id, ["win", "loss"]) })));
-  store(...full.slice(1).map(fight => ({ ...fight, ...bout(fight.id, fight.f1.id, fight.f2.id, ["win", "loss"]) })));
-  assert.deepEqual(dropped(), []);
+  // A page that briefly omits bouts, then lists them again, leaves nothing.
+  store(bout("face000000000051", b, g));
+  store(bout("face000000000051", b, g), bout("face000000000054", f, e2), bout("face000000000055", d, c));
+  assert.deepEqual(dropped(), ["Ann-Bea"]);
+
+  // On fight night: a bout with a result never fell through, and a booking
+  // missing from the read that completes the card still did.
+  store(bout("face000000000051", b, g, ["win", "loss"]), bout("face000000000054", f, e2), bout("face000000000055", d, c));
+  store(bout("face000000000054", f, e2), bout("face000000000055", d, c));
+  assert.deepEqual(dropped(), ["Ann-Bea"], "a fought bout missing from a partial page is not a cancellation");
+  store(bout("face000000000051", b, g, ["win", "loss"]), bout("face000000000054", f, e2, ["win", "loss"]));
+  assert.deepEqual(dropped(), ["Ann-Bea", "Cal-Dan"]);
+  store(bout("face000000000051", b, g, ["win", "loss"]), bout("face000000000054", f, e2, ["win", "loss"]));
+  assert.deepEqual(dropped(true), ["Ann-Bea", "Cal-Dan"], "confirmed by a read after the card is over");
+  // A finished card records no new drops.
+  store(bout("face000000000051", b, g, ["win", "loss"]));
+  assert.deepEqual(dropped(), ["Ann-Bea", "Cal-Dan"]);
+});
+
+test("a page missing most of a full card is rejected before it deletes anything", t => {
+  const eventId = "face0000000000c1";
+  t.after(() => {
+    db.prepare("DELETE FROM fights WHERE event_id = ?").run(eventId);
+    db.prepare("DELETE FROM dropped_bouts WHERE event_id = ?").run(eventId);
+    db.prepare("DELETE FROM events WHERE id = ?").run(eventId);
+  });
+  db.prepare("INSERT INTO events (id, name, date) VALUES (?, 'UFC Partial fixture', '2099-03-01')").run(eventId);
+  const corner = (id: string) => ({ id, name: `Partial ${id.slice(-2)}fixture`, outcome: null, kd: "", str: "", td: "", sub: "" });
+  const bout = (i: number): ScrapedEventDetail["fights"][number] => ({
+    id: `face0000000000d${i}`, ord: i, weightClass: "Lightweight", titleFight: false, f1: corner(`face0000000000e${i}`), f2: corner(`face0000000000f${i}`),
+    method: null, methodDetails: null, round: null, time: null, bonuses: { perf: false, fotn: false },
+  });
+  const store = (...fights: ScrapedEventDetail["fights"]) => storeEventDetail({ id: eventId, name: "UFC Partial fixture", date: "2099-03-01", location: "Las Vegas", fights });
+  const count = () => (db.prepare("SELECT count(*) AS n FROM fights WHERE event_id = ?").get(eventId) as { n: number }).n;
+  store(...[1, 2, 3, 4, 5, 6].map(bout));
+  assert.throws(() => store(bout(1), bout(2)), /Partial event page \(4 of 6 bouts missing\)/);
+  assert.equal(count(), 6);
+  assert.equal((db.prepare("SELECT count(*) AS n FROM dropped_bouts WHERE event_id = ?").get(eventId) as { n: number }).n, 0);
+  store(...[1, 2, 3, 4, 5].map(bout));
+  assert.equal(count(), 5, "a single bout off a full card is an ordinary change");
+});
+
+test("a bout UFCStats moves to another card shows as moved, whichever card is read first, and to an earlier card too", t => {
+  const [early, original, later] = ["face0000000000g1", "face0000000000g2", "face0000000000g3"];
+  const [x, y] = ["face0000000000g4", "face0000000000g5"];
+  let clock = Date.parse("2099-04-01T00:00:00Z");
+  t.mock.method(Date, "now", () => clock);
+  t.after(() => {
+    for (const id of [early, original, later]) {
+      db.prepare("DELETE FROM fights WHERE event_id = ?").run(id);
+      db.prepare("DELETE FROM dropped_bouts WHERE event_id = ?").run(id);
+      db.prepare("DELETE FROM events WHERE id = ?").run(id);
+    }
+  });
+  for (const [id, date] of [[early, "2099-04-06"], [original, "2099-04-20"], [later, "2099-05-04"]]) {
+    db.prepare("INSERT INTO events (id, name, date) VALUES (?, ?, ?)").run(id, `UFC Moved fixture ${date}`, date);
+  }
+  const corner = (id: string) => ({ id, name: id === x ? "Xav Movefixture" : "Yul Movefixture", outcome: null, kd: "", str: "", td: "", sub: "" });
+  const filler = (eventId: string) => ({ id: `${eventId.slice(0, -2)}h${eventId.slice(-1)}`, ord: 1, weightClass: "Flyweight", titleFight: false,
+    f1: { ...corner(x), id: `${eventId.slice(0, -2)}i${eventId.slice(-1)}`, name: `Filler ${eventId.slice(-1)}a` },
+    f2: { ...corner(y), id: `${eventId.slice(0, -2)}j${eventId.slice(-1)}`, name: `Filler ${eventId.slice(-1)}b` },
+    method: null, methodDetails: null, round: null, time: null, bonuses: { perf: false, fotn: false } });
+  const bout = (id: string): ScrapedEventDetail["fights"][number] => ({ id, ord: 0, weightClass: "Welterweight", titleFight: false, f1: corner(x), f2: corner(y),
+    method: null, methodDetails: null, round: null, time: null, bonuses: { perf: false, fotn: false } });
+  const store = (eventId: string, ...fights: ScrapedEventDetail["fights"]) => {
+    const { date } = db.prepare("SELECT date FROM events WHERE id = ?").get(eventId) as { date: string };
+    storeEventDetail({ id: eventId, name: `UFC Moved fixture ${date}`, date, location: "Las Vegas", fights: [filler(eventId), ...fights] });
+    clock += 10 * 60_000;
+  };
+  const card = (id: string) => db.prepare("SELECT id, name, date, wiki_title, cancelled_json FROM events WHERE id = ?").get(id) as Parameters<typeof cardCancellations>[0];
+  const shown = () => cancelledBoutsOf(x, []).map(entry => [entry.event_id, entry.moved_to?.date ?? null]);
+
+  // The destination read first: the same bout id now sits on the later card.
+  store(original, bout("face0000000000k1"));
+  store(later, bout("face0000000000k1"));
+  assert.equal(cardCancellations(card(original)).length, 1, "confirmed at once: UFCStats placed it on another card");
+  assert.deepEqual(shown(), [[original, "2099-05-04"]]);
+
+  // The original read first, then a bout pulled forward to an earlier card.
+  db.prepare("DELETE FROM fights WHERE id = 'face0000000000k1'").run();
+  db.prepare("DELETE FROM dropped_bouts WHERE event_id = ?").run(original);
+  store(original, bout("face0000000000k2"));
+  store(original);
+  store(original);
+  store(early, bout("face0000000000k3"));
+  assert.deepEqual(shown(), [[original, "2099-04-06"]]);
 });

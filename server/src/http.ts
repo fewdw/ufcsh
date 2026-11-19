@@ -40,20 +40,24 @@ const DEFAULT_GAP_MS = 1000;
  *  fails at once until `retryAt`, without retries. */
 export class HttpRateLimitError extends Error {
   readonly retryAt: number;
+  /** A firewall block: its host, and when this run of blocks began (reset by
+   *  any request that gets through), so each new block is its own news. */
+  readonly blocked: { host: string; since: number } | null;
 
-  constructor(url: string, retryAt: number, detail: string, status = 429) {
+  constructor(url: string, retryAt: number, detail: string, status = 429, blockedSince: number | null = null) {
     super(`HTTP ${status} for ${url}; retry after ${new Date(retryAt).toISOString()}: ${detail}`);
     this.retryAt = retryAt;
+    this.blocked = blockedSince == null ? null : { host: new URL(url).host, since: blockedSince };
   }
 }
 
-type HostState = { chain: Promise<void>; lastAt: number; cookie: string; rateLimit: HttpRateLimitError | null; blocks: number };
+type HostState = { chain: Promise<void>; lastAt: number; cookie: string; rateLimit: HttpRateLimitError | null; blocks: number; blockedSince: number };
 const hosts = new Map<string, HostState>();
 
 function hostState(host: string): HostState {
   let s = hosts.get(host);
   if (!s) {
-    s = { chain: Promise.resolve(), lastAt: 0, cookie: "", rateLimit: null, blocks: 0 };
+    s = { chain: Promise.resolve(), lastAt: 0, cookie: "", rateLimit: null, blocks: 0, blockedSince: 0 };
     hosts.set(host, s);
   }
   return s;
@@ -88,8 +92,9 @@ function blockError(state: HostState, status: number, text: string, url: string)
   if (status !== 403 || !text.includes('data-translate="block_headline"')) return null;
   const ray = text.match(/Ray ID: <strong[^>]*>([0-9a-f]+)</)?.[1];
   const cooldown = Math.min(BLOCK_COOLDOWN_MS * 2 ** state.blocks, BLOCK_COOLDOWN_MAX_MS);
+  if (!state.blocks) state.blockedSince = Date.now();
   state.blocks++;
-  const error = new HttpRateLimitError(url, Date.now() + cooldown, `Cloudflare blocked this server${ray ? ` (Ray ID ${ray})` : ""}`, 403);
+  const error = new HttpRateLimitError(url, Date.now() + cooldown, `Cloudflare blocked this server${ray ? ` (Ray ID ${ray})` : ""}`, 403, state.blockedSince);
   state.rateLimit = error;
   return error;
 }

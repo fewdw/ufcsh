@@ -34,5 +34,5 @@ test("the future board's current markup (matchup id on the row header) still rea
   assert.equal(rows[0].slug, "bfo-45000");
   assert.deepEqual([rows[0].f1.name, rows[0].f2.name], ["First Fighter", "Second Fighter"]);
   assert.deepEqual(rows[0].quotes.map(quote => quote.now), [[-150, 130]]);
-  assert.throws(() => parsePotentialOdds(html.replace(' data-admin-matchup="45000"', "").replaceAll(/ class="button-cell but-si" data-li="\[\d,45000\]"/g, "")), /markup unrecognized/);
+  assert.throws(() => parsePotentialOdds(html.replaceAll('href="/fighters/', 'href="/athletes/')), /markup unrecognized/, "a priced board read as nothing would replace the saved list");
 });

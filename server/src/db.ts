@@ -705,6 +705,16 @@ if (getMeta("migration_board_moneyline") !== "2") {
   setMeta("migration_board_moneyline", "2");
 }
 
+// BestFightOdds moved each bout's matchup id in October 2026 and its boards
+// read as empty until the parser caught up, so cards finished in that window
+// were marked read in full with props missing. Read those again; stored
+// prices stay (final rows are skipped).
+if (getMeta("migration_bfo_markup_gap") !== "1") {
+  db.prepare(`UPDATE events SET bfo_final_at = NULL WHERE complete = 1 AND bfo_final_at >= ? AND id IN (
+    SELECT f.event_id FROM fights f LEFT JOIN method_odds m ON m.fight_id = f.id WHERE m.fight_id IS NULL)`).run(Date.parse("2026-10-15T00:00:00Z"));
+  setMeta("migration_bfo_markup_gap", "1");
+}
+
 // Knockout and Submission of the Night (the pre-2014 performance awards) were
 // not read before. Re-read bonuses for every card from those years.
 if (getMeta("migration_bonus_kinds") !== "1") {
@@ -788,10 +798,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS cancelled_bouts (
 db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_f1 ON cancelled_bouts(f1_id)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_f2 ON cancelled_bouts(f2_id)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_board ON cancelled_bouts(board_pk)");
-// Pairings UFCStats listed on a coming card and then dropped (or gave one
-// corner a new opponent): cancellations seen at first hand, with both
-// fighters' ids, whatever FightOdds.io or an article says. A pairing listed
-// on the card again is no longer dropped and its row goes.
+// Pairings UFCStats listed on a card and then dropped before they were
+// fought (or gave one corner a new opponent): cancellations seen at first
+// hand, with both fighters' ids, whatever FightOdds.io or an article says.
+// Stored with f1_id < f2_id. Listed once a later read confirms the drop; a
+// pairing listed on the card again is no longer dropped and its row goes.
 db.exec(`CREATE TABLE IF NOT EXISTS dropped_bouts (
   event_id     TEXT NOT NULL,
   f1_id        TEXT NOT NULL,
@@ -801,6 +812,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS dropped_bouts (
   f1_name      TEXT NOT NULL,
   f2_name      TEXT NOT NULL,
   dropped_at   INTEGER NOT NULL,
+  confirmed    INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (event_id, f1_id, f2_id)
 ) WITHOUT ROWID`);
 db.exec("CREATE INDEX IF NOT EXISTS idx_dropped_bouts_f1 ON dropped_bouts(f1_id)");

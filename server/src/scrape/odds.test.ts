@@ -104,9 +104,19 @@ test("the current board markup keys each bout by its row header, and its props s
   }
 });
 
-test("a board listing fighters without one recognisable bout fails loudly instead of reading as empty", () => {
-  const unknown = currentBoard(() => `scope="row"`).replaceAll(/data-li="\[[12],4557\d\]"/g, "");
-  assert.throws(() => parseEventMethodOddsHtml(unknown, "https://www.bestfightodds.com/events/ufc-doha-4440"), BoardMarkupError);
+test("a board whose priced bouts can't be read fails loudly; one with no prices yet reads as empty", () => {
+  const url = "https://www.bestfightodds.com/events/ufc-doha-4440";
+  // Fighter links in a new shape: priced first corners tie to no fighter.
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard(() => `scope="row"`).replaceAll('href="/fighters/', 'href="/athletes/'), url), BoardMarkupError);
+  // One bout unreadable is still a broken board, not a shorter one.
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard(() => `scope="row"`).replace('href="/fighters/first-one-1"', 'href="/athletes/first-one-1"'), url), BoardMarkupError);
+  // A spacer between a bout's corners leaves its first corner without a second.
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard((id) => `scope="row" data-admin-matchup="${id}"`)
+    .replace('<tr ><th scope="row"><a href="/fighters/navajo-stirling', '<tr><td></td></tr><tr ><th scope="row"><a href="/fighters/navajo-stirling'), url), BoardMarkupError);
+  // A blank or malformed id falls through to the chart key.
+  assert.equal(parseEventMethodOddsHtml(currentBoard(() => `scope="row" data-admin-matchup=""`), url).length, 2);
+  const unpriced = currentBoard(() => `scope="row"`).replaceAll(/ data-li="[^"]*"/g, "");
+  assert.deepEqual(parseEventMethodOddsHtml(unpriced, url), []);
   assert.deepEqual(parseEventMethodOddsHtml("<html>No table</html>", "https://www.bestfightodds.com/events/x"), []);
 });
 

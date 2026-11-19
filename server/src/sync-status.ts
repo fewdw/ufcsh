@@ -1,4 +1,5 @@
 import { db, getMeta, setMeta } from "./db.ts";
+import { HttpRateLimitError } from "./http.ts";
 
 const MINUTE = 60_000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 
@@ -19,17 +20,26 @@ const SOURCES: { key: string; name: string; every: number }[] = [
 ];
 
 /** Odds come from whichever source answers (FightOdds.io every few minutes,
- *  BestFightOdds every few hours), so their freshness is the newest price
- *  stored for a coming bout, not one source's last read: a source that "reads"
- *  but stores nothing (BestFightOdds' markup change, October 2026) shows late. */
-const MEASURED: { name: string; every: number; newest: string }[] = [
-  { name: "Odds (coming bouts)", every: 3 * HOUR, newest: `SELECT max(o.fetched_at) AS at FROM odds o
-    JOIN fights f ON f.id = o.fight_id JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 0 AND e.date >= date('now', '-1 day')` },
-  { name: "Props (coming bouts)", every: 2 * HOUR, newest: `SELECT max(m.fetched_at) AS at FROM method_odds m
-    JOIN fights f ON f.id = m.fight_id JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 0 AND e.date >= date('now', '-1 day')` },
-];
+ *  BestFightOdds every one to six hours), so their freshness is the newest
+ *  price stored for the next card in fight week, not one source's last read:
+ *  a source that "reads" but stores nothing (BestFightOdds' markup change,
+ *  October 2026) shows late, and so does a card that has no prices at all.
+ *  With no card within a week, nothing is due. */
+const ODDS_EVERY = 3 * HOUR;
+export function comingOddsFreshness(now = Date.now()): Record<"odds" | "props", { at: number | null; late: boolean }> {
+  const today = new Date(now).toISOString().slice(0, 10);
+  // Bouts already decided are priced no more; a card with none left isn't due.
+  const undecided = "f.f1_outcome IS NULL AND f.f2_outcome IS NULL";
+  const card = db.prepare(`SELECT e.id FROM events e WHERE e.complete = 0 AND e.date BETWEEN date(?, '-1 day') AND date(?, '+7 days')
+    AND EXISTS (SELECT 1 FROM fights f WHERE f.event_id = e.id AND ${undecided}) ORDER BY e.date LIMIT 1`).get(today, today) as { id: string } | undefined;
+  const measure = (table: "odds" | "method_odds") => {
+    if (!card) return { at: null, late: false };
+    const at = (db.prepare(`SELECT max(x.fetched_at) AS at FROM fights f JOIN ${table} x ON x.fight_id = f.id WHERE f.event_id = ? AND ${undecided}`)
+      .get(card.id) as { at: number | null }).at ?? null;
+    return { at, late: at == null || now - at > 3 * ODDS_EVERY + MINUTE };
+  };
+  return { odds: measure("odds"), props: measure("method_odds") };
+}
 
 const KEPT = 50;
 type SyncError = { at: number; job: string; error: string };
@@ -98,15 +108,16 @@ export function outageReport(name: string, err: unknown, now = Date.now(), answe
   // feed carries them: a lag to wait out, not a fault, unless it lasts.
   const transient = isTransientUpstream(err) || /database is locked|SQLITE_BUSY|carried no fight card/i.test(String(err));
   // A firewall block refuses every job that uses its host: one report a day
-  // for the host, not one per job.
-  const blockedHost = String(err).match(/HTTP 403 for https?:\/\/([^/\s;]+)[^\n]*Cloudflare blocked this server/)?.[1];
-  const key = blockedHost ? `blocked ${blockedHost}` : name;
+  // for the host, not one per job. A block after the host answered again is
+  // a new one, reported at once.
+  const blocked = err instanceof HttpRateLimitError ? err.blocked : null;
+  const key = blocked ? `blocked ${blocked.host} ${blocked.since}` : name;
   const outage = outages.get(key) ?? { since: now, reportedAt: null };
   if (outages.size > 2000) outages.clear();
   outages.set(key, outage);
   // A fault of our own is news at once; a source's moment only once it lasts.
   if (now - outage.since < (transient ? OUTAGE_MS : 0)) return false;
-  const remind = blockedHost ? BLOCKED_REMIND_MS : REMIND_MS;
+  const remind = blocked ? BLOCKED_REMIND_MS : REMIND_MS;
   if (outage.reportedAt != null && now - outage.reportedAt < remind) return false;
   outage.reportedAt = now;
   return true;
@@ -118,6 +129,7 @@ const jobKind = (job: string) => job.split(" ")[0];
 /** How current each source is, and what has failed lately. */
 export function syncStatus(now = Date.now()) {
   const errors = savedErrors();
+  const odds = comingOddsFreshness(now);
   const lastDay = errors.filter(error => now - error.at < DAY);
   const kinds = new Map<string, { kind: string; count: number; lastAt: number }>();
   for (const error of lastDay) {
@@ -130,12 +142,14 @@ export function syncStatus(now = Date.now()) {
   return {
     generatedAt: now,
     sources: [
-      ...SOURCES.map(source => ({ name: source.name, every: source.every, at: Number(getMeta(source.key)) || null })),
-      ...MEASURED.map(source => ({ name: source.name, every: source.every,
-        at: (db.prepare(source.newest).get() as { at: number | null } | undefined)?.at ?? null })),
-    ].map(({ name, every, at }) =>
-      // Three missed refreshes is late; a source never recorded is unknown.
-      ({ name, at, everyMs: every, late: at != null && now - at > 3 * every + MINUTE })),
+      ...SOURCES.map(source => {
+        const at = Number(getMeta(source.key)) || null;
+        // Three missed refreshes is late; a source never recorded is unknown.
+        return { name: source.name, at, everyMs: source.every, late: at != null && now - at > 3 * source.every + MINUTE };
+      }),
+      { name: "Odds (next card)", everyMs: ODDS_EVERY, ...odds.odds },
+      { name: "Props (next card)", everyMs: ODDS_EVERY, ...odds.props },
+    ],
     errors: errors.slice(0, 30),
     errorsLastDay: lastDay.length,
     failingLastDay: [...kinds.values()].sort((a, b) => b.count - a.count),

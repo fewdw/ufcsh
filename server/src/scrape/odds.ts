@@ -465,31 +465,43 @@ const METHOD_TYPE = { ko: 8, submission: 9, decision: 11 } as const;
 
 /** The matchup id on a bout's first row. BestFightOdds carried it on a
  *  `/cnadm/matchups/ID` link until October 2026 and on `th[data-admin-matchup]`
- *  since; the first corner's chart button, keyed [1, matchup], is the last
- *  resort. Prop and second-corner rows have none. */
+ *  since; the first corner's chart button or moneyline cells, keyed [1, id]
+ *  and [book, 1, id], are the fallbacks. A blank or malformed value falls
+ *  through. Prop and second-corner rows have none. */
 export function boardMatchupId($: cheerio.CheerioAPI, row: cheerio.Cheerio<any>): number | null {
   if (!row.find("th a[href^='/fighters/']").length) return null;
-  const admin = row.find("th[data-admin-matchup]").first().attr("data-admin-matchup")
-    ?? row.find("a[href^='/cnadm/matchups/']").first().attr("href")?.split("/").filter(Boolean).at(-1);
-  if (admin != null) return /^\d+$/.test(admin) && Number.isSafeInteger(Number(admin)) ? Number(admin) : null;
-  const key = dataKey($, row.find("td.but-si").first(), 2);
-  return key && key[0] === 1 ? key[1] : null;
+  const valid = (value: string | undefined) => value != null && /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : null;
+  const header = valid(row.find("th[data-admin-matchup]").first().attr("data-admin-matchup"))
+    ?? valid(row.find("a[href^='/cnadm/matchups/']").first().attr("href")?.split("/").filter(Boolean).at(-1));
+  if (header != null) return header;
+  const chart = dataKey($, row.find("td.but-si").first(), 2);
+  if (chart && chart[0] === 1) return chart[1];
+  return firstCornerKeys($, row)[0]?.[2] ?? null;
 }
 
-/** A board in a shape this parser no longer reads: fighter rows, but not one
- *  recognised bout. BestFightOdds changed its markup in October 2026 and both
- *  parsers read nothing, silently, for a month. */
+/** A row's first-corner moneyline cells, keyed [book, 1, matchup]. */
+function firstCornerKeys($: cheerio.CheerioAPI, row: cheerio.Cheerio<any>): number[][] {
+  return row.find("td[data-li]").toArray().map((cell) => dataKey($, cell, 3)).filter((key): key is number[] => !!key && key[1] === 1);
+}
+
+/** A board in a shape this parser no longer reads. BestFightOdds changed its
+ *  markup in October 2026 and both parsers read nothing, silently, for a month. */
 export class BoardMarkupError extends Error {}
 
-/** The bout rows of a board's odds table, or null when it has none. Throws
- *  when it lists fighters but no bout this parser recognises. */
+/** The rows of a board's odds table, or null when it has none. A board with no
+ *  prices yet reads as empty. Throws when a priced first corner can't be tied
+ *  to a fighter and bout, or a bout's first corner isn't followed by its
+ *  second: reading the rest would quietly drop that bout. */
 export function boardRows($: cheerio.CheerioAPI, sourceUrl: string): cheerio.Cheerio<any>[] | null {
   const table = $("table.odds-table").filter((_, element) => $(element).find("td").length > 0).first();
   if (!table.length) return null;
   const rows = table.find("tbody tr").toArray().map((row) => $(row));
-  const fighters = rows.filter((row) => row.find("th a[href^='/fighters/']").length).length;
-  if (fighters >= 2 && !rows.some((row) => boardMatchupId($, row) != null)) {
-    throw new BoardMarkupError(`BestFightOdds board markup unrecognized: ${fighters} fighter rows, no matchup ids (${sourceUrl})`);
+  // A bout reads as two rows in a row, one per corner.
+  const unreadable = rows.filter((row, i) => boardMatchupId($, row) == null
+    ? firstCornerKeys($, row).length > 0
+    : !rows[i + 1]?.find("th a[href^='/fighters/']").length).length;
+  if (unreadable) {
+    throw new BoardMarkupError(`BestFightOdds board markup unrecognized: ${unreadable} priced ${unreadable === 1 ? "bout" : "bouts"} without both fighters or a matchup id (${sourceUrl})`);
   }
   return rows;
 }

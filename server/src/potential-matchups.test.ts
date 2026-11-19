@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { db } from "./db.ts";
-import { POTENTIAL_EVENT_ID, potentialMatchups, storePotentialBoard, type PotentialMatchup } from "./potential-matchups.ts";
+import { db, getMeta, setMeta } from "./db.ts";
+import { POTENTIAL_EVENT_ID, potentialMatchups, storePotentialBoard, syncPotentialMatchups, type PotentialMatchup } from "./potential-matchups.ts";
 import { betContext, potentialBooking } from "./predictions-data.ts";
 import { legState, potentialDeadline, type StoredLeg } from "./bets.ts";
 import { resolvePublicApi } from "./api.ts";
@@ -158,4 +158,30 @@ test("a potential matchup's bet waits a year for the pair's booking, then is voi
     const insertMeta = db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)");
     for (const row of meta) insertMeta.run(row.key, row.value);
   }
+});
+
+test("an unreadable future board keeps the saved list and is reported, like a blocked FightOdds.io", async (t) => {
+  const saved = { errors: getMeta("sync_errors"), bfo: getMeta("potential_bestfightodds_read_at") };
+  const before = db.prepare("SELECT id FROM potential_matchups ORDER BY id").all();
+  t.after(() => {
+    setMeta("sync_errors", saved.errors ?? "[]");
+    setMeta("potential_bestfightodds_read_at", saved.bfo ?? "");
+  });
+  setMeta("sync_errors", "[]");
+  const page = (link: string) => `<table class="odds-table"><tbody>
+    <tr><th scope="row" data-admin-matchup="45000"><a href="/${link}/first-1">First Fighter</a></th><td data-li="[21,1,45000]"><span>-150</span></td></tr>
+    <tr><th scope="row"><a href="/${link}/second-2">Second Fighter</a></th><td data-li="[21,2,45000]"><span>+130</span></td></tr></tbody></table>`;
+  let link = "athletes";
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.includes("fightodds.io")) return new Response('<h1 data-translate="block_headline">Sorry, you have been blocked</h1>', { status: 403 });
+    return new Response(page(link));
+  });
+  assert.deepEqual(await syncPotentialMatchups(), { failed: 2 });
+  assert.deepEqual(db.prepare("SELECT id FROM potential_matchups ORDER BY id").all(), before, "nothing replaced");
+  const jobs = (JSON.parse(getMeta("sync_errors") ?? "[]") as { job: string; error: string }[]).map(error => [error.job, /markup unrecognized|Cloudflare blocked/.test(error.error)]);
+  assert.deepEqual(jobs.sort(), [["potential_bestfightodds", true], ["potential_fightodds", true]]);
+  link = "fighters";
+  assert.deepEqual(await syncPotentialMatchups(), { failed: 1 });
+  assert.ok(db.prepare("SELECT 1 FROM potential_matchups WHERE id = 'potential-bfo-45000'").get(), "the readable board is stored");
 });

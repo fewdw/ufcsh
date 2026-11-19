@@ -3,6 +3,7 @@ import { completedScorecardRounds, parseCommunityScorecard } from "./community-s
 import { fightIsComplete, fightIsUnderway } from "./live-state.ts";
 import { potentialMatchups, syncPotentialMatchups } from "./potential-matchups.ts";
 import { db, getMeta, setMeta } from "./db.ts";
+import { comingOddsFreshness } from "./sync-status.ts";
 import { confirmedTitleResults, missingCurrentRankingHistory, relinkRankingHistory } from "./ranking-history.ts";
 import { validateFightActions } from "./action-stats.ts";
 import { americanLine, fightIndex, impliedProbability, professionalBouts } from "./fight-index.ts";
@@ -2401,14 +2402,12 @@ function potentialMatchupGaps(): BugCheck {
 /** FightOdds.io prices upcoming bouts every five minutes. Unread for half an
  *  hour, lines fall back to BestFightOdds' slower pass: the app's API moved,
  *  rebuilt the queries it accepts, started asking for its bot check, or its
- *  Cloudflare blocked this server (since 2026-11-17). With BestFightOdds still
- *  storing prices for coming bouts it's a minor loss of pace, not missing odds. */
+ *  Cloudflare blocked this server (since 2026-11-17). While the next card's
+ *  prices stay fresh it's a minor loss of pace, not missing odds. */
 function fightOddsUnread(): BugCheck {
   const readAt = Number(getMeta("fightodds_read_at")) || null;
-  const newest = (sql: string) => (db.prepare(sql).get() as { at: number | null }).at ?? 0;
-  const coming = "JOIN fights f ON f.id = x.fight_id JOIN events e ON e.id = f.event_id WHERE e.complete = 0 AND e.date >= date('now', '-1 day')";
-  const covered = Date.now() - newest(`SELECT max(x.fetched_at) AS at FROM odds x ${coming} AND x.source_url LIKE 'https://www.bestfightodds.com/%'`) < 9 * 3_600_000
-    && Date.now() - newest(`SELECT max(x.fetched_at) AS at FROM method_odds x ${coming} AND x.source_url LIKE 'https://www.bestfightodds.com/%'`) < 6 * 3_600_000;
+  const coming = comingOddsFreshness();
+  const covered = !coming.odds.late && !coming.props.late;
   const items: BugItem[] = readAt && Date.now() - readAt < 30 * 60_000 ? [] : [{
     key: "fightodds",
     title: "FightOdds.io",
@@ -2421,7 +2420,7 @@ function fightOddsUnread(): BugCheck {
     id: "odds-fightodds-unread",
     group: "Odds",
     label: "FightOdds.io not read",
-    description: "Upcoming moneylines come from FightOdds.io's event boards every five minutes, matched by UFCStats id; BestFightOdds fills anything they miss every few hours, and its props every hour while FightOdds.io's have stopped. While FightOdds.io is unread, lines only move at BestFightOdds' pace and its cancelled-bout boards wait (UFCStats card drops and event articles still list cancellations). Minor while BestFightOdds is storing both lines and props for coming bouts. HTTP 429 means the host is rate limiting us: all requests in the worker pause until Retry-After (five minutes when omitted), then the next scheduled pass retries. \"Cloudflare blocked this server\" is a firewall rule against our address: the host is tried after an hour, then each block in a row doubles the wait up to a day; only FightOdds.io can lift it. \"Unknown query\" (HTTP 403) means FightOdds.io rebuilt its app: it only answers its app's own query texts, so copy the new ones into server/src/scrape/fightodds-queries.ts. Otherwise: a changed field, or the API now requiring its Cloudflare Turnstile token.",
+    description: "Upcoming moneylines come from FightOdds.io's event boards every five minutes, matched by UFCStats id; BestFightOdds fills anything they miss every few hours, and its props every hour while FightOdds.io's have stopped. While FightOdds.io is unread, lines only move at BestFightOdds' pace and its cancelled-bout boards wait (UFCStats card drops and event articles still list cancellations). Minor while the next card in fight week has fresh lines and props from either source (Admin → Overview, Odds and Props (next card)). HTTP 429 means the host is rate limiting us: all requests in the worker pause until Retry-After (five minutes when omitted), then the next scheduled pass retries. \"Cloudflare blocked this server\" is a firewall rule against our address: the host is tried after an hour, then each block in a row doubles the wait up to a day; only FightOdds.io can lift it. \"Unknown query\" (HTTP 403) means FightOdds.io rebuilt its app: it only answers its app's own query texts, so copy the new ones into server/src/scrape/fightodds-queries.ts. Otherwise: a changed field, or the API now requiring its Cloudflare Turnstile token.",
     grade: covered ? "minor" : "must",
   }, items);
 }

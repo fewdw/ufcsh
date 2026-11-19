@@ -82,6 +82,11 @@ function upsertFighterStub(id: string, name: string): void {
 /** fights.perf_bonus: 0 none, 1 Performance, 2 Knockout, 3 Submission of the Night. */
 export const PERF_BONUS_CODE = { perf: 1, ko: 2, sub: 3 } as const;
 
+/** A bout missing from the card this long after it was first missed, on a
+ *  later read, is a cancellation rather than a page that briefly omitted it.
+ *  Coming cards are read every ten minutes, a card on fight day every two. */
+export const DROP_CONFIRM_MS = 5 * 60_000;
+
 export function storeEventDetail(detail: ScrapedEventDetail): void {
   if (!detail.date || !detail.name) throw new Error("Incomplete event page; keeping the last good card");
   if (!detail.fights.length) {
@@ -119,19 +124,41 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
       const old = previous.get(f.id);
       return !old || old.f1_outcome !== f.f1.outcome || old.f2_outcome !== f.f2.outcome;
     });
-    // Pairings that fell through before the card was fought, seen first hand.
-    // UFCStats re-creating a bout under a new id is the same pairing, and a
-    // read that drops most of a full card is a bad page, not a wave of
-    // cancellations (an empty one never gets here).
-    const gone = existing.filter(row => !currentIds.has(row.id));
-    const listedPair = (a: string, b: string) => detail.fights.some(f => (f.f1.id === a && f.f2.id === b) || (f.f1.id === b && f.f2.id === a));
-    const trustDrops = !complete && !wasComplete && !(existing.length >= 6 && gone.length > existing.length / 2);
-    const recordDrop = (row: (typeof existing)[number]) => {
-      if (!trustDrops || !row.f1_id || !row.f2_id || row.f1_id === row.f2_id || listedPair(row.f1_id, row.f2_id)) return;
-      db.prepare(`INSERT OR IGNORE INTO dropped_bouts (event_id, f1_id, f2_id, fight_id, weight_class, f1_name, f2_name, dropped_at)
-        SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM dropped_bouts WHERE event_id = ? AND f1_id = ? AND f2_id = ?)`)
-        .run(detail.id, row.f1_id, row.f2_id, row.id, row.weight_class ?? "", row.f1_name, row.f2_name, Date.now(), detail.id, row.f2_id, row.f1_id);
+    // Pairings that fell through before they were fought, seen first hand.
+    // One person is the same id or the same name (UFCStats corrects a
+    // fighter's page id now and then), in either corner. A bout with a result
+    // never fell through. Each drop waits for a later read to confirm it
+    // (`DROP_CONFIRM_MS`), so a page that briefly omits bouts lists none.
+    const now = Date.now();
+    const samePerson = (id: string, name: string, side: { id: string; name: string }) => side.id === id || normName(side.name) === normName(name);
+    const samePairing = (a: { f1_id: string; f1_name: string; f2_id: string; f2_name: string }, f: ScrapedEventDetail["fights"][number]) =>
+      (samePerson(a.f1_id, a.f1_name, f.f1) && samePerson(a.f2_id, a.f2_name, f.f2))
+      || (samePerson(a.f1_id, a.f1_name, f.f2) && samePerson(a.f2_id, a.f2_name, f.f1));
+    // A page that loses most of a full card is a bad read, not a wave of
+    // cancellations: keep the last good card rather than delete its bouts.
+    const lost = existing.filter(row => !currentIds.has(row.id) && !detail.fights.some(f => samePairing(row, f)));
+    if (existing.length >= 6 && lost.length > existing.length / 2) {
+      throw new Error(`Partial event page (${lost.length} of ${existing.length} bouts missing); keeping the last good card`);
+    }
+    const insertDrop = db.prepare(`INSERT OR IGNORE INTO dropped_bouts (event_id, f1_id, f2_id, fight_id, weight_class, f1_name, f2_name, dropped_at, confirmed)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    type Booked = { id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; weight_class: string; f1_outcome: string | null; f2_outcome: string | null };
+    const storeDrop = (eventId: string, row: Booked, confirmed = false) => {
+      if (row.f1_outcome != null || row.f2_outcome != null || !row.f1_id || !row.f2_id || row.f1_id === row.f2_id) return;
+      // Stored in one order, so the same pairing is one row whichever corner each had.
+      const [a, b] = row.f1_id < row.f2_id ? [[row.f1_id, row.f1_name], [row.f2_id, row.f2_name]] : [[row.f2_id, row.f2_name], [row.f1_id, row.f1_name]];
+      insertDrop.run(eventId, a[0], b[0], row.id, row.weight_class ?? "", a[1], b[1], now, confirmed ? 1 : 0);
     };
+    // A different fighter of the same name in the same corner reads as no
+    // change here (and on display): rare, and safer than a false cancellation.
+    const recordDrop = (row: Booked) => {
+      if (!wasComplete && !detail.fights.some(f => samePairing(row, f))) storeDrop(detail.id, row);
+    };
+    // UFCStats moves a bout to another card under the same id: the card it
+    // left loses the booking (UFCStats' own word, so confirmed at once), which
+    // `movedTo` then shows as moved.
+    const movedFrom = db.prepare(`SELECT f.id, f.event_id, f.f1_id, f.f2_id, f.f1_name, f.f2_name, f.weight_class, f.f1_outcome, f.f2_outcome
+      FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ? AND f.event_id <> ? AND e.complete = 0`);
     for (const row of existing) {
       if (!currentIds.has(row.id)) {
         recordDrop(row);
@@ -161,12 +188,19 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
         perf_bonus = excluded.perf_bonus, fotn_bonus = excluded.fotn_bonus
     `);
 
-    const relisted = db.prepare("DELETE FROM dropped_bouts WHERE event_id = ? AND ((f1_id = ? AND f2_id = ?) OR (f1_id = ? AND f2_id = ?))");
+    // A pairing back on the card, under any bout id, is no longer dropped.
+    for (const row of db.prepare("SELECT f1_id, f2_id, f1_name, f2_name FROM dropped_bouts WHERE event_id = ?").all(detail.id) as
+      { f1_id: string; f2_id: string; f1_name: string; f2_name: string }[]) {
+      if (detail.fights.some(f => samePairing(row, f))) {
+        db.prepare("DELETE FROM dropped_bouts WHERE event_id = ? AND f1_id = ? AND f2_id = ?").run(detail.id, row.f1_id, row.f2_id);
+      }
+    }
     for (const f of detail.fights) {
       const old = previous.get(f.id);
       // A briefly stale source page must not erase a result already published.
       if (old && fightIsComplete(old) && f.f1.outcome == null && f.f2.outcome == null) continue;
-      relisted.run(detail.id, f.f1.id, f.f2.id, f.f2.id, f.f1.id);
+      const moved = old ? undefined : movedFrom.get(f.id, detail.id) as (Booked & { event_id: string }) | undefined;
+      if (moved) storeDrop(moved.event_id, moved, true);
       // A corner given a new opponent breaks up the old pairing. The same
       // name under a new id is UFCStats correcting a fighter's page, not a change.
       if (old && !(old.f1_id === f.f2.id && old.f2_id === f.f1.id)
@@ -228,6 +262,8 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
     db.prepare(`UPDATE events SET complete = NOT EXISTS (
       SELECT 1 FROM fights WHERE event_id = ? AND f1_outcome IS NULL AND f2_outcome IS NULL
     ) WHERE id = ?`).run(detail.id, detail.id);
+    // A drop still missing from a later read is a cancellation.
+    db.prepare("UPDATE dropped_bouts SET confirmed = 1 WHERE event_id = ? AND confirmed = 0 AND dropped_at <= ?").run(detail.id, now - DROP_CONFIRM_MS);
     db.exec("COMMIT");
   } catch (err) {
     db.exec("ROLLBACK");
@@ -1227,10 +1263,12 @@ export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: stri
     let board: Awaited<ReturnType<typeof scrapeEventMethodOdds>>;
     try {
       board = await scrapeEventMethodOdds(sourceUrl);
+      if (board.length) outageReport("bfo_board_markup", null, Date.now(), true);
     } catch (err) {
       // A board in a shape the parser no longer reads is a fault here, not the
-      // source's moment: the scheduled passes surface it as a sync error.
-      if (err instanceof BoardMarkupError && !onlyFightId) throw err;
+      // source's moment: Admin → Errors at once, then every few hours while
+      // it lasts. The other boards on the date are still read and stored.
+      if (err instanceof BoardMarkupError && outageReport("bfo_board_markup", err)) recordSyncError("bfo_board_markup", err);
       log(`method odds scrape failed [${sourceUrl}]:`, String(err));
       failed++;
       continue;

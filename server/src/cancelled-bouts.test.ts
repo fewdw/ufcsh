@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { db, touchMeta } from "./db.ts";
 import { HttpRateLimitError } from "./http.ts";
 import { resolvePublicApi } from "./api.ts";
-import { boardCard, boardDue, bookedDivision, cardCancellations, storeCancelledBoard, syncCancelledBouts } from "./cancelled-bouts.ts";
+import { boardCard, boardDue, bookedDivision, cancelledBoutsOf, cardCancellations, storeCancelledBoard, syncCancelledBouts } from "./cancelled-bouts.ts";
 
 test("a rate-limited archive pass stops without failing boards or delaying their next read", async (t) => {
   let now = Date.parse("2030-01-01T00:00:00Z");
@@ -232,5 +232,27 @@ test("a card lists every booking that fell through, once, from the board, the ar
     assert.deepEqual(cardCancellations(card).map((bout) => bout.f2.name), ["Aaron Picofixture"]);
   } finally {
     db.exec("ROLLBACK TO cancelled_card_merge; RELEASE cancelled_card_merge");
+  }
+});
+
+test("a card that moved after its board was filed lists the booking once, from our card", () => {
+  db.exec("SAVEPOINT cancelled_moved_card");
+  try {
+    const [one, two] = ["cmm0000000000001", "cmm0000000000002"];
+    for (const [id, name] of [[one, "Moved Onefixture"], [two, "Moved Twofixture"]]) {
+      db.prepare("INSERT INTO fighters (id, name, norm_name) VALUES (?, ?, lower(?))").run(id, name, name);
+    }
+    db.prepare("INSERT INTO events (id, name, date, complete) VALUES ('cmm0000000000010', 'UFC Fight Night: Moved vs. Card', '2031-11-04', 0)").run();
+    // FightOdds.io still files the card under its first date, three days earlier.
+    const board = { pk: 990201, date: "2031-11-01", slug: "ufc-fight-night-moved-vs-card", name: "UFC Fight Night: Moved vs. Card" };
+    db.prepare("INSERT INTO cancelled_boards (pk, date, slug, name) VALUES (?, ?, ?, ?)").run(board.pk, board.date, board.slug, board.name);
+    const corner = (id: string, name: string) => ({ id, name, last: name.split(" ").at(-1)! });
+    storeCancelledBoard(board, [{ slug: "one-vs-two-9", url: "", weightClass: "Lightweight", f1: corner(one, "Moved Onefixture"), f2: corner(two, "Moved Twofixture") }]);
+    db.prepare(`INSERT INTO dropped_bouts (event_id, f1_id, f2_id, fight_id, weight_class, f1_name, f2_name, dropped_at, confirmed)
+      VALUES ('cmm0000000000010', ?, ?, 'cmm0000000000011', 'Lightweight', 'Moved Onefixture', 'Moved Twofixture', 1, 1)`).run(one, two);
+    const profile = cancelledBoutsOf(one, []);
+    assert.deepEqual(profile.map((bout) => [bout.date, bout.event_id, bout.opponent.name]), [["2031-11-04", "cmm0000000000010", "Moved Twofixture"]]);
+  } finally {
+    db.exec("ROLLBACK TO cancelled_moved_card; RELEASE cancelled_moved_card");
   }
 });
