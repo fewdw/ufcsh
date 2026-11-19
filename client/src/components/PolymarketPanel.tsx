@@ -12,15 +12,10 @@ import type {
 } from "../polymarket-types";
 import { useMarketData } from "../useMarketData";
 import { useNow } from "../useNow";
+import { freshMarketQuote } from "../marketQuote";
 
 const MARKET_SHELL =
   "rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900";
-function freshMarketQuote(row: MarketSummary, now: number) {
-  const age = row.fight.state === "live" ? 15_000 : 90_000;
-  return row.status === "open" && row.quote && now - row.quote.at < age
-    ? row.quote
-    : null;
-}
 
 /** A percentage that lights up for a moment when a live bout moves it. */
 function LivePct({ p, live }: { p: number | null | undefined; live: boolean }) {
