@@ -273,6 +273,9 @@ function OddsTable({ title, columns, groups, wideLabel = true, live, format, com
   );
 }
 
+/** The board is read hourly at most; twice that and its books are no offer. */
+const BOOKS_FRESH_MS = 2 * 60 * 60_000;
+
 /** The full prop board under the matchup. Whole-fight markets stack on the
  * left and the round-by-round grid sits beside them once the panel is wide
  * enough; on a narrow panel everything stacks. */
@@ -331,8 +334,9 @@ export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american",
     line && /^[+-]\d+$/.test(line) ? { label: "Moneyline", prices: [{ bookmaker: "Mean", line }] } : undefined;
   const openedMoneyline = Boolean(asQuote(moneyline?.f1.open) || asQuote(moneyline?.f2.open));
   // The best price any sportsbook offers now, and which one: only while the
-  // bout can still be bet.
-  const bestBook = live && books?.f1.length && books.f2.length ? books : null;
+  // bout can still be bet, and only from a recent read of the board (it is
+  // read at least hourly), so a line the books took down isn't still offered.
+  const bestBook = live && fightId && books?.f1.length && books.f2.length && Date.now() - books.at < BOOKS_FRESH_MS ? books : null;
   const moneylineRows = (moneyline ? ([[f1Name, 1, moneyline.f1, bestBook?.f1], [f2Name, 2, moneyline.f2, bestBook?.f2]] as const) : [])
     .map(([label, who, side, offered]): Row => ({
       label,
@@ -444,7 +448,7 @@ export function Moneyline({ leg, value, name, className, fill }: { leg: ParlayLe
   );
 }
 
-export default function MatchupOdds({ f1, f2, f1Open, f2Open, f1Name, f2Name, props, fightId }: {
+export default function MatchupOdds({ f1, f2, f1Open, f2Open, f1Name, f2Name, props, fightId, kalshiLine = false }: {
   f1: string | null | undefined;
   f2: string | null | undefined;
   f1Open?: string | null;
@@ -454,6 +458,8 @@ export default function MatchupOdds({ f1, f2, f1Open, f2Open, f1Name, f2Name, pr
   props?: MethodOdds;
   /** Present only for a fight still open for betting; enables click-to-parlay. */
   fightId?: string;
+  /** The line is Kalshi's, standing in while no book has priced the bout. */
+  kalshiLine?: boolean;
 }) {
   if (!f1 && !f2 && !props) return null;
   const movement = oddsMovement(f1Open, f1, f2Open, f2);
@@ -461,7 +467,7 @@ export default function MatchupOdds({ f1, f2, f1Open, f2Open, f1Name, f2Name, pr
   const chances = fairChances(f1, f2);
   const fair = chances && percentPair(chances).map((value) => `${value}%`);
   const fightLabel = `${f1Name} vs ${f2Name}`;
-  const chanceNote = "Chance to win, with the sportsbooks' margin taken out";
+  const chanceNote = kalshiLine ? "Chance to win on Kalshi (no sportsbook has priced this bout yet)" : "Chance to win, with the sportsbooks' margin taken out";
   return (
     <div className="odds-pair w-full overflow-hidden rounded-lg border text-center" aria-label="Pre-fight betting odds">
       {f1 || f2 ? <div className="grid grid-cols-[minmax(0,1fr)_1rem_minmax(0,1fr)] items-center gap-y-0.5 px-1 py-1.5 @[40rem]:grid-cols-[minmax(0,1fr)_2rem_minmax(0,1fr)] @[40rem]:py-3">

@@ -4,6 +4,7 @@ import { db, getMeta, setMeta } from "./db.ts";
 import { syncKalshiOdds, syncMethodOddsForEvent } from "./sync.ts";
 import { resolvePublicApi } from "./api.ts";
 import { kalshiDetail } from "./odds-sides.ts";
+import { comingOddsFreshness } from "./sync-status.ts";
 import { unmatchedBouts } from "./odds-unmatched.ts";
 import { unmatchedSourceBouts } from "./bugs.ts";
 import type { KalshiBout } from "./scrape/kalshi.ts";
@@ -182,6 +183,18 @@ test("Kalshi prices a bout no book has, on its own fighters, never replaces a bo
   const detail = kalshiDetail(open)!;
   assert.deepEqual([detail.status, Math.round(detail.p! * 1000), detail.extras.length, detail.url], ["open", 592, 1, "https://kalshi.com/markets/kxufcfight/prochazka"]);
   assert.equal(kalshiDetail(misspelt)!.status, "missing");
+  // The chart and the read both turn with the corners.
+  db.prepare("UPDATE odds SET kalshi_history_json = ? WHERE fight_id = ?")
+    .run(JSON.stringify({ at: Date.now(), f1_id: "face0000000000k5", ticker: "T", points: [{ at: 1, p: 0.6 }] }), open);
+  assert.equal(kalshiDetail(open)!.history[0].p, 0.6);
+  const turn = db.prepare("UPDATE fights SET f1_id = f2_id, f2_id = f1_id, f1_name = f2_name, f2_name = f1_name WHERE id = ?");
+  turn.run(open);
+  assert.ok(Math.abs(kalshiDetail(open)!.history[0].p - 0.4) < 1e-9);
+  assert.equal(Math.round(kalshiDetail(open)!.p! * 1000), 408);
+  turn.run(open);
+  // Kalshi standing in every five minutes doesn't make the card's book lines
+  // look fresh: the newest is still the book's own, long ago.
+  assert.equal(comingOddsFreshness(Date.parse("2099-06-05T12:00:00Z")).odds.at, 1);
 
   // Once a book prices it, Kalshi stands aside, but its read stays beside the line.
   db.prepare("UPDATE odds SET f1_close = '-170', f2_close = '+140', source_url = ? WHERE fight_id = ?").run(book, open);

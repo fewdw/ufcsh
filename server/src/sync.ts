@@ -1667,6 +1667,7 @@ export async function syncKalshiOdds(scraped?: KalshiBout[]): Promise<{ bouts: n
   const frozen = frozenNow();
   const used = new Set<KalshiBout>();
   const charts: { fightId: string; f1Id: string; ticker: string }[] = [];
+  const unmatchedLater: { eventId: string; onDate: KalshiBout[]; fights: MethodOddsFight[]; matched: Set<string> }[] = [];
   let lines = 0, stored = 0;
   for (const event of events) {
     const fights = fightsOf.all(event.id) as MethodOddsFight[];
@@ -1697,7 +1698,12 @@ export async function syncKalshiOdds(scraped?: KalshiBout[]): Promise<{ bouts: n
         stored++;
       }
     }
-    recordUnmatched("Kalshi", event.id, onDate.filter((bout) => bout.moneyline && !used.has(bout)).map((bout) => ({
+    unmatchedLater.push({ eventId: event.id, onDate, fights, matched });
+  }
+  // Once every card has taken its bouts, so a bout of a card a day away is
+  // never listed as missing from this one.
+  for (const { eventId, onDate, fights, matched } of unmatchedLater) {
+    recordUnmatched("Kalshi", eventId, onDate.filter((bout) => bout.moneyline && !used.has(bout)).map((bout) => ({
       f1: bout.f1Name, f2: bout.f2Name, f1Line: bout.moneyline!.f1[0].line, f2Line: bout.moneyline!.f2[0].line, url: bout.sourceUrl,
       partner: partnerFight(fights, matched, bout.f1Name, bout.f2Name),
     })));

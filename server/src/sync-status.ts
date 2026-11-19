@@ -35,7 +35,10 @@ export function comingOddsFreshness(now = Date.now()): Record<"odds" | "props", 
   // Books post lines a week or more out, props only in the last few days.
   const measure = (table: "odds" | "method_odds", dueDays: number) => {
     if (!card || card.date > new Date(now + dueDays * DAY).toISOString().slice(0, 10)) return { at: null, late: false };
-    const at = (db.prepare(`SELECT max(x.fetched_at) AS at FROM fights f JOIN ${table} x ON x.fight_id = f.id WHERE f.event_id = ? AND ${undecided}`)
+    // Kalshi stands in for a book every five minutes; only a book's price
+    // shows the books are still being read.
+    const at = (db.prepare(`SELECT max(x.fetched_at) AS at FROM fights f JOIN ${table} x ON x.fight_id = f.id
+      WHERE f.event_id = ? AND ${undecided} AND COALESCE(x.source_url, '') NOT LIKE 'https://kalshi.com/%'`)
       .get(card.id) as { at: number | null }).at ?? null;
     return { at, late: at == null || now - at > 3 * ODDS_EVERY + MINUTE };
   };

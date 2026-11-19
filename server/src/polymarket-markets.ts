@@ -153,7 +153,7 @@ export class PolymarketMarkets {
     const f = db
       .prepare(
         `SELECT f.*, e.name AS event_name, e.date AS event_date, e.complete AS event_complete,
-      e.early_prelims_at, e.prelims_at, e.main_card_at, o.f1_close, o.f2_close, o.fetched_at AS odds_at
+      e.early_prelims_at, e.prelims_at, e.main_card_at, o.f1_close, o.f2_close, o.fetched_at AS odds_at, o.source_url AS odds_source
       FROM fights f JOIN events e ON e.id = f.event_id LEFT JOIN odds o ON o.fight_id = f.id WHERE f.id = ?`,
       )
       .get(id) as any;
@@ -185,7 +185,9 @@ export class PolymarketMarkets {
     } catch {
       /* malformed source details have no round timing */
     }
-    const p = noVig(f.f1_close, f.f2_close);
+    // A line Kalshi stands in with (no book has priced the bout) is no
+    // sportsbook's; Kalshi has its own row.
+    const p = String(f.odds_source ?? "").startsWith("https://kalshi.com/") ? null : noVig(f.f1_close, f.f2_close);
     // Only picks for the current event and corner identities belong here.
     const picks = this.scores
       .prepare(
