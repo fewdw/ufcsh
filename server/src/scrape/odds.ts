@@ -496,10 +496,18 @@ export function boardRows($: cheerio.CheerioAPI, sourceUrl: string): cheerio.Che
   const table = $("table.odds-table").filter((_, element) => $(element).find("td").length > 0).first();
   if (!table.length) return null;
   const rows = table.find("tbody tr").toArray().map((row) => $(row));
-  // A bout reads as two rows in a row, one per corner.
-  const unreadable = rows.filter((row, i) => boardMatchupId($, row) == null
-    ? firstCornerKeys($, row).length > 0
-    : !rows[i + 1]?.find("th a[href^='/fighters/']").length).length;
+  // A bout reads as two rows in a row, one per corner: the second has a
+  // fighter, no bout of its own, and any moneyline cells keyed to this bout's
+  // second corner. A price shown in a cell with no key can't be read at all.
+  const secondCorner = (row: cheerio.Cheerio<any> | undefined, id: number) => !!row && row.find("th a[href^='/fighters/']").length > 0
+    && boardMatchupId($, row) == null
+    && row.find("td[data-li]").toArray().every((cell) => { const key = dataKey($, cell, 3); return !key || (key[1] === 2 && key[2] === id); });
+  const unkeyedPrice = (row: cheerio.Cheerio<any>) => row.find("td").toArray()
+    .some((cell) => /^[+−–-]\d{3,}$/.test(cleanText($(cell).find("span").first().text())) && !$(cell).attr("data-li"));
+  const unreadable = rows.filter((row, i) => {
+    const id = boardMatchupId($, row);
+    return unkeyedPrice(row) || (id == null ? firstCornerKeys($, row).length > 0 : !secondCorner(rows[i + 1], id));
+  }).length;
   if (unreadable) {
     throw new BoardMarkupError(`BestFightOdds board markup unrecognized: ${unreadable} priced ${unreadable === 1 ? "bout" : "bouts"} without both fighters or a matchup id (${sourceUrl})`);
   }

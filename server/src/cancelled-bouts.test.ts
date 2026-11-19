@@ -252,6 +252,16 @@ test("a card that moved after its board was filed lists the booking once, from o
       VALUES ('cmm0000000000010', ?, ?, 'cmm0000000000011', 'Lightweight', 'Moved Onefixture', 'Moved Twofixture', 1, 1)`).run(one, two);
     const profile = cancelledBoutsOf(one, []);
     assert.deepEqual(profile.map((bout) => [bout.date, bout.event_id, bout.opponent.name]), [["2031-11-04", "cmm0000000000010", "Moved Twofixture"]]);
+    // UFCStats' own division beats the board's.
+    db.prepare("UPDATE cancelled_bouts SET weight_class = 'Catch Weight' WHERE slug = 'one-vs-two-9'").run();
+    db.prepare("UPDATE cancelled_boards SET date = '2031-11-04' WHERE pk = ?").run(board.pk);
+    const card = db.prepare("SELECT id, name, date, wiki_title, cancelled_json FROM events WHERE id = 'cmm0000000000010'").get() as any;
+    assert.deepEqual(cardCancellations(card).map((bout) => bout.division), ["Lightweight"]);
+    // Rebooked on another of our cards a week later and cancelled again: two bookings.
+    db.prepare("INSERT INTO events (id, name, date, complete) VALUES ('cmm0000000000020', 'UFC Fight Night: Rebooked', '2031-11-11', 0)").run();
+    db.prepare(`INSERT INTO dropped_bouts (event_id, f1_id, f2_id, fight_id, weight_class, f1_name, f2_name, dropped_at, confirmed)
+      VALUES ('cmm0000000000020', ?, ?, 'cmm0000000000021', 'Lightweight', 'Moved Onefixture', 'Moved Twofixture', 2, 1)`).run(one, two);
+    assert.deepEqual(cancelledBoutsOf(one, []).map((bout) => bout.event_id), ["cmm0000000000020", "cmm0000000000010"]);
   } finally {
     db.exec("ROLLBACK TO cancelled_moved_card; RELEASE cancelled_moved_card");
   }

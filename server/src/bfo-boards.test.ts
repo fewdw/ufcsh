@@ -39,7 +39,9 @@ test("one unreadable board on a date is reported, and the readable one's props a
   const stored = db.prepare("SELECT markets_json, source_url FROM method_odds WHERE fight_id = ?").get(fightId) as { markets_json: string; source_url: string };
   assert.equal(stored.source_url, readable);
   assert.equal(JSON.parse(stored.markets_json).f1.ko.prices[0].line, "+250");
+  await syncMethodOddsForEvent(eventId);
   const recorded = JSON.parse(getMeta("sync_errors") ?? "[]") as { job: string; error: string }[];
+  assert.equal(recorded.filter((error) => error.job === "bfo_board_markup").length, 1, "the readable board doesn't reset the broken one's reminder");
   assert.equal(recorded[0].job, "bfo_board_markup");
   assert.match(recorded[0].error, /markup unrecognized.*ufc-board-fixture-9001/);
   const checked = db.prepare("SELECT bfo_checked_at AS at FROM events WHERE id = ?").get(eventId) as { at: number | null };

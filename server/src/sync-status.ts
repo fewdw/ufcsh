@@ -30,15 +30,16 @@ export function comingOddsFreshness(now = Date.now()): Record<"odds" | "props", 
   const today = new Date(now).toISOString().slice(0, 10);
   // Bouts already decided are priced no more; a card with none left isn't due.
   const undecided = "f.f1_outcome IS NULL AND f.f2_outcome IS NULL";
-  const card = db.prepare(`SELECT e.id FROM events e WHERE e.complete = 0 AND e.date BETWEEN date(?, '-1 day') AND date(?, '+7 days')
-    AND EXISTS (SELECT 1 FROM fights f WHERE f.event_id = e.id AND ${undecided}) ORDER BY e.date LIMIT 1`).get(today, today) as { id: string } | undefined;
-  const measure = (table: "odds" | "method_odds") => {
-    if (!card) return { at: null, late: false };
+  const card = db.prepare(`SELECT e.id, e.date FROM events e WHERE e.complete = 0 AND e.date BETWEEN date(?, '-1 day') AND date(?, '+7 days')
+    AND EXISTS (SELECT 1 FROM fights f WHERE f.event_id = e.id AND ${undecided}) ORDER BY e.date LIMIT 1`).get(today, today) as { id: string; date: string } | undefined;
+  // Books post lines a week or more out, props only in the last few days.
+  const measure = (table: "odds" | "method_odds", dueDays: number) => {
+    if (!card || card.date > new Date(now + dueDays * DAY).toISOString().slice(0, 10)) return { at: null, late: false };
     const at = (db.prepare(`SELECT max(x.fetched_at) AS at FROM fights f JOIN ${table} x ON x.fight_id = f.id WHERE f.event_id = ? AND ${undecided}`)
       .get(card.id) as { at: number | null }).at ?? null;
     return { at, late: at == null || now - at > 3 * ODDS_EVERY + MINUTE };
   };
-  return { odds: measure("odds"), props: measure("method_odds") };
+  return { odds: measure("odds", 7), props: measure("method_odds", 3) };
 }
 
 const KEPT = 50;

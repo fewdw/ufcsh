@@ -115,7 +115,13 @@ test("a board whose priced bouts can't be read fails loudly; one with no prices 
     .replace('<tr ><th scope="row"><a href="/fighters/navajo-stirling', '<tr><td></td></tr><tr ><th scope="row"><a href="/fighters/navajo-stirling'), url), BoardMarkupError);
   // A blank or malformed id falls through to the chart key.
   assert.equal(parseEventMethodOddsHtml(currentBoard(() => `scope="row" data-admin-matchup=""`), url).length, 2);
-  const unpriced = currentBoard(() => `scope="row"`).replaceAll(/ data-li="[^"]*"/g, "");
+  // Prices shown without the keys that tie them to a corner and bout.
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard(() => `scope="row"`).replaceAll(/ data-li="[^"]*"/g, ""), url), BoardMarkupError);
+  // A second corner missing before the next bout: that bout's first corner is not it.
+  assert.throws(() => parseEventMethodOddsHtml(currentBoard((id) => `scope="row" data-admin-matchup="${id}"`)
+    .replace(/<tr ><th scope="row"><a href="\/fighters\/navajo-stirling[\s\S]*?<\/tr>/, "")
+    .replace(/<tr class="pr">[\s\S]*?<tr ><th scope="row" data-admin-matchup="45575">/, '<tr ><th scope="row" data-admin-matchup="45575">'), url), BoardMarkupError);
+  const unpriced = currentBoard(() => `scope="row"`).replaceAll(/ data-li="[^"]*"/g, "").replaceAll(/<span>[+-]\d+<\/span>/g, "<span></span>");
   assert.deepEqual(parseEventMethodOddsHtml(unpriced, url), []);
   assert.deepEqual(parseEventMethodOddsHtml("<html>No table</html>", "https://www.bestfightodds.com/events/x"), []);
 });
