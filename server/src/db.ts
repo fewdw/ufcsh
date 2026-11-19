@@ -506,6 +506,11 @@ for (const alter of [
   "ALTER TABLE fights ADD COLUMN pay_json TEXT",
   "ALTER TABLE events ADD COLUMN pay_checked_at INTEGER",
   "ALTER TABLE events ADD COLUMN pay_issues_json TEXT",
+  // Beside a coming bout's moneyline: each sportsbook's own price from the
+  // card's BestFightOdds board, and Kalshi's market (each side's chance and
+  // contracts traded), as JSON keyed to the fighter pair they were read for.
+  "ALTER TABLE odds ADD COLUMN books_json TEXT",
+  "ALTER TABLE odds ADD COLUMN kalshi_json TEXT",
 ]) {
   try {
     db.exec(alter);

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { db, getMeta, setMeta } from "./db.ts";
 import { syncKalshiOdds, syncMethodOddsForEvent } from "./sync.ts";
+import { resolvePublicApi } from "./api.ts";
 import { unmatchedBouts } from "./odds-unmatched.ts";
 import { unmatchedSourceBouts } from "./bugs.ts";
 import type { KalshiBout } from "./scrape/kalshi.ts";
@@ -101,6 +102,17 @@ test("an upcoming card's board sets each bout's line on its own fighters, fills 
 
   await syncMethodOddsForEvent(eventId);
   assert.deepEqual(line(live), { f1_open: "-167", f1_close: "-175", f2_open: "+140", f2_close: "+141", source_url: url });
+  // Each sportsbook's own price is kept beside the line, on our corners.
+  const books = JSON.parse((db.prepare("SELECT books_json FROM odds WHERE fight_id = ?").get(live) as { books_json: string }).books_json);
+  assert.deepEqual([books.f1_id, books.f1, books.f2], ["face0000000000c7",
+    [{ bookmaker: "FanDuel", line: "-170" }, { bookmaker: "BetMGM", line: "-180" }],
+    [{ bookmaker: "FanDuel", line: "+132" }, { bookmaker: "BetMGM", line: "+150" }]]);
+  const served = async () => ((await resolvePublicApi(new URL(`http://localhost/api/events/${eventId}`))) as any).fights.find((fight: any) => fight.id === live).odds.books;
+  assert.deepEqual((await served()).f1.map((price: { line: string }) => price.line), ["-170", "-180"]);
+  // UFCStats turning the corners round turns the books with them.
+  db.prepare("UPDATE fights SET f1_id = f2_id, f2_id = f1_id, f1_name = f2_name, f2_name = f1_name WHERE id = ?").run(live);
+  assert.deepEqual((await served()).f1.map((price: { line: string }) => price.line), ["+132", "+150"]);
+  db.prepare("UPDATE fights SET f1_id = f2_id, f2_id = f1_id, f1_name = f2_name, f2_name = f1_name WHERE id = ?").run(live);
   assert.deepEqual(line(over), { f1_open: "-280", f1_close: "-300", f2_open: "+230", f2_close: "+250", source_url: "https://www.bestfightodds.com/fighters/first-one-1" });
   // A priced bout on the card's board that isn't on our card is kept for Admin.
   assert.deepEqual(unmatchedBouts().filter((entry) => entry.eventId === eventId).map(({ source, bout }) => [source, bout.f1, bout.f2, bout.f1Line, bout.partner]),
@@ -144,7 +156,8 @@ test("Kalshi prices a bout no book has, on its own fighters, never replaces a bo
     moneyline: { f1: price(one), f2: price(two) },
   });
   const bouts = [
-    { ...bout("Jiri Prochazka", "Navajo Stirling", "+150", "-150"), f1: { ko: { label: "Jiri Prochazka wins by TKO/KO", prices: price("+200") } } },
+    { ...bout("Jiri Prochazka", "Navajo Stirling", "+150", "-150"), f1: { ko: { label: "Jiri Prochazka wins by TKO/KO", prices: price("+200") } },
+      market: { f1: 0.4, f2: 0.58, volume: 1234 } },
     bout("First One", "Second Two", "-900", "+900"),
     bout("Zed Unknown", "Daniel Other", "+120", "-120"),
     bout("Max Nobody", "Rex Absent", "-110", "+110"),
@@ -157,10 +170,19 @@ test("Kalshi prices a bout no book has, on its own fighters, never replaces a bo
   assert.deepEqual(line(priced), { f1_close: "-300", f2_close: "+250", source_url: book });
   assert.equal((db.prepare("SELECT markets_json FROM method_odds WHERE fight_id = ?").get(priced) as { markets_json: string }).markets_json, "{}");
 
-  // Once a book prices it, Kalshi stands aside.
+  const market = () => {
+    const stored = JSON.parse((db.prepare("SELECT kalshi_json FROM odds WHERE fight_id = ?").get(open) as { kalshi_json: string }).kalshi_json);
+    return [stored.f1_id, stored.f1, stored.f2, stored.volume];
+  };
+  // Kalshi's own read is kept on our corners: Stirling is our first.
+  assert.deepEqual(market(), ["face0000000000k5", 0.58, 0.4, 1234]);
+
+  // Once a book prices it, Kalshi stands aside, but its read stays beside the line.
   db.prepare("UPDATE odds SET f1_close = '-170', f2_close = '+140', source_url = ? WHERE fight_id = ?").run(book, open);
+  bouts[0].market = { f1: 0.35, f2: 0.63, volume: 2000 };
   syncKalshiOdds(bouts);
   assert.equal(line(open).f1_close, "-170");
+  assert.deepEqual(market(), ["face0000000000k5", 0.63, 0.35, 2000]);
 
   const listed = unmatchedSourceBouts().items.filter((item) => item.subtitle?.startsWith("UFC Kalshi fixture"));
   assert.deepEqual(listed.map((item) => [item.title, item.level]), [

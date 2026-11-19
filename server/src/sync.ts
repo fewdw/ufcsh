@@ -1406,6 +1406,11 @@ export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: stri
   const freshFightOddsLine = db.prepare("SELECT 1 FROM odds WHERE fight_id = ? AND source_url LIKE 'https://fightodds.io/%' AND fetched_at > ?");
   const missingOpen = db.prepare("SELECT 1 FROM odds WHERE fight_id = ? AND f1_close IS NOT NULL AND (f1_open IS NULL OR f2_open IS NULL)");
   const fillOpen = db.prepare("UPDATE odds SET f1_open = ?, f2_open = ? WHERE fight_id = ? AND (f1_open IS NULL OR f2_open IS NULL)");
+  // Each sportsbook's own price beside the line, for the best one on offer.
+  // The prediction markets on the board are left out: Kalshi has its own read.
+  const writeBooks = db.prepare("UPDATE odds SET books_json = ? WHERE fight_id = ?");
+  const sportsbooks = (prices: { bookmaker: string; line: string }[]) =>
+    prices.filter((price) => !/^(kalshi|polymarket)$/i.test(price.bookmaker)).map(({ bookmaker, line }) => ({ bookmaker, line }));
   const frozen = event.complete ? new Set<string>() : frozenNow();
   let stored = 0;
   for (const { fight, odds } of found.values()) {
@@ -1433,6 +1438,13 @@ export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: stri
         } catch (err) {
           log(`mean opening line failed [${fight.id}]:`, String(err));
         }
+      }
+    }
+    // After the line, so the bout's row is there to hold them.
+    if (!event.complete && odds.moneyline) {
+      const books = { f1: sportsbooks(odds.moneyline.f1), f2: sportsbooks(odds.moneyline.f2) };
+      if (books.f1.length && books.f2.length) {
+        writeBooks.run(JSON.stringify({ f1_id: fight.f1_id, f2_id: fight.f2_id, at: Date.now(), ...books }), fight.id);
       }
     }
     if (odds.moneylineKeys && !missingMoneyline.get(fight.id) && storedOpenFlipped(fight.id)) {
@@ -1624,8 +1636,10 @@ let fightOddsRunning = false;
 /** Kalshi's markets for the coming cards, a few days out: a bout's moneyline
  *  when no other source has priced it, and its method and decision props when
  *  no board has them. Every other source overwrites what this stores, and a
- *  bout on or over keeps what it had at the bell. Bouts Kalshi prices that no
- *  bout on our card matches are kept for Admin → Bugs. */
+ *  bout on or over keeps what it had at the bell. Kalshi's own read (each
+ *  side's chance and contracts traded) is kept beside whatever line the bout
+ *  has. Bouts Kalshi prices that no bout on our card matches are kept for
+ *  Admin → Bugs. */
 export async function syncKalshiOdds(scraped?: KalshiBout[]): Promise<{ bouts: number; lines: number; props: number }> {
   const bouts = scraped ?? await scrapeKalshiBouts();
   const dates = [...new Set(bouts.map((bout) => bout.date))];
@@ -1647,6 +1661,9 @@ export async function syncKalshiOdds(scraped?: KalshiBout[]): Promise<{ bouts: n
     INSERT INTO method_odds (fight_id, markets_json, source_url, final, fetched_at) VALUES (?, ?, ?, 0, ?)
     ON CONFLICT(fight_id) DO UPDATE SET markets_json = excluded.markets_json, source_url = excluded.source_url, final = 0, fetched_at = excluded.fetched_at
   `);
+  // Kalshi's own read sits beside whichever line the bout has, as a second
+  // opinion; written after the line so the bout's row is there.
+  const writeMarket = db.prepare("UPDATE odds SET kalshi_json = ? WHERE fight_id = ?");
   const frozen = frozenNow();
   const used = new Set<KalshiBout>();
   let lines = 0, stored = 0;
@@ -1666,6 +1683,9 @@ export async function syncKalshiOdds(scraped?: KalshiBout[]): Promise<{ bouts: n
       if (odds.moneyline && (!current?.f1_close || kalshiOrNone(current.source_url))) {
         const [a, b] = [odds.moneyline.f1[0].line, odds.moneyline.f2[0].line];
         if (consistentMoneyline(a, b)) { writeLine.run(fight.id, a, b, odds.sourceUrl, now); lines++; }
+      }
+      if (odds.market) {
+        writeMarket.run(JSON.stringify({ f1_id: fight.f1_id, f2_id: fight.f2_id, at: now, url: odds.sourceUrl, ...odds.market }), fight.id);
       }
       const held = props.get(fight.id) as { source_url: string | null } | undefined;
       if ((Object.keys(odds.f1).length || Object.keys(odds.f2).length || odds.additional.length) && (!held || kalshiOrNone(held.source_url))) {

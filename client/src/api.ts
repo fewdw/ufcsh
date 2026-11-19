@@ -238,6 +238,10 @@ export type FightOdds = {
   f2: { open: string | null; close: string | null };
   source_url: string | null;
   props?: MethodOdds;
+  /** Each sportsbook's own current price, from the card's board. */
+  books?: { f1: OddsBookPrice[]; f2: OddsBookPrice[]; at: number };
+  /** Kalshi's market: each side's chance (0–1, bid/ask middle) and contracts traded. */
+  kalshi?: { f1: number; f2: number; volume: number; url: string; at: number };
 } | null;
 
 /** bookmaker is "Mean" where the source only kept its average closing price

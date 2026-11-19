@@ -10,6 +10,7 @@ const SERIES = { winner: "KXUFCFIGHT", method: "KXUFCMOV", distance: "KXUFCDISTA
 type KalshiMarket = {
   ticker: string; yes_sub_title?: string | null; status?: string;
   yes_bid_dollars?: string | null; yes_ask_dollars?: string | null; occurrence_datetime?: string | null;
+  volume_fp?: string | null;
 };
 type KalshiEvent = { event_ticker: string; series_ticker: string; title: string; markets?: KalshiMarket[] };
 
@@ -61,6 +62,9 @@ export function parseKalshiBouts(winner: KalshiEvent[], method: KalshiEvent[], d
     const p1 = marketProbability(one), p2 = marketProbability(two);
     const line1 = p1 ? americanFromProbability(p1) : null, line2 = p2 ? americanFromProbability(p2) : null;
     if (line1 && line2) bout.moneyline = { f1: [{ bookmaker: "Kalshi", line: line1 }], f2: [{ bookmaker: "Kalshi", line: line2 }] };
+    // Each corner's market is its own contract; together they are the bout's.
+    const volume = Math.round((Number(one.volume_fp) || 0) + (Number(two.volume_fp) || 0));
+    if (p1 && p2) bout.market = { f1: p1, f2: p2, volume };
 
     const byMethod = methods.get(suffix(event))?.markets ?? [];
     for (const [side, name] of [["f1", f1Name], ["f2", f2Name]] as const) {
@@ -80,7 +84,7 @@ export function parseKalshiBouts(winner: KalshiEvent[], method: KalshiEvent[], d
       if (yes) bout.additional.push({ label: "Fight goes to decision", prices: [{ bookmaker: "Kalshi", line: yes }] });
       if (no) bout.additional.push({ label: "Fight doesn't go to decision", prices: [{ bookmaker: "Kalshi", line: no }] });
     }
-    if (bout.moneyline || Object.keys(bout.f1).length || Object.keys(bout.f2).length || bout.additional.length) bouts.push(bout);
+    if (bout.moneyline || bout.market || Object.keys(bout.f1).length || Object.keys(bout.f2).length || bout.additional.length) bouts.push(bout);
   }
   return bouts;
 }

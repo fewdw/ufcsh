@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { oddsMovement } from "../src/oddsMovement.ts";
+import { biggestMoves, oddsMovement } from "../src/oddsMovement.ts";
 
 test("uses the larger probability change and points toward Parnasse on the left", () => {
   assert.deepEqual(oddsMovement("-400", "-450", "+300", "+500"), { toward: "f1", points: 8.3 });
@@ -22,4 +22,23 @@ test("does not invent movement for unchanged, missing, or invalid odds", () => {
   assert.equal(oddsMovement("-400", "-400", "+300", "+300"), null);
   assert.equal(oddsMovement(null, "-450", null, "+500"), null);
   assert.equal(oddsMovement("invalid", "-450", "0", "+500"), null);
+});
+
+test("a card's biggest moves name the fighter the line moved toward, largest first", () => {
+  const bout = (id: string, f1: [string, string, string], f2: [string, string, string]) => ({
+    id, f1: { name: f1[0] }, f2: { name: f2[0] },
+    odds: { f1: { open: f1[1], close: f1[2] }, f2: { open: f2[1], close: f2[2] } },
+  });
+  const moves = biggestMoves([
+    bout("a", ["Kyoji Horiguchi", "-135", "-205"], ["Asu Almabayev", "+116", "+164"]),
+    bout("b", ["Jiri Prochazka", "+120", "+129"], ["Navajo Stirling", "-140", "-158"]),
+    bout("c", ["Dan Hooker", "-240", "-191"], ["Brian Ortega", "+201", "+153"]),
+    bout("d", ["Nikolas Motta", "+128", "+128"], ["Dom Mar Fan", "-150", "-151"]),
+    { id: "e", f1: { name: "No" }, f2: { name: "Line" }, odds: null },
+  ]);
+  assert.deepEqual(moves.map((move) => [move.fightId, move.name, move.open, move.close]), [
+    ["a", "Kyoji Horiguchi", "-135", "-205"],
+    ["c", "Brian Ortega", "+201", "+153"],
+  ]);
+  assert.equal(biggestMoves([bout("a", ["A", "-135", "-205"], ["B", "+116", "+164"])], 3, 20).length, 0);
 });

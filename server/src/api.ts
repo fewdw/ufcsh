@@ -238,6 +238,9 @@ function fightOdds(fightId: string, includeMethodOdds = false): unknown {
     ? prepared("SELECT * FROM method_odds WHERE fight_id = ?").get(fightId) as any
     : null;
   if ((!o || (!o.f1_close && !o.f2_close)) && !method) return null;
+  const corners = (o?.books_json || o?.kalshi_json)
+    ? prepared("SELECT f1_id, f2_id FROM fights WHERE id = ?").get(fightId) as { f1_id: string; f2_id: string } | undefined
+    : undefined;
   let props = null;
   if (method) {
     try {
@@ -263,7 +266,28 @@ function fightOdds(fightId: string, includeMethodOdds = false): unknown {
     f2: { open: o?.f2_open ?? null, close: o?.f2_close ?? null },
     source_url: o?.source_url ?? null,
     ...(props ? { props } : {}),
+    ...(corners ? sideBySide(o.books_json, corners, ({ f1, f2, at }) => ({ books: { f1, f2, at } })) : {}),
+    ...(corners ? sideBySide(o.kalshi_json, corners, ({ f1, f2, at, url, volume }) => ({ kalshi: { f1, f2, at, url, volume } })) : {}),
   };
+}
+
+/** A stored pair of sides (books_json, kalshi_json) on the bout's corners as
+ *  they are now: turned round if the corners swapped since, and dropped if
+ *  either fighter changed or it can't be read. */
+function sideBySide<T>(
+  json: string | null,
+  fight: { f1_id: string; f2_id: string },
+  shape: (stored: { f1: any; f2: any; [key: string]: any }) => T,
+): T | Record<string, never> {
+  if (!json) return {};
+  try {
+    const stored = JSON.parse(json);
+    if (stored.f1_id === fight.f1_id && stored.f2_id === fight.f2_id) return shape(stored);
+    if (stored.f1_id === fight.f2_id && stored.f2_id === fight.f1_id && fight.f1_id !== fight.f2_id) return shape({ ...stored, f1: stored.f2, f2: stored.f1 });
+  } catch {
+    // Never expose a malformed payload.
+  }
+  return {};
 }
 
 /** What a card row can say about a fighter beyond the name: age on fight

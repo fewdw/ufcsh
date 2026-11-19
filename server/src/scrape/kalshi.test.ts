@@ -9,7 +9,7 @@ const event = (series: string, markets: ReturnType<typeof market>[]) => ({ event
 
 test("a Kalshi bout carries both fighters' prices and its method and decision props in American odds", () => {
   const [bout] = parseKalshiBouts(
-    [event("KXUFCFIGHT", [market("NUR", "Diyar  Nurgozhay", "0.6900", "0.7000"), market("LOR", "Alik Lorenz", "0.3000", "0.3100")])],
+    [event("KXUFCFIGHT", [{ ...market("NUR", "Diyar  Nurgozhay", "0.6900", "0.7000"), volume_fp: "1700.73" }, { ...market("LOR", "Alik Lorenz", "0.3000", "0.3100"), volume_fp: "8123.87" }])],
     [event("KXUFCMOV", [
       market("NURKO", "Diyar Nurgozhay by KO/TKO/DQ", "0.3000", "0.3200"),
       market("NURSUB", "Diyar Nurgozhay by Submission", "0.1000", "0.1200"),
@@ -24,6 +24,7 @@ test("a Kalshi bout carries both fighters' prices and its method and decision pr
   assert.equal(bout.date, "2099-11-21");
   assert.equal(bout.sourceUrl, "https://kalshi.com/markets/kxufcfight/kxufcfight-99nov21nurlor");
   assert.deepEqual(bout.moneyline, { f1: [{ bookmaker: "Kalshi", line: "-228" }], f2: [{ bookmaker: "Kalshi", line: "+228" }] });
+  assert.deepEqual(bout.market, { f1: 0.695, f2: 0.305, volume: 9825 });
   assert.deepEqual(bout.f1, {
     ko: { label: "Diyar Nurgozhay wins by TKO/KO", prices: [{ bookmaker: "Kalshi", line: "+223" }] },
     submission: { label: "Diyar Nurgozhay wins by submission", prices: [{ bookmaker: "Kalshi", line: "+809" }] },

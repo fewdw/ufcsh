@@ -521,6 +521,8 @@ function OddsPanel({ fight }: { fight: Matchup }) {
       <OddsMarkets
         odds={props ?? { f1: {}, f2: {}, additional: [], source_url: "", fetched_at: 0, final: fight.status === "past" }}
         moneyline={fight.odds ? { f1: fight.odds.f1, f2: fight.odds.f2 } : null}
+        books={fight.odds?.books}
+        kalshi={fight.odds?.kalshi}
         fightId={betFightId(fight)}
         f1Name={fight.f1.name}
         f2Name={fight.f2.name}

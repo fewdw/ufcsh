@@ -25,3 +25,27 @@ export function oddsMovement(f1Open: string | null | undefined, f1: string | nul
   if (!points) return null;
   return { toward: value > 0 ? side : side === "f1" ? "f2" : "f1", points };
 }
+
+type MovingBout = {
+  id: string;
+  f1: { name: string };
+  f2: { name: string };
+  odds?: { f1: { open: string | null; close: string | null }; f2: { open: string | null; close: string | null } } | null;
+};
+
+/** A bout whose line moved since it opened, told from the side it moved
+ *  toward: that fighter's opening and current price. */
+export type CardMove = { fightId: string; name: string; open: string; close: string; points: number };
+
+/** The card's largest moves since the open, at least `threshold` points of
+ *  win chance, largest first. */
+export function biggestMoves(fights: MovingBout[], limit = 3, threshold = 3): CardMove[] {
+  return fights.flatMap((fight): CardMove[] => {
+    const odds = fight.odds;
+    const movement = odds && oddsMovement(odds.f1.open, odds.f1.close, odds.f2.open, odds.f2.close);
+    if (!odds || !movement || movement.points < threshold) return [];
+    const side = odds[movement.toward];
+    if (!side.open || !side.close) return [];
+    return [{ fightId: fight.id, name: fight[movement.toward].name, open: side.open, close: side.close, points: movement.points }];
+  }).sort((a, b) => b.points - a.points).slice(0, limit);
+}
