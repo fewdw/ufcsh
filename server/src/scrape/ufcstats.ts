@@ -81,14 +81,16 @@ export async function scrapeEventDetail(eventId: string, options?: { timeoutMs?:
   });
 
   const fights: ScrapedFight[] = [];
+  // Every bout row links its fight page and both fighters'; one that doesn't
+  // is a page in a shape we can't read, and a card read without that bout, or
+  // with a corner blank, would drop it.
   let unreadable = 0;
-  $("tr.js-fight-details-click").each((ord, tr) => {
+  $("tr").filter((_, tr) => $(tr).find("a[href*='fighter-details']").length > 0).each((ord, tr) => {
     const row = $(tr);
     const cols = row.find("td");
     const fightId = idFromUrl(row.attr("data-link"), "fight-details");
-    // Every bout row links its fight page; one that doesn't is a page in a
-    // shape we can't read, and a card read without that bout would drop it.
-    if (!fightId) {
+    const fighters = cols.eq(1).find("a[href*='fighter-details']").toArray().map((a) => idFromUrl($(a).attr("href"), "fighter-details")).filter(Boolean);
+    if (!fightId || fighters.length !== 2) {
       unreadable++;
       return;
     }
@@ -145,7 +147,7 @@ export async function scrapeEventDetail(eventId: string, options?: { timeoutMs?:
       bonuses: bonusesFrom(cols.eq(6)),
     });
   });
-  if (unreadable) throw new Error(`Incomplete event page (${unreadable} bout ${unreadable === 1 ? "row" : "rows"} without a fight link); keeping the last good card`);
+  if (unreadable) throw new Error(`Incomplete event page (${unreadable} bout ${unreadable === 1 ? "row" : "rows"} without a fight link or both fighters); keeping the last good card`);
 
   return {
     id: eventId,

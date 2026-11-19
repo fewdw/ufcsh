@@ -808,7 +808,7 @@ db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_board ON cancelled_bouts
 // The table's drafts (preview builds only) lacked these columns: their rows
 // predate the rules, so it starts again.
 const droppedColumns = (db.prepare("PRAGMA table_info(dropped_bouts)").all() as { name: string }[]).map((column) => column.name);
-if (droppedColumns.length && !["confirmed", "moved", "swapped"].every((name) => droppedColumns.includes(name))) db.exec("DROP TABLE dropped_bouts");
+if (droppedColumns.length && !["confirmed", "moved"].every((name) => droppedColumns.includes(name))) db.exec("DROP TABLE dropped_bouts");
 db.exec(`CREATE TABLE IF NOT EXISTS dropped_bouts (
   event_id     TEXT NOT NULL,
   f1_id        TEXT NOT NULL,
@@ -821,8 +821,6 @@ db.exec(`CREATE TABLE IF NOT EXISTS dropped_bouts (
   confirmed    INTEGER NOT NULL DEFAULT 0,
   -- UFCStats put the bout (fight_id) on another card: shown as moved there.
   moved        INTEGER NOT NULL DEFAULT 0,
-  -- The bout listed f2_id in the first corner (for prices held meanwhile).
-  swapped      INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (event_id, f1_id, f2_id)
 ) WITHOUT ROWID`);
 db.exec("CREATE INDEX IF NOT EXISTS idx_dropped_bouts_f1 ON dropped_bouts(f1_id)");

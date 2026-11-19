@@ -271,7 +271,10 @@ export function cardCancellations(card: Card): Cancellation[] {
     const f2 = { id: row.f2_id, name: row.f2_name };
     const entry = { key: `${card.id}:dropped:${row.f1_id}:${row.f2_id}`, f1, f2, division: row.weight_class || checked("", f1, f2), reason: null,
       source_url: `${UFCSTATS_EVENT}${card.id}`, dropped_on: new Date(row.dropped_at).toISOString().slice(0, 10), fight_id: row.fight_id, moved: !!row.moved };
-    if (row.moved && !movedTo({ ...entry, date: card.date, event_id: card.id })) continue;
+    // The same bout on a card within a day is this card filed again, not a move.
+    const elsewhere = boutElsewhere(entry, card.id);
+    if (elsewhere && dayDiff(elsewhere.date, card.date) <= 1) continue;
+    if (row.moved && !elsewhere) continue;
     add(entry);
   }
 
@@ -308,14 +311,23 @@ export function cardCancellations(card: Card): Cancellation[] {
 type Stored = { slug: string; board_pk: number; date: string; event_name: string; weight_class: string;
   f1_id: string | null; f2_id: string | null; f1_name: string; f2_name: string };
 
+/** The bout UFCStats filed under this id on another card, when it is still
+ *  this pairing (each fighter by id or, after a corrected page, name). */
+function boutElsewhere(entry: Pick<Cancellation, "f1" | "f2"> & { fight_id?: string }, eventId: string | null): CancelledBout["moved_to"] {
+  if (!entry.fight_id) return null;
+  const bout = prepared(`SELECT f.id AS fight_id, e.date, e.name AS event_name, f.f1_id, f.f1_name, f.f2_id, f.f2_name
+    FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ? AND e.id IS NOT ?`).get(entry.fight_id, eventId) as
+    { fight_id: string; date: string; event_name: string; f1_id: string; f1_name: string; f2_id: string; f2_name: string } | undefined;
+  if (!bout || !samePair(entry, { f1: { id: bout.f1_id, name: bout.f1_name }, f2: { id: bout.f2_id, name: bout.f2_name } })) return null;
+  return { fight_id: bout.fight_id, date: bout.date, event_name: bout.event_name };
+}
+
 /** The same two fighters' bout within a year after, fought or booked. One
  *  UFCStats dropped is looked for from the day it dropped, on any other card,
  *  so a bout pulled forward to an earlier card shows as moved too. */
 export function movedTo(entry: Pick<Cancellation, "date" | "f1" | "f2"> & { event_id?: string | null; dropped_on?: string; fight_id?: string; moved?: boolean }): CancelledBout["moved_to"] {
   if (!entry.f1.id || !entry.f2.id) return null;
-  const pair = "((f.f1_id = ? AND f.f2_id = ?) OR (f.f1_id = ? AND f.f2_id = ?))";
-  const sameBout = entry.fight_id ? prepared(`SELECT f.id AS fight_id, e.date, e.name AS event_name FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE f.id = ? AND e.id IS NOT ? AND ${pair}`).get(entry.fight_id, entry.event_id ?? null, entry.f1.id, entry.f2.id, entry.f2.id, entry.f1.id) as CancelledBout["moved_to"] | undefined : undefined;
+  const sameBout = boutElsewhere(entry, entry.event_id ?? null);
   // A move UFCStats made goes where it put the bout, never to a later booking.
   if (sameBout || entry.moved) return sameBout ?? null;
   if (entry.dropped_on) {

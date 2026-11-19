@@ -513,7 +513,8 @@ export function boardRows($: cheerio.CheerioAPI, sourceUrl: string): cheerio.Che
     });
   const unreadable = rows.filter((row, i) => {
     const id = boardMatchupId($, row);
-    return unkeyedPrice(row) || (id == null ? firstCornerKeys($, row).length > 0 || orphanSecond(row, i) : !secondCorner(rows[i + 1], id));
+    return unkeyedPrice(row) || (id == null ? firstCornerKeys($, row).length > 0 || orphanSecond(row, i)
+      : firstCornerKeys($, row).some((key) => key[2] !== id) || !secondCorner(rows[i + 1], id));
   }).length;
   if (unreadable) {
     throw new BoardMarkupError(`BestFightOdds board markup unrecognized: ${unreadable} priced ${unreadable === 1 ? "bout" : "bouts"} without both fighters or a matchup id (${sourceUrl})`);

@@ -118,9 +118,9 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
 
     const currentIds = new Set(detail.fights.map((f) => f.id));
     const existing = db
-      .prepare("SELECT id, f1_id, f2_id, f1_name, f2_name, weight_class, f1_outcome, f2_outcome, detail_json FROM fights WHERE event_id = ?")
+      .prepare("SELECT id, f1_id, f2_id, f1_name, f2_name, weight_class, f1_outcome, f2_outcome, detail_json, verdict_live_json FROM fights WHERE event_id = ?")
       .all(detail.id) as { id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; weight_class: string;
-        f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null }[];
+        f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; verdict_live_json: string | null }[];
     const previous = new Map(existing.map(f => [f.id, f]));
     if (existing.length !== currentIds.size || detail.fights.some(f => !previous.has(f.id))) {
       db.prepare("UPDATE events SET segments_fetched_at = NULL WHERE id = ?").run(detail.id);
@@ -139,104 +139,65 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
     const samePairing = (a: { f1_id: string; f1_name: string; f2_id: string; f2_name: string }, f: ScrapedEventDetail["fights"][number]) =>
       (samePerson(a.f1_id, a.f1_name, f.f1) && samePerson(a.f2_id, a.f2_name, f.f2))
       || (samePerson(a.f1_id, a.f1_name, f.f2) && samePerson(a.f2_id, a.f2_name, f.f1));
-    // A page that loses most of a full card's pairings is usually a bad read,
-    // not a wave of cancellations: keep the last good card until the same
-    // page has stood for `SUSPECT_PAGE_MS`.
-    const lost = existing.filter(row => !detail.fights.some(f => samePairing(row, f)));
-    if (existing.length >= 6 && lost.length > existing.length / 2) {
+    type Booked = { id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; weight_class: string;
+      f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null };
+    // A bout decided or being fought is never dropped by a page that leaves it
+    // out (or lists it again under a new id with no result yet): a partial
+    // read, so it stays, with its result, stats and prices.
+    const fought = (row: Booked & { verdict_live_json?: string | null }) =>
+      row.f1_outcome != null || row.f2_outcome != null || fightIsUnderway(row);
+    // A page that loses most of a full card's unfought pairings is usually a
+    // bad read, not a wave of cancellations: its bouts are still read, but
+    // nothing leaves the card until the same page has stood for
+    // `SUSPECT_PAGE_MS`.
+    const lost = existing.filter(row => !fought(row) && !detail.fights.some(f => samePairing(row, f)));
+    let holdRemovals = false;
+    if (existing.length >= 4 && lost.length > existing.length / 2) {
       const shape = detail.fights.map(f => [f.f1.id, f.f2.id].sort().join(":")).sort().join(",");
       const seen = suspectPages.get(detail.id);
       if (!seen || seen.shape !== shape) suspectPages.set(detail.id, { shape, since: now });
-      if (!seen || seen.shape !== shape || now - seen.since < SUSPECT_PAGE_MS) {
-        throw new Error(`Partial event page (${lost.length} of ${existing.length} pairings missing); keeping the last good card until a later read agrees`);
-      }
-    }
-    suspectPages.delete(detail.id);
-    // A drop already pending keeps its first time; a move only ever confirms it.
-    const insertDrop = db.prepare(`INSERT INTO dropped_bouts (event_id, f1_id, f2_id, fight_id, weight_class, f1_name, f2_name, dropped_at, confirmed, moved, swapped)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (event_id, f1_id, f2_id) DO UPDATE SET
-        confirmed = max(confirmed, excluded.confirmed), moved = max(moved, excluded.moved), fight_id = excluded.fight_id, swapped = excluded.swapped`);
-    const pendingSince = db.prepare("SELECT dropped_at FROM dropped_bouts WHERE event_id = ? AND f1_id = ? AND f2_id = ?");
-    type Booked = { id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; weight_class: string; f1_outcome: string | null; f2_outcome: string | null };
-    type Held = Booked & { event_id: string; date: string; detail_json: null };
-    /** The first time this pairing was missed on the card, once stored. */
-    const storeDrop = (eventId: string, row: Booked, { confirmed = false, moved = false } = {}): number | null => {
-      if (row.f1_outcome != null || row.f2_outcome != null || !row.f1_id || !row.f2_id || row.f1_id === row.f2_id) return null;
-      // Stored in one order, so the same pairing is one row whichever corner
-      // each had; `swapped` remembers the corners for prices held meanwhile.
-      const swapped = row.f1_id > row.f2_id;
-      const [a, b] = swapped ? [[row.f2_id, row.f2_name], [row.f1_id, row.f1_name]] : [[row.f1_id, row.f1_name], [row.f2_id, row.f2_name]];
-      insertDrop.run(eventId, a[0], b[0], row.id, row.weight_class ?? "", a[1], b[1], now, confirmed ? 1 : 0, moved ? 1 : 0, swapped ? 1 : 0);
-      return (pendingSince.get(eventId, a[0], b[0]) as { dropped_at: number }).dropped_at;
+      holdRemovals = !seen || seen.shape !== shape || now - seen.since < SUSPECT_PAGE_MS;
+      if (holdRemovals) log(`card ${detail.id}: page missing ${lost.length} of ${existing.length} pairings; keeping them until it stands for ${SUSPECT_PAGE_MS / 3_600_000} h`);
+    } else suspectPages.delete(detail.id);
+
+    const insertDrop = db.prepare(`INSERT INTO dropped_bouts (event_id, f1_id, f2_id, fight_id, weight_class, f1_name, f2_name, dropped_at, confirmed, moved)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (event_id, f1_id, f2_id) DO UPDATE SET
+        confirmed = max(confirmed, excluded.confirmed), moved = max(moved, excluded.moved), fight_id = excluded.fight_id`);
+    /** Stored in one order, so the same pairing is one row whichever corner each had. */
+    const storeDrop = (eventId: string, row: Booked, { confirmed = false, moved = false } = {}) => {
+      if (row.f1_outcome != null || row.f2_outcome != null || !row.f1_id || !row.f2_id || row.f1_id === row.f2_id) return;
+      const [a, b] = row.f1_id < row.f2_id ? [[row.f1_id, row.f1_name], [row.f2_id, row.f2_name]] : [[row.f2_id, row.f2_name], [row.f1_id, row.f1_name]];
+      insertDrop.run(eventId, a[0], b[0], row.id, row.weight_class ?? "", a[1], b[1], now, confirmed ? 1 : 0, moved ? 1 : 0);
     };
     // A different fighter of the same name in the same corner reads as no
     // change here (and on display): rare, and safer than a false cancellation.
-    const recordDrop = (row: Booked): number | null =>
-      !wasComplete && !detail.fights.some(f => samePairing(row, f)) ? storeDrop(detail.id, row) : null;
+    const recordDrop = (row: Booked) => {
+      if (!wasComplete && !detail.fights.some(f => samePairing(row, f))) storeDrop(detail.id, row);
+    };
     /** Which way a stored booking's corners lie on a listed bout, by the same
      *  id-or-name rule: as they were, turned round, or another pairing. */
     const corners = (old: Booked, f: ScrapedEventDetail["fights"][number]) =>
       samePerson(old.f1_id, old.f1_name, f.f1) && samePerson(old.f2_id, old.f2_name, f.f2) ? "same"
         : samePerson(old.f1_id, old.f1_name, f.f2) && samePerson(old.f2_id, old.f2_name, f.f1) ? "turned" : "other";
-    /** A booking's prices follow it to a new bout id, each with its fighter. */
-    const carryPrices = (from: Booked, to: ScrapedEventDetail["fights"][number]) => {
-      const way = corners(from, to);
-      if (way === "other" || from.id === to.id) return;
-      if (!db.prepare("SELECT 1 FROM odds WHERE fight_id = ?").get(to.id)) {
-        db.prepare("UPDATE odds SET fight_id = ? WHERE fight_id = ?").run(to.id, from.id);
-        if (way === "turned") db.prepare(`UPDATE odds SET f1_open = f2_open, f2_open = f1_open, f1_close = f2_close, f2_close = f1_close,
-          f1_history = f2_history, f2_history = f1_history WHERE fight_id = ?`).run(to.id);
-      }
-      const markets = db.prepare("SELECT markets_json FROM method_odds WHERE fight_id = ?").get(from.id) as { markets_json: string } | undefined;
-      if (markets && !db.prepare("SELECT 1 FROM method_odds WHERE fight_id = ?").get(to.id)) {
-        try {
-          const m = JSON.parse(markets.markets_json);
-          db.prepare("UPDATE method_odds SET fight_id = ?, markets_json = ? WHERE fight_id = ?").run(to.id, JSON.stringify(way === "turned"
-            ? { ...m, f1: m.f2, f2: m.f1, f1_id: to.f1.id, f2_id: to.f2.id } : { ...m, f1_id: to.f1.id, f2_id: to.f2.id }), from.id);
-        } catch { /* left for the cleanup below */ }
-      }
-    };
-    const unheld = "NOT EXISTS (SELECT 1 FROM fights WHERE id = ?)";
-    const dropPrices = (fightId: string) => {
-      db.prepare(`DELETE FROM odds WHERE fight_id = ? AND ${unheld}`).run(fightId, fightId);
-      db.prepare(`DELETE FROM method_odds WHERE fight_id = ? AND ${unheld}`).run(fightId, fightId);
-    };
-    // A dropped bout whose prices are held, by its bout id, in its old corners.
-    const heldRow = db.prepare(`SELECT d.*, e.date FROM dropped_bouts d JOIN events e ON e.id = d.event_id
-      WHERE d.fight_id = ? AND NOT EXISTS (SELECT 1 FROM fights WHERE id = d.fight_id) ORDER BY d.dropped_at DESC LIMIT 1`);
-    const held = new Map<string, Held>();
-    for (const f of detail.fights) {
-      if (previous.has(f.id)) continue;
-      const row = heldRow.get(f.id) as { event_id: string; date: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string;
-        weight_class: string; swapped: number } | undefined;
-      if (!row) continue;
-      const [one, two] = row.swapped ? [[row.f2_id, row.f2_name], [row.f1_id, row.f1_name]] : [[row.f1_id, row.f1_name], [row.f2_id, row.f2_name]];
-      held.set(f.id, { id: f.id, event_id: row.event_id, date: row.date, f1_id: one[0], f1_name: one[1], f2_id: two[0], f2_name: two[1],
-        weight_class: row.weight_class, f1_outcome: null, f2_outcome: null, detail_json: null });
-    }
     // UFCStats moves a bout to another card under the same id: the card it
-    // left loses the booking (UFCStats' own word, so confirmed at once), which
-    // `movedTo` then shows as moved.
+    // left loses the booking (UFCStats' own word, so confirmed at once).
     const movedFrom = db.prepare(`SELECT f.id, f.event_id, f.f1_id, f.f2_id, f.f1_name, f.f2_name, f.weight_class, f.f1_outcome, f.f2_outcome,
       f.detail_json, e.complete, e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ? AND f.event_id <> ?`);
-    // Decided bouts a page leaves out (or lists again under a new id that has
-    // no result yet): a partial read, so the result and its prices stay.
-    const keptDecided: Booked[] = [];
+    const keptFought: Booked[] = [];
     for (const row of existing) {
-      if (!currentIds.has(row.id)) {
-        const relisted = detail.fights.find(f => samePairing(row, f));
-        if ((row.f1_outcome != null || row.f2_outcome != null) && (!relisted || (relisted.f1.outcome == null && relisted.f2.outcome == null))) {
-          keptDecided.push(row);
-          continue;
-        }
-        if (relisted) carryPrices(row, relisted);
-        db.prepare("DELETE FROM fights WHERE id = ?").run(row.id);
-        // An unfought booking's prices wait for its drop to be confirmed: back
-        // on the card under the same id, it has them again.
-        if (recordDrop(row) != null) continue;
-        db.prepare("DELETE FROM odds WHERE fight_id = ?").run(row.id);
-        db.prepare("DELETE FROM method_odds WHERE fight_id = ?").run(row.id);
+      if (currentIds.has(row.id)) continue;
+      const relisted = detail.fights.find(f => samePairing(row, f));
+      if (fought(row) && (!relisted || (relisted.f1.outcome == null && relisted.f2.outcome == null))) {
+        keptFought.push(row);
+        continue;
       }
+      if (!relisted && holdRemovals) continue;
+      // Re-created under a new id: a move recorded for the old id follows it.
+      if (relisted) db.prepare("UPDATE dropped_bouts SET fight_id = ? WHERE fight_id = ? AND moved = 1").run(relisted.id, row.id);
+      else recordDrop(row);
+      db.prepare("DELETE FROM fights WHERE id = ?").run(row.id);
+      db.prepare("DELETE FROM odds WHERE fight_id = ?").run(row.id);
+      db.prepare("DELETE FROM method_odds WHERE fight_id = ?").run(row.id);
     }
 
     const upsert = db.prepare(`
@@ -259,44 +220,33 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
         perf_bonus = excluded.perf_bonus, fotn_bonus = excluded.fotn_bonus
     `);
 
-    // A pairing back on the card, under any bout id, is no longer dropped;
-    // prices held under an id that didn't come back follow it to the new one.
-    for (const row of db.prepare("SELECT f1_id, f2_id, f1_name, f2_name, fight_id, swapped FROM dropped_bouts WHERE event_id = ?").all(detail.id) as
-      { f1_id: string; f2_id: string; f1_name: string; f2_name: string; fight_id: string; swapped: number }[]) {
-      const back = detail.fights.find(f => samePairing(row, f));
-      if (!back) continue;
-      db.prepare("DELETE FROM dropped_bouts WHERE event_id = ? AND f1_id = ? AND f2_id = ?").run(detail.id, row.f1_id, row.f2_id);
-      if (currentIds.has(row.fight_id) || db.prepare("SELECT 1 FROM fights WHERE id = ?").get(row.fight_id)) continue;
-      const [one, two] = row.swapped ? [[row.f2_id, row.f2_name], [row.f1_id, row.f1_name]] : [[row.f1_id, row.f1_name], [row.f2_id, row.f2_name]];
-      carryPrices({ id: row.fight_id, f1_id: one[0], f1_name: one[1], f2_id: two[0], f2_name: two[1], weight_class: "", f1_outcome: null, f2_outcome: null }, back);
-      dropPrices(row.fight_id);
+    // A pairing back on the card, under any bout id, is no longer dropped.
+    for (const row of db.prepare("SELECT f1_id, f2_id, f1_name, f2_name FROM dropped_bouts WHERE event_id = ?").all(detail.id) as
+      { f1_id: string; f2_id: string; f1_name: string; f2_name: string }[]) {
+      if (detail.fights.some(f => samePairing(row, f))) {
+        db.prepare("DELETE FROM dropped_bouts WHERE event_id = ? AND f1_id = ? AND f2_id = ?").run(detail.id, row.f1_id, row.f2_id);
+      }
     }
-    const setDrop = db.prepare("UPDATE dropped_bouts SET confirmed = 1, moved = ? WHERE event_id = ? AND fight_id = ?");
     for (const f of detail.fights) {
       // The new id waits until it has the result the kept one already holds.
-      if (f.f1.outcome == null && f.f2.outcome == null && keptDecided.some(row => row.id !== f.id && samePairing(row, f))) continue;
-      // A bout UFCStats moved here from another card under the same id (still
-      // listed there, or dropped from there with its prices held) is
+      if (f.f1.outcome == null && f.f2.outcome == null && keptFought.some(row => row.id !== f.id && samePairing(row, f))) continue;
+      // A bout UFCStats moved here from another card under the same id is
       // reconciled like one already on this card: corners, stats and prices.
       const moved = previous.has(f.id) ? undefined
-        : movedFrom.get(f.id, detail.id) as (Booked & { event_id: string; detail_json: string | null; complete: number; date: string }) | undefined;
-      const heldHere = moved ? undefined : held.get(f.id);
-      const old: (Booked & { detail_json: string | null }) | undefined = previous.get(f.id) ?? moved ?? heldHere;
+        : movedFrom.get(f.id, detail.id) as (Booked & { event_id: string; complete: number; date: string }) | undefined;
+      const old: Booked | undefined = previous.get(f.id) ?? moved;
       // A briefly stale source page must not erase a result already published.
       if (old && fightIsComplete(old) && f.f1.outcome == null && f.f2.outcome == null) continue;
       const way = old ? corners(old, f) : "same";
-      const from = moved ?? (heldHere && heldHere.event_id !== detail.id ? heldHere : undefined);
-      if (from) {
+      if (moved) {
         // A card filed again under a new id (within a day) is the same card,
         // not a move. Elsewhere the card it left loses the booking: moved,
-        // when this is the same pairing; cancelled, when one corner changed.
-        const refiled = Math.abs(daysBetween(from.date, detail.date)) <= 1;
-        if (!refiled && moved && !moved.complete) storeDrop(moved.event_id, moved, { confirmed: true, moved: way !== "other" });
-        if (heldHere && heldHere.event_id !== detail.id) {
-          if (refiled) db.prepare("DELETE FROM dropped_bouts WHERE event_id = ? AND fight_id = ?").run(heldHere.event_id, f.id);
-          else setDrop.run(way !== "other" ? 1 : 0, heldHere.event_id, f.id);
-        }
-        if (refiled && way === "other") recordDrop(old!);
+        // when this is the same pairing; cancelled, when a corner changed.
+        // Its place, length and referee were that card's.
+        const refiled = Math.abs(daysBetween(moved.date, detail.date)) <= 1;
+        if (!refiled && !moved.complete) storeDrop(moved.event_id, moved, { confirmed: true, moved: way !== "other" });
+        if (refiled && way === "other") recordDrop(moved);
+        if (!refiled) db.prepare("UPDATE fights SET segment = NULL, card_pos = NULL, scheduled_rounds = NULL, referee_assigned = NULL WHERE id = ?").run(f.id);
       } else if (old && way === "other") {
         // A corner given a new opponent breaks up the old pairing.
         recordDrop(old);
@@ -321,7 +271,7 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
         if (way === "other") {
           db.prepare("UPDATE fights SET segment = NULL, card_pos = NULL, scheduled_rounds = NULL, referee_assigned = NULL WHERE id = ?").run(f.id);
           db.prepare("UPDATE events SET segments_fetched_at = NULL WHERE id = ?").run(detail.id);
-          if (old.f1_outcome == null && old.f2_outcome == null) db.prepare("DELETE FROM odds WHERE fight_id = ?").run(f.id);
+          db.prepare("DELETE FROM odds WHERE fight_id = ?").run(f.id);
         }
       }
       if (old && way === "turned" && old.f1_id !== old.f2_id) {
@@ -358,10 +308,7 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
     db.prepare(`UPDATE events SET complete = NOT EXISTS (
       SELECT 1 FROM fights WHERE event_id = ? AND f1_outcome IS NULL AND f2_outcome IS NULL
     ) WHERE id = ?`).run(detail.id, detail.id);
-    // A drop still missing from a later read is a cancellation, and the
-    // prices held for it go.
-    for (const row of db.prepare("SELECT fight_id FROM dropped_bouts WHERE event_id = ? AND confirmed = 0 AND dropped_at <= ?")
-      .all(detail.id, now - DROP_CONFIRM_MS) as { fight_id: string }[]) dropPrices(row.fight_id);
+    // A drop still missing from a later read is a cancellation.
     db.prepare("UPDATE dropped_bouts SET confirmed = 1 WHERE event_id = ? AND confirmed = 0 AND dropped_at <= ?").run(detail.id, now - DROP_CONFIRM_MS);
     db.exec("COMMIT");
   } catch (err) {
