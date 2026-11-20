@@ -103,7 +103,12 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   left to the other sources, and so is a reason that mentions another round
   or point. Each corner must match by full name or by our fighter's surname,
   never a shared given name, and a row two of our bouts could claim is
-  skipped. A list must fit every judge's card, replaces a Verdict list (kept
+  skipped. The cards can't say who lost a 9-9 round's point, so where
+  Verdict lists penalties Wikipedia must include every one in the same round
+  against the same fighter (it may add one Verdict missed); otherwise
+  Verdict's list stands and the log says so. A recent card whose article
+  wasn't found the first time is searched for again every six hours.
+  A list must fit every judge's card, replaces a Verdict list (kept
   underneath and restored if the note is withdrawn or rewritten into one
   that can't be used), and is never replaced by one; a note naming no
   penalty confirms nothing. Rows hidden in comments are ignored. Source check (20 November 2026): over the 2,613 decisions
