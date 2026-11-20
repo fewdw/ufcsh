@@ -1063,8 +1063,9 @@ const BESIDE_DEDUCTION = /^(?:For the [^.]*?(?:Championship|title)|[^.]*?title e
 /** A reason is a plain phrase ("repeated groin strikes", "an eye poke and a
  *  groin strike", "striking Böhm after the bell"). A clause after it can take
  *  the penalty back or add another ("..., which the referee reduced to a
- *  warning"), so any clause structure refuses the note. */
-const IN_REASON = new RegExp(`[,;:()]|\\band (?:was|were|is|it|he|she|they|the|then)\\b|\\b(?:rounds?|points?|deduct\\w*|another|again|twice|but|later|which|who|whom|whose|that|while|whereas|although|though|however|instead|rather|until|${REVERSAL})\\b`, "i");
+ *  warning", "... and one in the third for grabbing the fence"), so any
+ *  clause structure, count, ordinal or second "for"/"due to" refuses it. */
+const IN_REASON = new RegExp(`[,;:()]|\\band (?:was|were|is|it|he|she|they|the|then)\\b|\\b(?:rounds?|points?|deduct\\w*|another|again|twice|once|one|two|three|[1-5]|first|second|third|fourth|fifth|for|due to|but|later|which|who|whom|whose|that|while|whereas|although|though|however|instead|rather|until|${REVERSAL})\\b`, "i");
 const DEDUCTION_NOTE = /^(.+?) was (twice )?deducted (a|one|two|three|[123]) points? (?:in|after|at the end of) (?:round (\d|one|two|three|four|five)|the (first|second|third|fourth|fifth) round)(?: (?:due to|for) (.+?))?\.?$/i;
 
 /** The referee's penalties a results row's note states ("Medić was deducted
