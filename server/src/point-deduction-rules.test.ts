@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyDeductions, confirmedDeductions, deductionsIn, type PointDeduction } from "./point-deduction-rules.ts";
+import { applyDeductions, confirmedDeductions, deductionsIn, rowDeductions, storedDeductions, type PointDeduction } from "./point-deduction-rules.ts";
 
 const penalty: PointDeduction = { side: "f1", round: 1, points: 1, reason: "Low blow" };
 const record = (items: unknown[]) => JSON.stringify({ source: "MMA Decisions", sourceUrl: "https://mmadecisions.com/decision/1", items });
@@ -31,4 +31,22 @@ test("confirmed deductions replace reports exactly once, including both fighters
   assert.deepEqual(adjusted.map(r => [r.deduct1, r.deduct2]), [[2, 1], [0, 0]]);
   assert.deepEqual(applyDeductions(adjusted, state), adjusted);
   assert.deepEqual(raw[1], { round: 2, f1: 9, f2: 10, deduct1: 1, deduct2: 2 }, "the editable base card is preserved");
+});
+
+test("a Wikipedia results row is matched to the bout and its penalties put in our fighter order", () => {
+  const rows = [
+    { f1: "Choi Doo-ho", f2: "Kyle Nelson", notes: "Choi was deducted 1 point in Round 3 due to a headbutt." },
+    { f1: "Park Jun-yong", f2: "Denis Tiuliulin", notes: "" },
+    { f1: "Joe Solecki", f2: "Alex da Silva Coelho", notes: "Coelho was deducted one point in round 2 for locking his toes in the fence." },
+    { f1: "Gunnar Nelson", f2: "Bryan Barberena", notes: "Nelson was deducted one point in round 1 and more in round 2." },
+  ];
+  assert.deepEqual(rowDeductions(rows, "Kyle Nelson", "Dooho Choi"), [{ side: "f2", round: 3, points: 1, reason: "A headbutt" }]);
+  assert.deepEqual(rowDeductions(rows, "Alex Da Silva", "Joe Solecki"), [{ side: "f1", round: 2, points: 1, reason: "Locking his toes in the fence" }]);
+  assert.deepEqual(rowDeductions(rows, "JunYong Park", "Denis Tiuliulin"), []);
+  // No row, or a note that can't be read plainly: nothing is known.
+  assert.equal(rowDeductions(rows, "Mike Mathetha", "Charles Radtke"), undefined);
+  assert.equal(rowDeductions(rows, "Gunnar Nelson", "Bryan Barberena"), null);
+  // A note naming neither fighter is refused, not guessed.
+  assert.equal(rowDeductions([{ f1: "Jon Jones", f2: "Anthony Smith", notes: "Herb was deducted one point in round 4." }], "Jon Jones", "Anthony Smith"), null);
+  assert.equal(storedDeductions(JSON.stringify({ source: "Wikipedia", sourceUrl: "https://en.wikipedia.org/wiki/UFC_334", items: [penalty] }))?.source, "Wikipedia");
 });

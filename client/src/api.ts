@@ -429,7 +429,7 @@ export type FightDetailBlock = {
     rounds?: { round: number; f1Score: number; f2Score: number }[];
   }[];
   scorecardSource?: { name: string; url: string };
-  /** Points taken by the referee, as MMA Decisions states them; only sent when they fit every judge's round card. */
+  /** Points taken by the referee, as MMA Decisions (else Wikipedia or Verdict MMA) states them; only sent when they fit every judge's round card. */
   deductions?: { side: "f1" | "f2"; round: number; points: number; reason: string }[];
   /** Journalists' cards, as MMA Decisions lists them. */
   media?: { name: string; url: string; cards: MediaCard[] };

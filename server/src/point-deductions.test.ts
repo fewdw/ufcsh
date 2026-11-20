@@ -65,7 +65,7 @@ test("media cards follow our fighter order and must agree with their own winner"
 });
 
 import { db, getMeta, setMeta } from "./db.ts";
-import { MMA_DECISIONS_BLOCKED, readPointDeductions, syncRecentPointDeductions } from "./point-deductions.ts";
+import { MMA_DECISIONS_BLOCKED, readPointDeductions, syncRecentPointDeductions, syncWikiPointDeductions, WIKI_DEDUCTIONS_READ } from "./point-deductions.ts";
 
 const importFight = { id: "mma-import-test", date: "2024-06-15", f1_name: "Alice Archer", f2_name: "Betty Baker", f1_alias: null, f2_alias: null };
 const panel = ["Alice Judge", "Betty Judge", "Claire Judge"];
@@ -143,4 +143,38 @@ test("stored cards dropped for a shared surname are placed again in our order", 
   // An address that doesn't name both fighters, or nothing that now fits, changes nothing.
   assert.equal(replaceDroppedMedia(record, "Karine Silva", "Someone Else"), null);
   assert.equal(replaceDroppedMedia(JSON.stringify({ ...JSON.parse(record), dropped: [card(29, 28, "Volkanovski")] }), "Karine Silva", "Ariane da Silva"), null);
+});
+
+test("a recent card's Wikipedia notes replace Verdict's penalties, never MMA Decisions', and only when they fit the cards", async t => {
+  db.exec("BEGIN"); t.after(() => db.exec("ROLLBACK"));
+  const now = Date.parse("2030-01-20T12:00:00Z");
+  db.prepare("INSERT INTO events (id, name, date, complete, wiki_title) VALUES ('wiki-ded', 'UFC 999: A vs. B', '2030-01-18', 1, 'UFC 999')").run();
+  // 30-26 on every card: one judge's round 3 is 10-8, explained by a point taken from Baker.
+  const cards = JSON.stringify({ judges: panel.map(judge => ({ judge, f1Score: 30, f2Score: 26,
+    rounds: [{ round: 1, f1Score: 10, f2Score: 9 }, { round: 2, f1Score: 10, f2Score: 9 }, { round: 3, f1Score: 10, f2Score: 8 }] })) });
+  const fight = db.prepare(`INSERT INTO fights (id, event_id, ord, f1_name, f2_name, method, round, judge_rounds_json, deductions_json)
+    VALUES (?, 'wiki-ded', ?, ?, ?, 'U-DEC', '3', ?, ?)`);
+  fight.run("wiki-a", 1, "Alice Archer", "Betty Baker", cards, null);
+  fight.run("wiki-b", 2, "Cara Cole", "Dana Diaz", cards, JSON.stringify({ source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/2", items: [] }));
+  const kept = JSON.stringify({ source: "MMA Decisions", sourceUrl: "https://mmadecisions.com/decision/1", items: [{ side: "f2", round: 3, points: 1, reason: "Groin strike" }] });
+  fight.run("wiki-c", 3, "Erin Eck", "Fran Fox", cards, kept);
+  fight.run("wiki-d", 4, "Gail Gray", "Hope Hill", cards, null);
+  const row = (a: string, b: string, notes: string) => `{{MMAevent bout|Flyweight|[[${a}]]|def.|[[${b}]]|Decision (unanimous) (30–26, 30–26, 30–26)|3|5:00|${notes}\n}}`;
+  const article = `{{Infobox MMA event\n| date = {{start date|2030|01|18}}\n}}\n==Results==\n`
+    + row("Alice Archer", "Betty Baker", "Baker was deducted one point in round 3 due to repeated grabbing the fence.")
+    + row("Cara Cole", "Dana Diaz", "Diaz was deducted one point in round 3 due to an eye poke.")
+    + row("Erin Eck", "Fran Fox", "Eck was deducted one point in round 3 due to a headbutt.")
+    // Gray won round 3 10-8: a point taken from her would mean she scored 11.
+    + row("Gail Gray", "Hope Hill", "Gray was deducted one point in round 3 due to an eye poke.");
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ parse: { wikitext: { "*": article } } })));
+  assert.deepEqual(await syncWikiPointDeductions(now), { events: 1, stored: 2 });
+  const stored = (id: string) => (db.prepare("SELECT deductions_json FROM fights WHERE id = ?").get(id) as { deductions_json: string | null }).deductions_json;
+  assert.deepEqual(JSON.parse(stored("wiki-a")!), { source: "Wikipedia", sourceUrl: "https://en.wikipedia.org/wiki/UFC_999",
+    items: [{ side: "f2", round: 3, points: 1, reason: "Repeated grabbing the fence" }] });
+  assert.equal(JSON.parse(stored("wiki-b")!).source, "Wikipedia");
+  assert.equal(stored("wiki-c"), kept);
+  assert.equal(stored("wiki-d"), null);
+  assert.equal(Number(getMeta(WIKI_DEDUCTIONS_READ)), now);
+  // Older than 45 days: not read again.
+  assert.deepEqual(await syncWikiPointDeductions(now + 46 * 86400_000), { events: 0, stored: 0 });
 });

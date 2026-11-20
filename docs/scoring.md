@@ -95,6 +95,21 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   agreed on all 17 penalties and 701 zeroes, listed none MMA Decisions
   didn't, and missed one (Prado's round 3 against Radtke, April 2026).
 
+  Ahead of Verdict, each recent card's Wikipedia article stands in: the notes
+  cell of its `{{MMAevent bout}}` rows ("Sanches was deducted one point in
+  round 3 due to repeated grabbing the fence."), re-read hourly for 45 days.
+  Only plainly worded notes are used (who, which round, how many points); a
+  note like "deducted two points, one in round two and one in round three" is
+  left to the other sources. A list must fit every judge's card, replaces a
+  Verdict list, and is never replaced by one; a note naming no penalty
+  confirms nothing. Source check (20 November 2026): over the 2,658 decisions
+  since 2016 whose row matched and had an MMA Decisions record, the notes
+  agreed on 60 penalties and 2,555 zeroes, left none out, and named the other
+  fighter once (Santos–Muñoz, June 2023, where MMA Decisions' record stays).
+  Since MMA Decisions went down they added the reasons for Verdict's three
+  and two penalties Verdict missed (Brown against Jacobe Smith, 31 October;
+  Sanches against Elder, UFC 334).
+
   Source check (19 October 2026): Verdict's [guide](https://verdictmma.com/how_to_score)
   says it applies deductions, but its [Garbrandt–Long published grid](https://verdictmma.com/event/1324/fight/1)
   gives Long 9.47 in R3 and 28.86 overall while its round metadata lists two

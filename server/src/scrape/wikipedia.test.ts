@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cardChanges, catchweights, eventSection, infoboxDate, namesCard, plainText, recordCatchweight, rosterChanges, samePlace, weightMisses } from "./wikipedia.ts";
+import { cardChanges, catchweights, eventSection, infoboxDate, namesCard, noteDeductions, plainText, recordCatchweight, resultRows, rosterChanges, samePlace, weightMisses } from "./wikipedia.ts";
 
 const article = (background: string, results = "") =>
   `{{Infobox MMA event\n| date = {{start date|2024|01|20}}\n}}\n==Background==\n${background}\n==Results==\n${results}`;
@@ -555,4 +555,38 @@ test("\"instead faced\" after a stated booking names the fighter who withdrew", 
 test("a family name first after a division still completes a surname", () => {
   const text = article("Featherweights [[Choi Doo-ho]] and [[Danny Chavez]] were expected to meet at the event. However, Choi was forced to pull out of the bout due to an injury and was replaced by [[Kai Kamaka III]].");
   assert.equal(cardChanges(text, [["Danny Chavez", "Kai Kamaka III"]]).changes[0].replaced, "Choi Doo-ho");
+});
+
+test("results rows give both fighters and the notes cell, whatever the layout", () => {
+  const rows = resultRows(`{{MMAevent bout
+|Welterweight
+|[[Leon Edwards]] (c)
+|def.
+|[[Kamaru Usman]]
+|Decision (majority) (48–46, 48–46, 47–47)
+|5
+|5:00
+|For the [[UFC Welterweight Championship]]. Edwards was deducted 1 point in round 3 due to grabbing the fence.<ref>{{cite web|url=https://example.com|title=A|b}}</ref>
+}}
+{{MMAevent bout|Lightweight|[[Daniel Santos (fighter)|Daniel Santos]]|def.|[[Johnny Muñoz Jr.]]|Decision (unanimous) (29–27, 29–27, 29–27)|3|5:00|
+}}
+{{MMAevent bout|Heavyweight|Ciryl Gane|vs.|Tai Tuivasa|No Contest (accidental eye poke)|1|0:30}}`);
+  assert.deepEqual(rows, [
+    { f1: "Leon Edwards", f2: "Kamaru Usman", notes: "For the UFC Welterweight Championship. Edwards was deducted 1 point in round 3 due to grabbing the fence." },
+    { f1: "Daniel Santos", f2: "Johnny Muñoz Jr.", notes: "" },
+    { f1: "Ciryl Gane", f2: "Tai Tuivasa", notes: "" },
+  ]);
+});
+
+test("a deduction note is read only when it says plainly who, which round and how many", () => {
+  assert.deepEqual(noteDeductions("For the title. Medić was deducted one point in round 2 due to repeated groin strikes."),
+    [{ name: "Medić", round: 2, points: 1, reason: "Repeated groin strikes" }]);
+  assert.deepEqual(noteDeductions("Jones was deducted two points in round 4 due to an illegal knee."), [{ name: "Jones", round: 4, points: 2, reason: "An illegal knee" }]);
+  assert.deepEqual(noteDeductions("Turman was twice deducted one point in round 2 due to grabbing the fence."), [{ name: "Turman", round: 2, points: 2, reason: "Grabbing the fence" }]);
+  assert.deepEqual(noteDeductions("Ray was deducted a point in the second round for an eye poke."), [{ name: "Ray", round: 2, points: 1, reason: "An eye poke" }]);
+  assert.deepEqual(noteDeductions("Reese was deducted 1 point in Round 1."), [{ name: "Reese", round: 1, points: 1, reason: "" }]);
+  assert.deepEqual(noteDeductions("Road to UFC final."), []);
+  assert.equal(noteDeductions("Stošić was deducted two points, one in round two and one in round three, both due to repeated groin strikes."), null);
+  assert.equal(noteDeductions("Bout was stopped at 3:56 of round 3 as Borralho was deducted one point due to an accidental illegal knee."), null);
+  assert.equal(noteDeductions("First ever unanimous draw in UFC history without point deductions."), null);
 });

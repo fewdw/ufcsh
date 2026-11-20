@@ -3,7 +3,8 @@ import { db, getMeta, setMeta } from "./db.ts";
 import { crawlMmaDecisions, type CrawlFight } from "./mmadecisions-crawl.ts";
 import { mmaDecisionUrl, type MmaMediaScore } from "./scrape/mmadecisions.ts";
 import { log } from "./util.ts";
-import { pageDeductions, pageMedia, storedDeductions, type MediaScore, type PointDeduction } from "./point-deduction-rules.ts";
+import { deductionProblem, fightDeductionState, pageDeductions, pageMedia, rowDeductions, storedDeductions, type MediaScore, type PointDeduction } from "./point-deduction-rules.ts";
+import { eventSection, fetchArticleByTitle, resultRows } from "./scrape/wikipedia.ts";
 import type { JudgeCard } from "./judge-scorecards.ts";
 import { repairVerifiedPointDeductions } from "./verified-point-deductions.ts";
 export { deductionProblem, deductionSide, pageDeductions, pageMedia, verifiedDeductions, fightDeductionState } from "./point-deduction-rules.ts";
@@ -124,6 +125,58 @@ export async function syncFightMediaScores(fightId: string): Promise<{ matched: 
   return { matched: matched > 0, media: storedMedia(row.media_scores_json) };
 }
 
+/** A record that a later, better source may replace. */
+const PROVISIONAL = "CASE WHEN json_valid(f.deductions_json) THEN json_extract(f.deductions_json, '$.source') END IN ('Wikipedia', 'Verdict MMA')";
+
 /** Every decision, for the one-off backfill. */
 export const pointDeductionCandidates = (recheck: boolean): CrawlFight[] =>
-  db.prepare(`${CANDIDATES}${recheck ? "" : " AND (f.deductions_json IS NULL OR f.deductions_json LIKE '%\"source\":\"Verdict MMA\"%')"} ORDER BY e.date`).all() as CrawlFight[];
+  db.prepare(`${CANDIDATES}${recheck ? "" : ` AND (f.deductions_json IS NULL OR ${PROVISIONAL})`} ORDER BY e.date`).all() as CrawlFight[];
+
+export const WIKI_DEDUCTIONS_READ = "wiki_deductions_read_at";
+
+/** Until MMA Decisions has a recent decision, the penalties its event
+ *  article's results row states ("Sanches was deducted one point in round 3
+ *  due to repeated grabbing the fence."). Over 2,658 decisions since 2016
+ *  with both sources, those notes agreed on 60 of 61 penalties (the other
+ *  named the wrong fighter) and never left one out. A list is stored only
+ *  when it fits every judge's round card; it replaces Verdict MMA's, which
+ *  missed two in October and November 2026. A note naming no penalty
+ *  confirms nothing, and MMA Decisions' record always replaces this one.
+ *  Recent cards are re-read hourly: notes are added over the first days. */
+export async function syncWikiPointDeductions(now = Date.now()): Promise<{ events: number; stored: number }> {
+  const cutoff = new Date(now - 45 * 86400_000).toISOString().slice(0, 10);
+  const events = db.prepare(`SELECT e.id, e.date, e.wiki_title FROM events e WHERE e.complete = 1 AND e.date >= ? AND e.wiki_title IS NOT NULL
+    AND EXISTS (SELECT 1 FROM fights f WHERE f.event_id = e.id AND f.method LIKE '%DEC' AND (f.deductions_json IS NULL OR ${PROVISIONAL}))
+    ORDER BY e.date DESC`).all(cutoff) as { id: string; date: string; wiki_title: string }[];
+  const fightsOf = db.prepare(`SELECT f.id, f.f1_name, f.f2_name, f.detail_json, f.judge_rounds_json, f.deductions_json FROM fights f
+    WHERE f.event_id = ? AND f.method LIKE '%DEC' AND (f.deductions_json IS NULL OR ${PROVISIONAL})`);
+  // Checked again in the write: MMA Decisions may have stored one meanwhile.
+  const store = db.prepare(`UPDATE fights AS f SET deductions_json = ?1 WHERE f.id = ?2 AND f.deductions_json IS NOT ?1
+    AND (f.deductions_json IS NULL OR ${PROVISIONAL})`);
+  const clear = db.prepare(`UPDATE fights SET deductions_json = NULL WHERE id = ? AND json_valid(deductions_json)
+    AND json_extract(deductions_json, '$.source') = 'Wikipedia'`);
+  let read = 0, stored = 0, lastError = "";
+  for (const event of events) {
+    let wikitext: string | null;
+    try { wikitext = await fetchArticleByTitle(event.wiki_title); }
+    catch (err) { lastError = String(err); continue; }
+    read++;
+    const section = wikitext && eventSection(wikitext, event.date);
+    if (!section) continue;
+    const rows = resultRows(section);
+    const sourceUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(event.wiki_title.replace(/ /g, "_")).replace(/%3A/g, ":")}`;
+    for (const fight of fightsOf.all(event.id) as (CrawlFight & { detail_json: string | null; judge_rounds_json: string | null; deductions_json: string | null })[]) {
+      const items = rowDeductions(rows, fight.f1_name, fight.f2_name);
+      if (!items) continue;
+      // An editor took the note back: Verdict's own list may stand in again.
+      if (!items.length) { if (storedDeductions(fight.deductions_json)?.source === "Wikipedia") clear.run(fight.id); continue; }
+      const problem = deductionProblem(fightDeductionState(fight).cards, items);
+      if (problem) { log(`point deductions: Wikipedia's for ${fight.f1_name} vs ${fight.f2_name} don't fit the cards (${problem})`); continue; }
+      stored += Number(store.run(JSON.stringify({ source: "Wikipedia", sourceUrl, items }), fight.id).changes);
+    }
+  }
+  if (events.length && !read) throw new Error(`Wikipedia: no event article could be read (${lastError})`);
+  setMeta(WIKI_DEDUCTIONS_READ, String(now));
+  if (stored) log(`point deductions: ${stored} stored from Wikipedia`);
+  return { events: read, stored };
+}

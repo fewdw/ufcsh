@@ -110,7 +110,7 @@ export default function RefereePage() {
       { key: "dq", chip: "DQ", title: "Disqualifications", detail: `UFC ${b.counts.dq} of ${b.fights.toLocaleString()}`, value: s.counts.dq,
         selected: f.result === "dq", onSelect: () => filters.set("result", f.result === "dq" ? null : "dq") },
       { key: "pts", chip: "PTS", title: "Point deductions", detail: `UFC ${b.deductions} of ${b.fights.toLocaleString()}`, value: s.deductions,
-        hint: "From MMA Decisions and Verdict MMA on decisions, and UFCStats' result notes. Few finishes record one, so this is a floor.",
+        hint: "From MMA Decisions, Wikipedia and Verdict MMA on decisions, and UFCStats' result notes. Few finishes record one, so this is a floor.",
         selected: f.view === "incidents", onSelect: () => filters.set("view", f.view === "incidents" ? null : "incidents") },
     ]} />
     <RankRows title="Finishes by round" rows={s.stoppage_rounds.map((entry) => {

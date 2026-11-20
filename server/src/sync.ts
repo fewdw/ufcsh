@@ -39,7 +39,7 @@ import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
 import { syncUfcJudgeRounds } from "./ufc-judge-rounds.ts";
 import { syncVerdictPicks } from "./verdict-picks.ts";
-import { syncRecentPointDeductions } from "./point-deductions.ts";
+import { syncRecentPointDeductions, syncWikiPointDeductions } from "./point-deductions.ts";
 import { syncVerdictLive, VERDICT_LIVE_MS } from "./verdict-live.ts";
 import { syncRosterMoves, syncUfcSignings, syncUfcStatuses } from "./roster-moves.ts";
 import { syncNews } from "./news.ts";
@@ -2306,6 +2306,12 @@ export async function tick(): Promise<void> {
       touchMeta("point_deductions_checked_at");
       mmaDecisionsReading = guarded("point_deductions", () => syncRecentPointDeductions())
         .finally(() => { mmaDecisionsReading = null; });
+    }
+    // Until MMA Decisions has them, the penalties each recent card's Wikipedia
+    // results notes state: one small read per card.
+    if (metaAgeMs("wiki_deductions_checked_at") > HOUR) {
+      touchMeta("wiki_deductions_checked_at");
+      await guarded("wiki_deductions", () => syncWikiPointDeductions());
     }
 
     // 7. Fight-detail pages: upcoming events within 14 days (tale of the tape)

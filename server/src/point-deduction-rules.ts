@@ -1,21 +1,24 @@
 import { panelCards, symbolicJudgeVote, type JudgeCard } from "./judge-scorecards.ts";
 import type { MmaDecision, MmaMediaScore } from "./scrape/mmadecisions.ts";
+import { noteDeductions, type ResultRow } from "./scrape/wikipedia.ts";
 import { normName } from "./util.ts";
 
 /** Referee penalties are separate from the ten-point round a fan scores. */
 export type PointDeduction = { side: "f1" | "f2"; round: number; points: number; reason: string };
 export type DeductionState = { confirmed: boolean; items: PointDeduction[] };
 export type DeductionFight = { detail_json?: string | null; judge_rounds_json?: string | null; deductions_json?: string | null };
-/** MMA Decisions is the ordinary record; Verdict supplies provisional penalties.
+/** MMA Decisions is the ordinary record; until it has a bout, the event's
+ * Wikipedia results notes and then Verdict supply provisional penalties.
  * Reviewed commission/UFC reports can repair explicit, source-verified gaps. */
-export type DeductionSource = "MMA Decisions" | "Verdict MMA" | "Nevada State Athletic Commission" | "UFC official report";
+export type DeductionSource = "MMA Decisions" | "Wikipedia" | "Verdict MMA" | "Nevada State Athletic Commission" | "UFC official report";
+const SOURCES: DeductionSource[] = ["MMA Decisions", "Wikipedia", "Verdict MMA", "Nevada State Athletic Commission", "UFC official report"];
 export type StoredDeductionRecord = { source: DeductionSource; sourceUrl: string; items: PointDeduction[] };
 type Stored = StoredDeductionRecord;
 
 export function storedDeductions(json: string | null | undefined): Stored | null {
   try {
     const value = JSON.parse(json ?? "null");
-    return ["MMA Decisions", "Verdict MMA", "Nevada State Athletic Commission", "UFC official report"].includes(value?.source) && typeof value.sourceUrl === "string" && Array.isArray(value.items)
+    return SOURCES.includes(value?.source) && typeof value.sourceUrl === "string" && Array.isArray(value.items)
       && value.items.every((item: PointDeduction) => item && ["f1", "f2"].includes(item.side)
         && Number.isInteger(item.round) && item.round >= 1 && item.round <= 5
         && Number.isInteger(item.points) && item.points >= 1 && item.points <= 3 && typeof item.reason === "string") ? value : null;
@@ -177,4 +180,38 @@ export function replaceDroppedMedia(json: string | null, f1Name: string, f2Name:
   if (!items.length) return null;
   const { dropped: _old, ...rest } = record;
   return JSON.stringify({ ...rest, items: [...record.items, ...items], ...(dropped.length ? { dropped } : {}) });
+}
+
+/** The penalties an event article's results row states for this bout, in our
+ *  fighter order: undefined when no single row is this bout, null when its
+ *  note can't be read plainly or names neither fighter. Each row fighter is
+ *  matched by full name, else by a name word only one of ours shares, since
+ *  Wikipedia and UFCStats write some names differently ("Choi Doo-ho" for
+ *  Dooho Choi, "Alex da Silva Coelho" for Alex Da Silva). */
+export function rowDeductions(rows: ResultRow[], f1Name: string, f2Name: string): PointDeduction[] | null | undefined {
+  const words = (name: string) => new Set(normName(name).split(" ")
+    .filter(word => word.length >= 3 && !NAME_SUFFIX.test(word) && !SURNAME_PARTICLES.has(word)));
+  const ours = [words(f1Name), words(f2Name)];
+  const side = (name: string): 1 | 2 | null => {
+    const full = deductionSide(name, f1Name, f2Name);
+    if (full) return full;
+    const own = [...words(name)];
+    const [first, second] = ours.map(names => own.some(word => names.has(word)));
+    return first === second ? null : first ? 1 : 2;
+  };
+  const matched = rows.flatMap(row => {
+    const sides = [side(row.f1), side(row.f2)];
+    return sides[0] && sides[1] && sides[0] !== sides[1] ? [{ row, sides }] : [];
+  });
+  if (matched.length !== 1) return undefined;
+  const { row, sides } = matched[0];
+  const notes = noteDeductions(row.notes);
+  if (!notes) return null;
+  const items: PointDeduction[] = [];
+  for (const note of notes) {
+    const at = deductionSide(note.name, row.f1, row.f2);
+    if (!at || note.round < 1 || note.round > 5 || note.points > 3) return null;
+    items.push({ side: sides[at - 1] === 1 ? "f1" : "f2", round: note.round, points: note.points, reason: note.reason });
+  }
+  return items;
 }

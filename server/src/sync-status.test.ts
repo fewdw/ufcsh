@@ -82,8 +82,15 @@ test("sources show their last successful read: a failed read never refreshes one
   const read = Math.max(newest, Date.parse("2199-01-01T00:00:00Z"));
   db.prepare("INSERT INTO fights (id, event_id, ord, weight_class, f1_id, f2_id, f1_name, f2_name, deductions_checked_at) VALUES (?, 'x', 0, 'Lightweight', 'x1', 'x2', 'X One', 'X Two', ?)").run(fightId, read);
   const mma = "Deductions and media scores (MMA Decisions)";
-  assert.deepEqual([source(mma, read + 3_600_000)?.at, source(mma, read + 3_600_000)?.late], [read, false]);
-  assert.equal(source(mma, read + 19 * 3_600_000)?.late, true, "three missed six-hourly re-reads");
+  // An archive copy may hold production's refusal; restored afterwards.
+  const refused = getMeta("mma_decisions_blocked_at");
+  try {
+    setMeta("mma_decisions_blocked_at", "");
+    assert.deepEqual([source(mma, read + 3_600_000)?.at, source(mma, read + 3_600_000)?.late], [read, false]);
+    assert.equal(source(mma, read + 19 * 3_600_000)?.late, true, "three missed six-hourly re-reads");
+    setMeta("mma_decisions_blocked_at", String(read));
+    assert.equal(source(`${mma} · site refuses every request`, read + 19 * 3_600_000)?.late, true, "a refusing site says so");
+  } finally { setMeta("mma_decisions_blocked_at", refused ?? ""); }
 });
 
 test("a locked error archive logs the original failure without rejecting, then resumes saving", (t) => {
