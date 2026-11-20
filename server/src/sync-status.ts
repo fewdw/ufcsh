@@ -10,8 +10,9 @@ const MINUTE = 60_000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
  *  blocked us since 2026-11-17 and nothing depends on it any more (odds and
  *  potential matchups come from any source, measured by what was stored). */
 const meta = (key: string) => () => Number(getMeta(key)) || null;
-/** `down`: the site refuses every request (MMA Decisions since 2026-10-23),
- *  said in the row so "late" isn't read as our fault. */
+/** `down`: the site refuses every request (MMA Decisions since 2026-10-23).
+ *  Nothing on our side can fix that, so the row says so instead of turning
+ *  late and raising the Admin warning; its fallback rows still can. */
 const SOURCES: { name: string; at: () => number | null; every: number; down?: () => boolean }[] = [
   { name: "Scheduler pass", at: meta("last_tick_at"), every: 5 * MINUTE },
   { name: "Events list (UFCStats)", at: meta("events_list_synced_at"), every: 10 * MINUTE },
@@ -163,9 +164,9 @@ export function syncStatus(now = Date.now()) {
     sources: [
       ...SOURCES.map(source => {
         const at = source.at();
+        if (source.down?.()) return { name: `${source.name} · site refuses every request`, at, everyMs: source.every, late: false, down: true };
         // Three missed refreshes is late; a source never recorded is unknown.
-        return { name: source.down?.() ? `${source.name} · site refuses every request` : source.name,
-          at, everyMs: source.every, late: at != null && now - at > 3 * source.every + MINUTE };
+        return { name: source.name, at, everyMs: source.every, late: at != null && now - at > 3 * source.every + MINUTE };
       }),
       { name: "Odds (next card)", everyMs: ODDS_EVERY, ...odds.odds },
       { name: "Props (next card)", everyMs: ODDS_EVERY, ...odds.props },

@@ -6,7 +6,7 @@ import { ClearButton, DOT, FailingUrlRow, Loading, SectionHead, stamp, ViewHead,
 /** Server `sync-status.ts`. */
 export type SyncStatus = {
   generatedAt: number;
-  sources: { name: string; at: number | null; everyMs: number; late: boolean }[];
+  sources: { name: string; at: number | null; everyMs: number; late: boolean; down?: boolean }[];
   errors: { at: number; job: string; error: string }[];
   errorsLastDay: number;
   failingLastDay: { kind: string; count: number; lastAt: number }[];
@@ -104,12 +104,12 @@ export default function AdminErrors() {
                 <tr key={source.name} className={source.late ? "bg-amber-50" : ""}>
                   <td className="px-4 py-2">
                     <span className="flex items-center gap-1.5 font-medium text-zinc-900">
-                      <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[source.at == null ? "idle" : source.late ? "warn" : "ok"]}`} />
+                      <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[source.at == null || source.down ? "idle" : source.late ? "warn" : "ok"]}`} />
                       {source.name}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-zinc-600" title={source.at ? stamp(source.at) : undefined}>
-                    {source.at == null ? "Never recorded" : `${relativeAge(source.at, now)}${source.late ? " · late" : ""}`}
+                    {source.at == null ? "Never recorded" : `${relativeAge(source.at, now)}${source.late ? " · late" : source.down ? " · site down" : ""}`}
                   </td>
                   <td className="hidden px-3 py-2 text-right tabular-nums text-zinc-500 sm:table-cell">every {every(source.everyMs)}</td>
                 </tr>

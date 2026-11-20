@@ -23,6 +23,7 @@ function checks(data: Metrics, errors: Errors | null, now: number): Check[] {
   const heartbeatAge = data.sync.heartbeatAt ? now - data.sync.heartbeatAt : null;
   const sync = errors?.sync;
   const late = sync?.sources.filter(source => source.late) ?? [];
+  const down = sync?.sources.filter(source => source.down).length ?? 0;
   const failing = errors?.http.serverErrors.filter(row => now - row.lastAt < DAY) ?? [];
   const list: Check[] = [
     { level: data.ready ? "ok" : "bad", label: "Server", detail: data.ready ? "Ready to serve" : "Not ready: query workers are starting or the server is stopping", to: section("traffic", "server") },
@@ -35,7 +36,7 @@ function checks(data: Metrics, errors: Errors | null, now: number): Check[] {
       ? { level: "idle", label: "Sync worker", detail: "No heartbeat (normal when sync runs inside the web server)", to: section("errors") }
       : { level: heartbeatAge > 90_000 ? "bad" : "ok", label: "Sync worker", detail: heartbeatAge > 90_000 ? `Silent for ${Math.round(heartbeatAge / 60_000)} min` : "Heartbeat current", to: section("errors") },
     { level: late.length ? "warn" : sync ? "ok" : "idle", label: "Data sources", to: section("errors"),
-      detail: !sync ? "Checking…" : late.length ? `Late: ${late.map(source => source.name).join(", ")}` : "Every source refreshed on schedule" },
+      detail: !sync ? "Checking…" : late.length ? `Late: ${late.map(source => source.name).join(", ")}` : `Every source refreshed on schedule${down ? ` but ${down} whose site is down` : ""}` },
     { level: (sync?.errorsLastDay ?? 0) > 20 ? "warn" : "ok", label: "Sync errors", to: section("errors"),
       detail: !sync ? "Checking…" : sync.errorsLastDay ? `${sync.errorsLastDay} in the last 24 hours, most from ${sync.failingLastDay[0]?.kind}` : "None in the last 24 hours" },
     { level: data.community.openReports ? "warn" : "ok", label: "Moderation", to: section("people", "comments"),
