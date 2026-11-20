@@ -53,6 +53,8 @@ export async function syncNews(read: (url: string) => Promise<FeedItem[]> = fetc
   const results = await Promise.allSettled(NEWS_FEEDS.map(async (feed) => (await read(feed.url)).filter((item) => !feed.site || item.site === feed.site)));
   const count = () => (db.prepare("SELECT COUNT(*) AS n FROM news").get() as { n: number }).n;
   const before = count();
+  // Admin's "News feeds" row: the last pass any outlet answered.
+  if (results.some((result) => result.status === "fulfilled")) touchMeta("news_read_at");
   results.forEach((result, i) => {
     const { source } = NEWS_FEEDS[i];
     const last = feedStatus(source);

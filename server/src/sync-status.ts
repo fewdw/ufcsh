@@ -3,20 +3,31 @@ import { HttpRateLimitError } from "./http.ts";
 
 const MINUTE = 60_000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 
-/** Each scheduled source, the stamp it leaves in `meta` when it succeeds, and
- *  how often the scheduler (`sync.ts` `tick`) means to refresh it. */
-const SOURCES: { key: string; name: string; every: number }[] = [
-  { key: "last_tick_at", name: "Scheduler pass", every: 5 * MINUTE },
-  { key: "events_list_synced_at", name: "Events list (UFCStats)", every: 10 * MINUTE },
-  { key: "event_schedules_synced_at", name: "Card schedules (ufc.com)", every: 10 * MINUTE },
-  { key: "potential_matchups_read_at", name: "Potential matchups", every: 5 * MINUTE },
-  { key: "news_checked_at", name: "News feeds", every: 10 * MINUTE },
-  { key: "roster_moves_synced_at", name: "Roster moves", every: 10 * MINUTE },
-  { key: "rankings_synced_at", name: "Rankings", every: 6 * HOUR },
-  { key: "stats_repair_at", name: "Stats repair pass", every: 6 * HOUR },
-  { key: "roster_synced_at", name: "Roster", every: DAY },
-  { key: "fightodds_past_at", name: "Past odds", every: DAY },
-  { key: "athlete_dir_synced_at", name: "Athlete photo directory", every: 7 * DAY },
+/** Each source the site reads, when it last answered, and how often the
+ *  scheduler (`sync.ts` `tick`) means to read it. A stamp is written only
+ *  after a read succeeds, never when one is merely tried, so a source that
+ *  keeps failing turns late here. FightOdds.io is left out: its firewall has
+ *  blocked us since 2026-11-17 and nothing depends on it any more (odds and
+ *  potential matchups come from any source, measured by what was stored). */
+const meta = (key: string) => () => Number(getMeta(key)) || null;
+const SOURCES: { name: string; at: () => number | null; every: number }[] = [
+  { name: "Scheduler pass", at: meta("last_tick_at"), every: 5 * MINUTE },
+  { name: "Events list (UFCStats)", at: meta("events_list_synced_at"), every: 10 * MINUTE },
+  { name: "Card schedules (ufc.com)", at: meta("event_schedules_synced_at"), every: 10 * MINUTE },
+  { name: "New signings (ufc.com)", at: meta("ufc_signings_synced_at"), every: 5 * MINUTE },
+  { name: "Prediction market (Kalshi)", at: meta("kalshi_odds_read_at"), every: 5 * MINUTE },
+  { name: "Potential matchups", at: meta("potential_matchups_read_at"), every: 5 * MINUTE },
+  { name: "News feeds", at: meta("news_read_at"), every: 10 * MINUTE },
+  { name: "Roster moves (Wikipedia)", at: meta("roster_moves_synced_at"), every: 10 * MINUTE },
+  { name: "Rankings", at: meta("rankings_synced_at"), every: 6 * HOUR },
+  { name: "Stats repair pass", at: meta("stats_repair_ok_at"), every: 6 * HOUR },
+  // Recent decisions are re-read every six hours; a page counts once its
+  // date's listing read (`onChecked` in `mmadecisions-crawl.ts`).
+  { name: "Deductions and media scores (MMA Decisions)", every: 6 * HOUR,
+    at: () => (db.prepare("SELECT max(deductions_checked_at) AS at FROM fights").get() as { at: number | null }).at ?? null },
+  { name: "Roster", at: meta("roster_synced_at"), every: DAY },
+  { name: "Anti-doping tests", at: meta("antidoping_synced_at"), every: DAY },
+  { name: "Athlete photo directory", at: meta("athlete_dir_synced_at"), every: 7 * DAY },
 ];
 
 /** Odds come from whichever source answers (FightOdds.io every few minutes,
@@ -147,7 +158,7 @@ export function syncStatus(now = Date.now()) {
     generatedAt: now,
     sources: [
       ...SOURCES.map(source => {
-        const at = Number(getMeta(source.key)) || null;
+        const at = source.at();
         // Three missed refreshes is late; a source never recorded is unknown.
         return { name: source.name, at, everyMs: source.every, late: at != null && now - at > 3 * source.every + MINUTE };
       }),
