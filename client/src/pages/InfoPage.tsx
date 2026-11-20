@@ -101,9 +101,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-11-19">November 19, 2026</time></p>
+            <p><time dateTime="2026-11-20">November 20, 2026</time></p>
             <ul>
-              <li>Event detail pages show the year in the event date on all screen sizes.</li>
+              <li>Odds and props come from BestFightOdds again, read every few minutes on fight day.</li>
+              <li>Cancelled bouts now include pairings UFCStats dropped from a card.</li>
+              <li>Biggest line moves are on the full card odds page, and Kalshi prices carry its wordmark.</li>
             </ul>
           </Section>
         </div>
