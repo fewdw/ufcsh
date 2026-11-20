@@ -1013,3 +1013,95 @@ export const ROSTER_HEADINGS = {
 export function rosterChanges(wikitext: string): { signed: RosterMove[]; cut: RosterMove[] } {
   return { signed: rosterMoves(wikitext, ROSTER_HEADINGS.signed), cut: rosterMoves(wikitext, ROSTER_HEADINGS.cut) };
 }
+
+export type ResultRow = { f1: string; f2: string; notes: string };
+
+/** Each `{{MMAevent bout}}` row of a results table: its two fighters and its
+ *  notes cell, as plain text. Positional: division, winner, "def."/"vs.",
+ *  loser, method, round, time, notes. */
+export function resultRows(wikitext: string): ResultRow[] {
+  const rows: ResultRow[] = [];
+  // A row an editor hid in a comment is not a result.
+  wikitext = wikitext.replace(/<!--[\s\S]*?(?:-->|$)/g, "");
+  for (const start of wikitext.matchAll(/\{\{\s*MMAevent bout\s*\|/gi)) {
+    const params: string[] = [];
+    let depth = 0, links = 0, cell = "", i = start.index;
+    for (; i < wikitext.length; i++) {
+      const two = wikitext.slice(i, i + 2);
+      if (two === "{{" || two === "}}" || two === "[[" || two === "]]") {
+        if (two === "{{") depth++; else if (two === "}}") depth--; else if (two === "[[") links++; else links = Math.max(0, links - 1);
+        if (depth === 0) break;
+        // The row's own opening braces are not part of any cell.
+        if (!(two === "{{" && depth === 1)) cell += two;
+        i++;
+        continue;
+      }
+      if (depth === 1 && links === 0 && wikitext[i] === "|") { params.push(cell); cell = ""; continue; }
+      cell += wikitext[i];
+    }
+    params.push(cell);
+    // params[0] is the template name.
+    const [, , f1, outcome, f2, , , , notes = ""] = params.map((param) => plainText(param).replace(/\s+/g, " ").trim());
+    // "Leon Edwards (c)": the champion's mark is not part of the name.
+    const name = (cell: string) => cell.replace(/\s*\((?:c|ic)\)$/i, "");
+    if (depth === 0 && f1 && f2 && /^(?:def|vs)\.?$/i.test(outcome ?? "")) rows.push({ f1: name(f1), f2: name(f2), notes });
+  }
+  return rows;
+}
+
+export type NoteDeduction = { name: string; round: number; points: number; reason: string };
+const POINTS: Record<string, number> = { a: 1, one: 1, "1": 1, two: 2, "2": 2, three: 3, "3": 3 };
+const ROUND_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
+/** Words that take a penalty back, soften it or call it into question,
+ *  checked in the reason and in every other sentence of the note alike. */
+const REVERSAL = "penalt\\w*|rescind\\w*|overturn\\w*|revers\\w*|restor\\w*|withdr\\w*|retract\\w*|annul\\w*|void\\w*|appeal\\w*|warn\\w*|waiv\\w*|reduc\\w*|downgrad\\w*|cancel\\w*|review\\w*";
+const OTHER_SENTENCE = new RegExp(`\\b(?:points?|foul\\w*|${REVERSAL})\\b`, "i");
+/** The only other sentences seen beside a deduction in 452 event articles
+ *  since 2016: what the bout was for. Anything else ("She lost another in the
+ *  third.", "It was reduced to a warning.") may change the list. */
+const BESIDE_DEDUCTION = /^(?:For the [^.]*?(?:Championship|title)|[^.]*?title eliminator|[^.]*?Tournament (?:Final|Semifinal)|Catchweight bout)\.?$/i;
+/** A reason is a plain phrase ("repeated groin strikes", "an eye poke and a
+ *  groin strike", "striking Böhm after the bell"). A clause after it can take
+ *  the penalty back or add another ("..., which the referee reduced to a
+ *  warning", "... and one in the third for grabbing the fence"), so any
+ *  clause structure, count, ordinal or second "for"/"due to" refuses it. */
+const IN_REASON = new RegExp(`[,;:()]|\\band (?:was|were|is|it|he|she|they|the|then)\\b|\\b(?:rounds?|points?|deduct\\w*|another|again|twice|once|one|two|three|[1-5]|first|second|third|fourth|fifth|for|due to|but|later|which|who|whom|whose|that|while|whereas|although|though|however|instead|rather|until|${REVERSAL})\\b`, "i");
+/** Every reason in 452 event articles since 2016 is letters and spaces (and
+ *  in-word hyphens or apostrophes), at most eight words: "Repeatedly grabbing
+ *  the inside of Grant's glove". A dash, digit or longer clause may carry a
+ *  second penalty or take this one back. */
+const PLAIN_REASON = /^\p{L}+(?:[-'’]\p{L}+)*(?: \p{L}+(?:[-'’]\p{L}+)*){0,8}$/u;
+const DEDUCTION_NOTE = /^(.+?) was (twice )?deducted (a|one|two|three|[123]) points? (?:in|after|at the end of) (?:round (\d|one|two|three|four|five)|the (first|second|third|fourth|fifth) round)(?: (?:due to|for) (.+?))?\.?$/i;
+
+/** The referee's penalties a results row's note states ("Medić was deducted
+ *  one point in round 2 due to repeated groin strikes."), or null when a
+ *  sentence mentions a deduction without saying plainly who, when and how
+ *  many. A note that mentions none gives an empty list, which confirms
+ *  nothing: editors don't always add one. */
+export function noteDeductions(note: string): NoteDeduction[] | null {
+  const items: NoteDeduction[] = [];
+  const others: string[] = [];
+  for (const sentence of note.split(/(?<=\.)\s+(?=[A-Z])/)) {
+    if (!/deduct/i.test(sentence)) {
+      // "The penalty was rescinded." / "He lost another point in round 3.":
+      // anything about points or penalties leaves any list unaccounted for.
+      if (OTHER_SENTENCE.test(sentence)) return null;
+      others.push(sentence.trim());
+      continue;
+    }
+    const match = DEDUCTION_NOTE.exec(sentence.trim());
+    if (!match) return null;
+    const [, name, twice, points, round, ordinal, reason = ""] = match;
+    // "... for an eye poke and another in round 3 for a fence grab": a second
+    // penalty hiding in the reason would be dropped, so the note is refused.
+    // So is one taken back in the same breath ("..., but the penalty was overturned").
+    if (IN_REASON.test(reason) || (reason.trim() && !PLAIN_REASON.test(reason.trim()))) return null;
+    const number = Number(round) || ROUND_WORDS[(round ?? ordinal).toLowerCase()];
+    const text = reason.trim();
+    items.push({ name: name.trim(), round: number, points: POINTS[points.toLowerCase()] * (twice ? 2 : 1),
+      reason: text ? text[0].toUpperCase() + text.slice(1) : "" });
+  }
+  // Beside a deduction, only a sentence saying what the bout was for.
+  if (items.length && others.some(sentence => !BESIDE_DEDUCTION.test(sentence))) return null;
+  return items;
+}

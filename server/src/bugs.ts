@@ -1196,7 +1196,7 @@ function pointDeductionsUnshown(): BugCheck {
     id: "point-deductions-unshown",
     group: "Scorecards",
     label: "Point deductions that can't be shown",
-    description: "Decisions with round cards and an unreadable deduction record, a round no judge scored 10 without a stated deduction to explain it, or a stated deduction that doesn't fit every judge's round card. These records cannot automatically override fan cards. Re-read MMA Decisions to repair them, or Verdict MMA (whose round data stands in until MMA Decisions is read) while that site is unreachable.",
+    description: "Decisions with round cards and an unreadable deduction record, a round no judge scored 10 without a stated deduction to explain it, or a stated deduction that doesn't fit every judge's round card. These records cannot automatically override fan cards. Re-read MMA Decisions to repair them, or Verdict MMA while that site is unreachable (its round data stands in until MMA Decisions is read, after the event article's Wikipedia results notes, which are re-read hourly for 45 days).",
     grade: "minor",
   }, items);
 }
@@ -1211,7 +1211,7 @@ function mmaDecisionsUnread(): BugCheck {
   `).all() as FightRow[];
   const blockedAt = Number(getMeta(MMA_DECISIONS_BLOCKED)) || null;
   const blocked: BugItem[] = blockedAt ? [{ key: "blocked", title: "MMA Decisions refuses this server", subtitle: "HTTP 403 for every page; retried daily",
-    date: new Date(blockedAt).toISOString().slice(0, 10), facts: [["Last refused", ago(blockedAt)], ["Effect", "No new point deductions, media scores or judges' round scores"]],
+    date: new Date(blockedAt).toISOString().slice(0, 10), facts: [["Last refused", ago(blockedAt)], ["Effect", "No new media scores or judges' round scores; point deductions come from Wikipedia results notes and Verdict MMA"]],
     links: [{ label: "MMA Decisions", href: "https://mmadecisions.com/" }], actions: [] }] : [];
   return check({
     id: "mma-decisions-unread",

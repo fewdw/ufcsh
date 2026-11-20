@@ -10,7 +10,9 @@ const MINUTE = 60_000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
  *  blocked us since 2026-11-17 and nothing depends on it any more (odds and
  *  potential matchups come from any source, measured by what was stored). */
 const meta = (key: string) => () => Number(getMeta(key)) || null;
-const SOURCES: { name: string; at: () => number | null; every: number }[] = [
+/** `down`: the site refuses every request (MMA Decisions since 2026-10-23),
+ *  said in the row so "late" isn't read as our fault. */
+const SOURCES: { name: string; at: () => number | null; every: number; down?: () => boolean }[] = [
   { name: "Scheduler pass", at: meta("last_tick_at"), every: 5 * MINUTE },
   { name: "Events list (UFCStats)", at: meta("events_list_synced_at"), every: 10 * MINUTE },
   { name: "Card schedules (ufc.com)", at: meta("event_schedules_synced_at"), every: 10 * MINUTE },
@@ -23,8 +25,10 @@ const SOURCES: { name: string; at: () => number | null; every: number }[] = [
   { name: "Stats repair pass", at: meta("stats_repair_ok_at"), every: 6 * HOUR },
   // Recent decisions are re-read every six hours; a page counts once its
   // date's listing read (`onChecked` in `mmadecisions-crawl.ts`).
-  { name: "Deductions and media scores (MMA Decisions)", every: 6 * HOUR,
+  { name: "Deductions and media scores (MMA Decisions)", every: 6 * HOUR, down: () => !!getMeta("mma_decisions_blocked_at"),
     at: () => (db.prepare("SELECT max(deductions_checked_at) AS at FROM fights").get() as { at: number | null }).at ?? null },
+  // Stands in for MMA Decisions' deductions until it has a decision (`point-deductions.ts`).
+  { name: "Deductions fallback (Wikipedia)", at: meta("wiki_deductions_read_at"), every: HOUR },
   { name: "Roster", at: meta("roster_synced_at"), every: DAY },
   { name: "Anti-doping tests", at: meta("antidoping_synced_at"), every: DAY },
   { name: "Athlete photo directory", at: meta("athlete_dir_synced_at"), every: 7 * DAY },
@@ -160,7 +164,8 @@ export function syncStatus(now = Date.now()) {
       ...SOURCES.map(source => {
         const at = source.at();
         // Three missed refreshes is late; a source never recorded is unknown.
-        return { name: source.name, at, everyMs: source.every, late: at != null && now - at > 3 * source.every + MINUTE };
+        return { name: source.down?.() ? `${source.name} · site refuses every request` : source.name,
+          at, everyMs: source.every, late: at != null && now - at > 3 * source.every + MINUTE };
       }),
       { name: "Odds (next card)", everyMs: ODDS_EVERY, ...odds.odds },
       { name: "Props (next card)", everyMs: ODDS_EVERY, ...odds.props },

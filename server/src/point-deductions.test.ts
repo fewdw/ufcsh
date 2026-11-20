@@ -65,7 +65,8 @@ test("media cards follow our fighter order and must agree with their own winner"
 });
 
 import { db, getMeta, setMeta } from "./db.ts";
-import { MMA_DECISIONS_BLOCKED, readPointDeductions, syncRecentPointDeductions } from "./point-deductions.ts";
+import { storeVerdictDeductions } from "./verdict-import.ts";
+import { MMA_DECISIONS_BLOCKED, readPointDeductions, syncRecentPointDeductions, syncWikiPointDeductions, WIKI_DEDUCTIONS_READ } from "./point-deductions.ts";
 
 const importFight = { id: "mma-import-test", date: "2024-06-15", f1_name: "Alice Archer", f2_name: "Betty Baker", f1_alias: null, f2_alias: null };
 const panel = ["Alice Judge", "Betty Judge", "Claire Judge"];
@@ -143,4 +144,118 @@ test("stored cards dropped for a shared surname are placed again in our order", 
   // An address that doesn't name both fighters, or nothing that now fits, changes nothing.
   assert.equal(replaceDroppedMedia(record, "Karine Silva", "Someone Else"), null);
   assert.equal(replaceDroppedMedia(JSON.stringify({ ...JSON.parse(record), dropped: [card(29, 28, "Volkanovski")] }), "Karine Silva", "Ariane da Silva"), null);
+});
+
+test("a recent card's Wikipedia notes replace Verdict's penalties, never MMA Decisions', and only when they fit the cards", async t => {
+  db.exec("BEGIN"); t.after(() => db.exec("ROLLBACK"));
+  const now = Date.parse("2030-01-20T12:00:00Z");
+  db.prepare("INSERT INTO events (id, name, date, complete, wiki_title) VALUES ('wiki-ded', 'UFC 999: A vs. B', '2030-01-18', 1, 'UFC 999')").run();
+  // 30-26 on every card: one judge's round 3 is 10-8, explained by a point taken from Baker.
+  const cards = JSON.stringify({ judges: panel.map(judge => ({ judge, f1Score: 30, f2Score: 26,
+    rounds: [{ round: 1, f1Score: 10, f2Score: 9 }, { round: 2, f1Score: 10, f2Score: 9 }, { round: 3, f1Score: 10, f2Score: 8 }] })) });
+  const fight = db.prepare(`INSERT INTO fights (id, event_id, ord, f1_name, f2_name, method, round, judge_rounds_json, deductions_json)
+    VALUES (?, 'wiki-ded', ?, ?, ?, 'U-DEC', '3', ?, ?)`);
+  fight.run("wiki-a", 1, "Alice Archer", "Betty Baker", cards, null);
+  fight.run("wiki-b", 2, "Cara Cole", "Dana Diaz", cards, JSON.stringify({ source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/2", items: [] }));
+  const kept = JSON.stringify({ source: "MMA Decisions", sourceUrl: "https://mmadecisions.com/decision/1", items: [{ side: "f2", round: 3, points: 1, reason: "Groin strike" }] });
+  fight.run("wiki-c", 3, "Erin Eck", "Fran Fox", cards, kept);
+  fight.run("wiki-d", 4, "Gail Gray", "Hope Hill", cards, null);
+  // Verdict has Kim's point in round 1; Wikipedia puts it in round 3. The cards fit both.
+  const verdict = JSON.stringify({ source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/5", items: [{ side: "f2", round: 1, points: 1, reason: "" }] });
+  fight.run("wiki-e", 5, "Iris Ivy", "Jade Kim", cards, verdict);
+  const row = (a: string, b: string, notes: string) => `{{MMAevent bout|Flyweight|[[${a}]]|def.|[[${b}]]|Decision (unanimous) (30–26, 30–26, 30–26)|3|5:00|${notes}\n}}`;
+  const article = `{{Infobox MMA event\n| date = {{start date|2030|01|18}}\n}}\n==Results==\n`
+    + row("Alice Archer", "Betty Baker", "Baker was deducted one point in round 3 due to repeated grabbing the fence.")
+    + row("Cara Cole", "Dana Diaz", "Diaz was deducted one point in round 3 due to an eye poke.")
+    + row("Erin Eck", "Fran Fox", "Eck was deducted one point in round 3 due to a headbutt.")
+    // Gray won round 3 10-8: a point taken from her would mean she scored 11.
+    + row("Gail Gray", "Hope Hill", "Gray was deducted one point in round 3 due to an eye poke.")
+    + row("Iris Ivy", "Jade Kim", "Kim was deducted one point in round 3 due to a groin strike.");
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ parse: { wikitext: { "*": article } } })));
+  assert.deepEqual(await syncWikiPointDeductions(now), { events: 1, stored: 2 });
+  const stored = (id: string) => (db.prepare("SELECT deductions_json FROM fights WHERE id = ?").get(id) as { deductions_json: string | null }).deductions_json;
+  assert.deepEqual(JSON.parse(stored("wiki-a")!), { source: "Wikipedia", sourceUrl: "https://en.wikipedia.org/wiki/UFC_999",
+    items: [{ side: "f2", round: 3, points: 1, reason: "Repeated grabbing the fence" }] });
+  assert.equal(JSON.parse(stored("wiki-b")!).source, "Wikipedia");
+  assert.equal(stored("wiki-c"), kept);
+  assert.equal(stored("wiki-d"), null);
+  assert.equal(stored("wiki-e"), verdict, "two sources that disagree leave Verdict's list");
+  assert.equal(Number(getMeta(WIKI_DEDUCTIONS_READ)), now);
+  assert.deepEqual(JSON.parse(stored("wiki-b")!).previous, { source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/2", items: [] });
+
+  // Editors rewrite notes: one Wikipedia no longer states plainly, one withdrawn.
+  // Each list goes, and Verdict's stands again where it had one.
+  const edited = article.replace("Baker was deducted one point in round 3", "Baker was deducted one point in round 3 and another in round 2")
+    .replace("Diaz was deducted one point in round 3 due to an eye poke.", "");
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ parse: { wikitext: { "*": edited } } })));
+  assert.deepEqual(await syncWikiPointDeductions(now + 3600_000), { events: 1, stored: 0 });
+  assert.equal(stored("wiki-a"), null);
+  assert.deepEqual(JSON.parse(stored("wiki-b")!), { source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/2", items: [] });
+  assert.equal(stored("wiki-c"), kept);
+
+  // Verdict changes its mind under a Wikipedia list: kept current underneath,
+  // and the next pass, now in conflict, lets Verdict's stand.
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ parse: { wikitext: { "*": article } } })));
+  assert.equal((await syncWikiPointDeductions(now + 3600_000 + 60_000)).stored, 2);
+  const moved = JSON.stringify({ source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/2", items: [{ side: "f1", round: 1, points: 1, reason: "" }] });
+  storeVerdictDeductions("wiki-b", moved);
+  assert.deepEqual(JSON.parse(stored("wiki-b")!).previous, JSON.parse(moved));
+  await syncWikiPointDeductions(now + 3600_000 + 120_000);
+  assert.equal(stored("wiki-b"), moved);
+  // An opponent corrected in the table: the old bout's row is gone, so its list goes too.
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ parse: { wikitext: { "*": article.replace("[[Betty Baker]]", "[[Bree Bond]]") } } })));
+  await syncWikiPointDeductions(now + 3600_000 + 180_000);
+  assert.equal(stored("wiki-a"), null);
+  setMeta(WIKI_DEDUCTIONS_READ, String(now + 3600_000));
+
+  // A missing article is no read: nothing changes and the pass fails.
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ error: { code: "missingtitle" } })));
+  await assert.rejects(syncWikiPointDeductions(now + 7200_000), /no event article could be read/);
+  assert.equal(Number(getMeta(WIKI_DEDUCTIONS_READ)), now + 3600_000);
+
+  // Older than 45 days: not read again.
+  assert.deepEqual(await syncWikiPointDeductions(now + 46 * 86400_000), { events: 0, stored: 0 });
+});
+
+test("a recent card whose article wasn't found the first time is looked for again", async t => {
+  db.exec("BEGIN"); t.after(() => db.exec("ROLLBACK"));
+  const now = Date.parse("2030-02-20T12:00:00Z");
+  db.prepare("INSERT INTO events (id, name, date, complete) VALUES ('wiki-new', 'UFC Fight Night: Lane vs. Moss', '2030-02-18', 1)").run();
+  const cards = JSON.stringify({ judges: panel.map(judge => ({ judge, f1Score: 29, f2Score: 27,
+    rounds: [{ round: 1, f1Score: 10, f2Score: 9 }, { round: 2, f1Score: 10, f2Score: 9 }, { round: 3, f1Score: 9, f2Score: 9 }] })) });
+  db.prepare(`INSERT INTO fights (id, event_id, ord, f1_name, f2_name, method, round, judge_rounds_json)
+    VALUES ('wiki-new-1', 'wiki-new', 1, 'Lara Lane', 'Mia Moss', 'U-DEC', '3', ?)`).run(cards);
+  const article = `{{Infobox MMA event\n| date = {{start date|2030|02|18}}\n}}\n==Results==\n{{MMAevent bout|Flyweight|[[Lara Lane]]|def.|[[Mia Moss]]|Decision (unanimous) (29–27, 29–27, 29–27)|3|5:00|Lane was deducted one point in round 3 due to a groin strike.\n}}`;
+  const fetched = t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ parse: { title: "UFC Fight Night: Lane vs. Moss", wikitext: { "*": article } } })));
+  assert.deepEqual(await syncWikiPointDeductions(now), { events: 1, stored: 1 });
+  assert.equal((db.prepare("SELECT wiki_title FROM events WHERE id = 'wiki-new'").get() as { wiki_title: string }).wiki_title, "UFC Fight Night: Lane vs. Moss");
+  assert.equal(JSON.parse(String((db.prepare("SELECT deductions_json FROM fights WHERE id = 'wiki-new-1'").get() as { deductions_json: string }).deductions_json)).items[0].side, "f1");
+  assert.ok(fetched.mock.callCount() >= 1);
+});
+
+test("Verdict's two-point round matches Wikipedia's two one-point entries", async t => {
+  db.exec("BEGIN"); t.after(() => db.exec("ROLLBACK"));
+  const now = Date.parse("2030-03-20T12:00:00Z");
+  db.prepare("INSERT INTO events (id, name, date, complete, wiki_title) VALUES ('wiki-sum', 'UFC 998', '2030-03-18', 1, 'UFC 998')").run();
+  // Round 1: 10-7 after two points from Pace; round 3: 9-9 after one more.
+  const cards = JSON.stringify({ judges: panel.map(judge => ({ judge, f1Score: 29, f2Score: 25,
+    rounds: [{ round: 1, f1Score: 10, f2Score: 7 }, { round: 2, f1Score: 10, f2Score: 9 }, { round: 3, f1Score: 9, f2Score: 9 }] })) });
+  const verdict = JSON.stringify({ source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/9/fight/1", items: [{ side: "f2", round: 1, points: 2, reason: "" }] });
+  db.prepare(`INSERT INTO fights (id, event_id, ord, f1_name, f2_name, method, round, judge_rounds_json, deductions_json)
+    VALUES ('wiki-sum-1', 'wiki-sum', 1, 'Olga Orr', 'Pia Pace', 'U-DEC', '3', ?, ?)`).run(cards, verdict);
+  const article = `{{Infobox MMA event\n| date = {{start date|2030|03|18}}\n}}\n{{MMAevent bout|Flyweight|[[Olga Orr]]|def.|[[Pia Pace]]|Decision|3|5:00|Pace was twice deducted one point in round 1 due to groin strikes. Pace was deducted one point in round 3 due to an eye poke.\n}}`;
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ parse: { wikitext: { "*": article } } })));
+  assert.equal((await syncWikiPointDeductions(now)).stored, 1);
+});
+
+test("a pass that only waited on searches not yet due keeps the last successful read", async t => {
+  db.exec("BEGIN"); t.after(() => db.exec("ROLLBACK"));
+  const now = Date.parse("2030-04-20T12:00:00Z");
+  db.prepare("INSERT INTO events (id, name, date, complete) VALUES ('wiki-wait', 'UFC Fight Night: Quinn vs. Rose', '2030-04-18', 1)").run();
+  db.prepare("INSERT INTO fights (id, event_id, ord, f1_name, f2_name, method, round) VALUES ('wiki-wait-1', 'wiki-wait', 1, 'Quin Quinn', 'Rae Rose', 'U-DEC', '3')").run();
+  setMeta(WIKI_DEDUCTIONS_READ, "5");
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ error: { code: "missingtitle" } })));
+  await assert.rejects(syncWikiPointDeductions(now), /no event article could be read/);
+  assert.deepEqual(await syncWikiPointDeductions(now + 3600_000), { events: 0, stored: 0 });
+  assert.equal(getMeta(WIKI_DEDUCTIONS_READ), "5");
 });

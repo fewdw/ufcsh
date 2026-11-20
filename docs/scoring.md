@@ -95,6 +95,43 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   agreed on all 17 penalties and 701 zeroes, listed none MMA Decisions
   didn't, and missed one (Prado's round 3 against Radtke, April 2026).
 
+  Ahead of Verdict, each recent card's Wikipedia article stands in: the notes
+  cell of its `{{MMAevent bout}}` rows ("Sanches was deducted one point in
+  round 3 due to repeated grabbing the fence."), re-read hourly for 45 days.
+  Rows hidden in comments are ignored. Only plainly worded notes are used
+  (who, which round, how many points): a note like "deducted two points, one
+  in round two and one in round three", a reason that isn't a plain phrase
+  of at most nine words in letters (every reason since 2016 is; a dash,
+  digit, clause, count, ordinal, warning, waiver or reversal is refused),
+  or any other sentence beside it except what the bout was for ("For the UFC
+  Welterweight Championship.") leaves the bout to the other sources. Each corner must match our fighter by
+  full name, by the same letters in either word order ("Choi Doo-ho" for
+  Dooho Choi), or by its own surname being ours; a given name is never
+  enough (Scott Askham is not Brad Scott). A row and a bout pair only when
+  each is the other's sole candidate.
+
+  The cards can't say who lost a 9-9 round's point, so where Verdict lists
+  penalties Wikipedia must have at least Verdict's points in each round
+  against each fighter (it may add one Verdict missed); otherwise Verdict's
+  list stands and the log says so. A list must fit every judge's card and
+  replaces a Verdict list, which is kept underneath (`previous`, updated by
+  each Verdict read) and restored when the table no longer supports the
+  Wikipedia list: the note is withdrawn or rewritten, the row is gone or
+  changed, or Verdict now disagrees. Every write is conditional on the exact
+  record read. Scoring checks the cards at read time too: a Wikipedia list a
+  later judge's card rules out gives way to the Verdict list beneath it. A note naming no penalty confirms nothing, and MMA Decisions'
+  record always replaces this one. A recent card whose article wasn't found
+  the first time is searched for again every six hours.
+
+  Source check (20 November 2026): over the 2,631 decisions since 2016 whose
+  row matched and had an MMA Decisions record, the notes agreed on 59
+  penalties and 2,524 zeroes, named the other fighter once (Santos–Muñoz,
+  June 2023, where MMA Decisions' record stays) and had no note for one
+  (Danaa against Alatengheili, 2019; a silent note stores nothing). Since MMA
+  Decisions went down they added the reasons for Verdict's three penalties
+  and two Verdict missed (Brown against Jacobe Smith, 31 October; Sanches
+  against Elder, UFC 334).
+
   Source check (19 October 2026): Verdict's [guide](https://verdictmma.com/how_to_score)
   says it applies deductions, but its [Garbrandt–Long published grid](https://verdictmma.com/event/1324/fight/1)
   gives Long 9.47 in R3 and 28.86 overall while its round metadata lists two
