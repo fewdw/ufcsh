@@ -106,3 +106,14 @@ test("source URLs preserve percent-encoded names and punctuation while rejecting
     assert.throws(() => replayMmaDecisions(target, patch));
   }
 });
+
+test("a stand-in deduction record is never exported and gives way to MMA Decisions' on replay", t => {
+  const wiki = JSON.stringify({ source: "Wikipedia", sourceUrl: "https://en.wikipedia.org/wiki/UFC_999", items: [] });
+  const source = fixture(t, true), target = fixture(t);
+  source.prepare("UPDATE fights SET deductions_json = ?").run(wiki);
+  assert.equal(exportMmaDecisions(source, 1000, 3000).entries[0].deductions, null);
+  target.prepare("UPDATE fights SET deductions_json = ?").run(wiki);
+  const result = replayMmaDecisions(target, exportMmaDecisions(fixture(t, true), 1000, 3000), true);
+  assert.equal(result.conflicts, 0);
+  assert.equal(target.prepare("SELECT deductions_json FROM fights").get()?.deductions_json, deductions);
+});

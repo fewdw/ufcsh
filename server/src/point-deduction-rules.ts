@@ -1,21 +1,24 @@
 import { panelCards, symbolicJudgeVote, type JudgeCard } from "./judge-scorecards.ts";
 import type { MmaDecision, MmaMediaScore } from "./scrape/mmadecisions.ts";
+import { noteDeductions, type ResultRow } from "./scrape/wikipedia.ts";
 import { normName } from "./util.ts";
 
 /** Referee penalties are separate from the ten-point round a fan scores. */
 export type PointDeduction = { side: "f1" | "f2"; round: number; points: number; reason: string };
 export type DeductionState = { confirmed: boolean; items: PointDeduction[] };
 export type DeductionFight = { detail_json?: string | null; judge_rounds_json?: string | null; deductions_json?: string | null };
-/** MMA Decisions is the ordinary record; Verdict supplies provisional penalties.
+/** MMA Decisions is the ordinary record; until it has a bout, the event's
+ * Wikipedia results notes and then Verdict supply provisional penalties.
  * Reviewed commission/UFC reports can repair explicit, source-verified gaps. */
-export type DeductionSource = "MMA Decisions" | "Verdict MMA" | "Nevada State Athletic Commission" | "UFC official report";
+export type DeductionSource = "MMA Decisions" | "Wikipedia" | "Verdict MMA" | "Nevada State Athletic Commission" | "UFC official report";
+const SOURCES: DeductionSource[] = ["MMA Decisions", "Wikipedia", "Verdict MMA", "Nevada State Athletic Commission", "UFC official report"];
 export type StoredDeductionRecord = { source: DeductionSource; sourceUrl: string; items: PointDeduction[] };
 type Stored = StoredDeductionRecord;
 
 export function storedDeductions(json: string | null | undefined): Stored | null {
   try {
     const value = JSON.parse(json ?? "null");
-    return ["MMA Decisions", "Verdict MMA", "Nevada State Athletic Commission", "UFC official report"].includes(value?.source) && typeof value.sourceUrl === "string" && Array.isArray(value.items)
+    return SOURCES.includes(value?.source) && typeof value.sourceUrl === "string" && Array.isArray(value.items)
       && value.items.every((item: PointDeduction) => item && ["f1", "f2"].includes(item.side)
         && Number.isInteger(item.round) && item.round >= 1 && item.round <= 5
         && Number.isInteger(item.points) && item.points >= 1 && item.points <= 3 && typeof item.reason === "string") ? value : null;
@@ -47,9 +50,29 @@ export function deductionProblem(cards: JudgeCard[], items: PointDeduction[]): s
   return null;
 }
 
+/** Points by fighter and round: Verdict sums a round's penalties into one entry. */
+export const pointsBy = (items: PointDeduction[]): Record<string, number> =>
+  items.reduce((sum, item) => ({ ...sum, [`${item.side} ${item.round}`]: (sum[`${item.side} ${item.round}`] ?? 0) + item.points }), {} as Record<string, number>);
+
+/** Whether a Wikipedia list has at least every point Verdict lists, in the
+ *  same round against the same fighter: the cards can't say who lost a 9-9
+ *  round's point, so where both sources speak they must agree. */
+export const coversVerdict = (items: PointDeduction[], verdict: PointDeduction[]): boolean =>
+  Object.entries(pointsBy(verdict)).every(([at, points]) => (pointsBy(items)[at] ?? 0) >= points);
+
+/** The record that fits the cards: the stored one, else, under a Wikipedia
+ *  list a later card rules out or a later Verdict read contradicts, the
+ *  Verdict list it replaced (`previous`). */
+function fittingRecord(cards: JudgeCard[], record: Stored | null): Stored | null {
+  if (!record) return null;
+  const below = record.source === "Wikipedia" ? storedDeductions(JSON.stringify((record as { previous?: unknown }).previous ?? null)) : null;
+  const verdict = below?.source === "Verdict MMA" ? below : null;
+  if (!deductionProblem(cards, record.items) && (!verdict || coversVerdict(record.items, verdict.items))) return record;
+  return verdict && !deductionProblem(cards, verdict.items) ? verdict : null;
+}
+
 export function verifiedDeductions(cards: JudgeCard[], json: string | null | undefined): PointDeduction[] {
-  const items = storedDeductions(json)?.items ?? [];
-  return items.length && !deductionProblem(cards, items) ? items : [];
+  return fittingRecord(cards, storedDeductions(json))?.items ?? [];
 }
 
 export function fightDeductionState(fight: DeductionFight): { cards: JudgeCard[]; record: Stored | null } {
@@ -65,8 +88,8 @@ export function fightDeductionState(fight: DeductionFight): { cards: JudgeCard[]
  * penalty replaces a missing, repeated or wrong-side user deduction. */
 export function confirmedDeductions(fight: DeductionFight): DeductionState {
   const { cards, record } = fightDeductionState(fight);
-  return record && !deductionProblem(cards, record.items)
-    ? { confirmed: true, items: record.items } : { confirmed: false, items: [] };
+  const fitting = fittingRecord(cards, record);
+  return fitting ? { confirmed: true, items: fitting.items } : { confirmed: false, items: [] };
 }
 
 export function deductionsIn(items: PointDeduction[], round: number): { deduct1: number; deduct2: number } {
@@ -177,4 +200,53 @@ export function replaceDroppedMedia(json: string | null, f1Name: string, f2Name:
   if (!items.length) return null;
   const { dropped: _old, ...rest } = record;
   return JSON.stringify({ ...rest, items: [...record.items, ...items], ...(dropped.length ? { dropped } : {}) });
+}
+
+export type RowMatch = { row: ResultRow; sides: [1 | 2, 1 | 2] };
+
+/** Each results row that could be this bout, with which of our fighters each
+ *  corner is. A corner is our fighter by full name; by the same letters in
+ *  either word order ("Choi Doo-ho" for Dooho Choi, "Alateng Heili" for
+ *  Alatengheili); or by its own surname being ours ("Uroš Medić"). A given
+ *  name is never enough: Scott Askham is not Brad Scott. */
+export function rowCandidates(rows: ResultRow[], f1Name: string, f2Name: string): RowMatch[] {
+  const words = (name: string) => normName(name).split(" ").filter(Boolean);
+  const joined = (name: string) => { const own = words(name); return [own.join(""), [...own].reverse().join("")]; };
+  const lastWord = (name: string) => surname(name).split(" ").at(-1) ?? "";
+  const ours = [f1Name, f2Name];
+  const side = (name: string): 1 | 2 | null => {
+    const full = deductionSide(name, f1Name, f2Name);
+    if (full && normName(name).split(" ").length > 1) return full;
+    const letters = words(name).join("");
+    const fits = ours.map(our => joined(our).includes(letters) || (lastWord(name).length >= 2 && lastWord(name) === lastWord(our)));
+    return fits[0] === fits[1] ? null : fits[0] ? 1 : 2;
+  };
+  return rows.flatMap(row => {
+    const sides = [side(row.f1), side(row.f2)];
+    return sides[0] && sides[1] && sides[0] !== sides[1] ? [{ row, sides: sides as [1 | 2, 1 | 2] }] : [];
+  });
+}
+
+/** Each bout's results row, kept only where the bout has one candidate row
+ *  and that row no other bout could claim. */
+export function matchRows<T extends { f1_name: string; f2_name: string }>(rows: ResultRow[], bouts: T[]): Map<T, RowMatch> {
+  const candidates = bouts.map(bout => ({ bout, found: rowCandidates(rows, bout.f1_name, bout.f2_name) }));
+  const claims = new Map<ResultRow, number>();
+  for (const { found } of candidates) for (const { row } of found) claims.set(row, (claims.get(row) ?? 0) + 1);
+  return new Map(candidates.flatMap(({ bout, found }) => found.length === 1 && claims.get(found[0].row) === 1 ? [[bout, found[0]]] : []));
+}
+
+/** The penalties a matched results row states, in our fighter order, or null
+ *  when its note can't be read plainly or names neither fighter. */
+export function rowDeductions(match: RowMatch): PointDeduction[] | null {
+  const { row, sides } = match;
+  const notes = noteDeductions(row.notes);
+  if (!notes) return null;
+  const items: PointDeduction[] = [];
+  for (const note of notes) {
+    const at = deductionSide(note.name, row.f1, row.f2);
+    if (!at || note.round < 1 || note.round > 5 || note.points > 3) return null;
+    items.push({ side: sides[at - 1] === 1 ? "f1" : "f2", round: note.round, points: note.points, reason: note.reason });
+  }
+  return items;
 }

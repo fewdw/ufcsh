@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cardChanges, catchweights, eventSection, infoboxDate, namesCard, plainText, recordCatchweight, rosterChanges, samePlace, weightMisses } from "./wikipedia.ts";
+import { cardChanges, catchweights, eventSection, infoboxDate, namesCard, noteDeductions, plainText, recordCatchweight, resultRows, rosterChanges, samePlace, weightMisses } from "./wikipedia.ts";
 
 const article = (background: string, results = "") =>
   `{{Infobox MMA event\n| date = {{start date|2024|01|20}}\n}}\n==Background==\n${background}\n==Results==\n${results}`;
@@ -555,4 +555,57 @@ test("\"instead faced\" after a stated booking names the fighter who withdrew", 
 test("a family name first after a division still completes a surname", () => {
   const text = article("Featherweights [[Choi Doo-ho]] and [[Danny Chavez]] were expected to meet at the event. However, Choi was forced to pull out of the bout due to an injury and was replaced by [[Kai Kamaka III]].");
   assert.equal(cardChanges(text, [["Danny Chavez", "Kai Kamaka III"]]).changes[0].replaced, "Choi Doo-ho");
+});
+
+test("results rows give both fighters and the notes cell, whatever the layout", () => {
+  const rows = resultRows(`{{MMAevent bout
+|Welterweight
+|[[Leon Edwards]] (c)
+|def.
+|[[Kamaru Usman]]
+|Decision (majority) (48–46, 48–46, 47–47)
+|5
+|5:00
+|For the [[UFC Welterweight Championship]]. Edwards was deducted 1 point in round 3 due to grabbing the fence.<ref>{{cite web|url=https://example.com|title=A|b}}</ref>
+}}
+{{MMAevent bout|Lightweight|[[Daniel Santos (fighter)|Daniel Santos]]|def.|[[Johnny Muñoz Jr.]]|Decision (unanimous) (29–27, 29–27, 29–27)|3|5:00|
+}}
+{{MMAevent bout|Heavyweight|Ciryl Gane|vs.|Tai Tuivasa|No Contest (accidental eye poke)|1|0:30}}
+<!--{{MMAevent bout|Flyweight|Hidden One|def.|Hidden Two|Decision (unanimous)|3|5:00|Two was deducted one point in round 1.}}-->`);
+  assert.deepEqual(rows, [
+    { f1: "Leon Edwards", f2: "Kamaru Usman", notes: "For the UFC Welterweight Championship. Edwards was deducted 1 point in round 3 due to grabbing the fence." },
+    { f1: "Daniel Santos", f2: "Johnny Muñoz Jr.", notes: "" },
+    { f1: "Ciryl Gane", f2: "Tai Tuivasa", notes: "" },
+  ]);
+});
+
+test("a deduction note is read only when it says plainly who, which round and how many", () => {
+  assert.deepEqual(noteDeductions("For the title. Medić was deducted one point in round 2 due to repeated groin strikes."),
+    [{ name: "Medić", round: 2, points: 1, reason: "Repeated groin strikes" }]);
+  assert.deepEqual(noteDeductions("Jones was deducted two points in round 4 due to an illegal knee."), [{ name: "Jones", round: 4, points: 2, reason: "An illegal knee" }]);
+  assert.deepEqual(noteDeductions("Turman was twice deducted one point in round 2 due to grabbing the fence."), [{ name: "Turman", round: 2, points: 2, reason: "Grabbing the fence" }]);
+  assert.deepEqual(noteDeductions("Ray was deducted a point in the second round for an eye poke."), [{ name: "Ray", round: 2, points: 1, reason: "An eye poke" }]);
+  assert.deepEqual(noteDeductions("Reese was deducted 1 point in Round 1."), [{ name: "Reese", round: 1, points: 1, reason: "" }]);
+  assert.deepEqual(noteDeductions("Road to UFC final."), []);
+  assert.equal(noteDeductions("Stošić was deducted two points, one in round two and one in round three, both due to repeated groin strikes."), null);
+  assert.equal(noteDeductions("Bout was stopped at 3:56 of round 3 as Borralho was deducted one point due to an accidental illegal knee."), null);
+  assert.equal(noteDeductions("First ever unanimous draw in UFC history without point deductions."), null);
+  assert.equal(noteDeductions("Bell was deducted one point in round 1 for an eye poke and another in round 3 for a fence grab."), null);
+  assert.equal(noteDeductions("Bell was deducted one point in round 1 and one point in round 3."), null);
+  assert.equal(noteDeductions("Bell was deducted one point in round 2 for an eye poke. The penalty was rescinded after review."), null);
+  assert.equal(noteDeductions("Bell was deducted one point in round 2 for an eye poke. He lost another point in round 3."), null);
+  assert.equal(noteDeductions("Baker was deducted one point in round 3 for a fence grab, but the penalty was overturned on review."), null);
+  assert.equal(noteDeductions("Baker was deducted one point in the first round for an eye poke and one in the third for grabbing the fence."), null);
+  assert.equal(noteDeductions("Baker was deducted one point in round 2 for grabbing the fence — a call the referee changed to a verbal caution."), null);
+  assert.equal(noteDeductions("Baker was deducted one point in round 2 for grabbing the fence and lost one in the third for an eye poke."), null);
+  assert.deepEqual(noteDeductions("Baker was deducted one point in round 2 due to repeatedly grabbing the inside of Grant's glove."),
+    [{ name: "Baker", round: 2, points: 1, reason: "Repeatedly grabbing the inside of Grant's glove" }]);
+  for (const waived of ["for a fence grab, which the referee reduced to a warning.", "for a fence grab which was waived.", "for a fence grab and the referee cancelled it.", "for a fence grab (later waived)."])
+    assert.equal(noteDeductions(`Baker was deducted one point in round 3 ${waived}`), null, waived);
+  assert.deepEqual(noteDeductions("Bell was deducted one point in round 1 for an eye poke and a groin strike."), [{ name: "Bell", round: 1, points: 1, reason: "An eye poke and a groin strike" }]);
+  assert.deepEqual(noteDeductions("Bell was deducted one point in round 3 for hitting Morales after the bell."), [{ name: "Bell", round: 3, points: 1, reason: "Hitting Morales after the bell" }]);
+  for (const taken of ["She lost another in the third for an eye poke.", "It was reduced to a warning.", "The referee reduced it to a warning after reviewing the replay.", "The point was waived.", "It was later withdrawn on review.", "The point was restored.", "The decision was overturned.", "The call was retracted.", "The camp filed an appeal."])
+    assert.equal(noteDeductions(`Baker was deducted one point in round 2 for grabbing the fence. ${taken}`), null, taken);
+  for (const bout of ["For the UFC Women's Bantamweight Championship.", "UFC Featherweight title eliminator.", "Road to UFC Flyweight Tournament Final."])
+    assert.deepEqual(noteDeductions(`${bout} Baker was deducted one point in round 2 for grabbing the fence.`), [{ name: "Baker", round: 2, points: 1, reason: "Grabbing the fence" }], bout);
 });
