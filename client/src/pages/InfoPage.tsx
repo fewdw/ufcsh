@@ -105,6 +105,7 @@ export default function InfoPage() {
             <ul>
               <li>Point deductions now use Wikipedia results notes while MMA Decisions is unavailable.</li>
               <li>Deductions are checked against judges’ scorecards and Verdict MMA before they affect scoring.</li>
+              <li>Admin health no longer warns about MMA Decisions while its site is down.</li>
             </ul>
           </Section>
         </div>
