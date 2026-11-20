@@ -103,9 +103,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-11-20">November 20, 2026</time></p>
             <ul>
-              <li>Odds and props come from BestFightOdds again, read every few minutes on fight day.</li>
-              <li>Cancelled bouts now include pairings UFCStats dropped from a card.</li>
-              <li>Biggest line moves are on the full card odds page, and Kalshi prices carry its wordmark.</li>
+              <li>Point deductions now use Wikipedia results notes while MMA Decisions is unavailable.</li>
+              <li>Deductions are checked against judges’ scorecards and Verdict MMA before they affect scoring.</li>
             </ul>
           </Section>
         </div>
