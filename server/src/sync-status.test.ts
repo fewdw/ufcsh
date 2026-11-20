@@ -5,6 +5,7 @@ import path from "node:path";
 import { DATA_DIR, db, getMeta, setMeta } from "./db.ts";
 import { clearSyncErrors, OUTAGE_MS, outageReport, recentSyncError, recordSyncError, syncStatus } from "./sync-status.ts";
 import { HttpRateLimitError } from "./http.ts";
+import { syncNews } from "./news.ts";
 
 test("sync errors are kept newest first, grouped by job, and sources say when they are late", () => {
   const saved = { errors: getMeta("sync_errors"), last: getMeta("last_sync_error"), tick: getMeta("last_tick_at") };
@@ -55,6 +56,34 @@ test("odds are late when the next card in fight week has no recent price from an
   assert.deepEqual(health(), [[now - 60_000, false], [now - 10 * 3_600_000, true]]);
   db.prepare("UPDATE fights SET f1_outcome = 'win', f2_outcome = 'loss' WHERE id = ?").run(fightId);
   assert.deepEqual(health(), [[null, false], [null, false]], "a card whose bouts are all decided is priced no more");
+});
+
+test("sources show their last successful read: a failed read never refreshes one", async t => {
+  const saved = { news: getMeta("news_read_at"), rows: db.prepare("SELECT * FROM news").all() as Record<string, unknown>[] };
+  const fightId = "face000000000091";
+  t.after(() => {
+    setMeta("news_read_at", saved.news ?? "");
+    db.exec("DELETE FROM news");
+    for (const row of saved.rows) db.prepare(`INSERT INTO news (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map(() => "?").join(", ")})`).run(...Object.values(row) as never[]);
+    db.prepare("DELETE FROM fights WHERE id = ?").run(fightId);
+  });
+  const names = syncStatus().sources.map(source => source.name);
+  assert.ok(!names.some(name => /FightOdds|Past odds/.test(name)), "nothing depends on FightOdds.io any more");
+  const source = (name: string, now = Date.now()) => syncStatus(now).sources.find(entry => entry.name === name);
+
+  setMeta("news_read_at", "");
+  await syncNews(async () => { throw new Error("HTTP 503"); });
+  assert.equal(source("News feeds")?.at, null, "every outlet failing is no read");
+  await syncNews(async () => []);
+  assert.ok((source("News feeds")?.at ?? 0) > Date.now() - 60_000, "an outlet answering is");
+
+  // MMA Decisions: the newest decision whose page was read, not the hourly attempt.
+  const newest = (db.prepare("SELECT max(deductions_checked_at) AS at FROM fights").get() as { at: number | null }).at ?? 0;
+  const read = Math.max(newest, Date.parse("2199-01-01T00:00:00Z"));
+  db.prepare("INSERT INTO fights (id, event_id, ord, weight_class, f1_id, f2_id, f1_name, f2_name, deductions_checked_at) VALUES (?, 'x', 0, 'Lightweight', 'x1', 'x2', 'X One', 'X Two', ?)").run(fightId, read);
+  const mma = "Deductions and media scores (MMA Decisions)";
+  assert.deepEqual([source(mma, read + 3_600_000)?.at, source(mma, read + 3_600_000)?.late], [read, false]);
+  assert.equal(source(mma, read + 19 * 3_600_000)?.late, true, "three missed six-hourly re-reads");
 });
 
 test("a locked error archive logs the original failure without rejecting, then resumes saving", (t) => {

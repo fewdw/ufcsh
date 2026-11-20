@@ -2330,7 +2330,8 @@ export async function tick(): Promise<void> {
     //     whose page was captured mid-fight and then aged out of every window
     //     above, which is exactly how a round goes missing and stays missing.
     if (metaAgeMs("stats_repair_at") > 6 * HOUR) {
-      await guarded("stats_repair", () => repairContradictedFightStats());
+      // `stats_repair_at` spaces the passes; `stats_repair_ok_at` is Admin's "last succeeded".
+      await guarded("stats_repair", async () => { await repairContradictedFightStats(); touchMeta("stats_repair_ok_at"); });
       touchMeta("stats_repair_at");
     }
 
@@ -2381,7 +2382,7 @@ export async function tick(): Promise<void> {
       touchMeta("kalshi_odds_at");
       if (!kalshiRunning) {
         kalshiRunning = true;
-        void guarded("kalshi_odds", async () => { await syncKalshiOdds(); }).finally(() => { kalshiRunning = false; });
+        void guarded("kalshi_odds", async () => { await syncKalshiOdds(); touchMeta("kalshi_odds_read_at"); }).finally(() => { kalshiRunning = false; });
       }
     }
     db.prepare(
