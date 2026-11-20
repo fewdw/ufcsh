@@ -595,4 +595,7 @@ test("a deduction note is read only when it says plainly who, which round and ho
   assert.equal(noteDeductions("Bell was deducted one point in round 2 for an eye poke. The penalty was rescinded after review."), null);
   assert.equal(noteDeductions("Bell was deducted one point in round 2 for an eye poke. He lost another point in round 3."), null);
   assert.equal(noteDeductions("Baker was deducted one point in round 3 for a fence grab, but the penalty was overturned on review."), null);
+  for (const taken of ["It was later withdrawn on review.", "The point was restored.", "The decision was overturned.", "The call was retracted.", "The camp filed an appeal."])
+    assert.equal(noteDeductions(`Baker was deducted one point in round 2 for grabbing the fence. ${taken}`), null, taken);
+  assert.deepEqual(noteDeductions("Baker was deducted one point in round 2 for grabbing the fence. Fight of the Night."), [{ name: "Baker", round: 2, points: 1, reason: "Grabbing the fence" }]);
 });

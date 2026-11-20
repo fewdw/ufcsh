@@ -1052,6 +1052,10 @@ export function resultRows(wikitext: string): ResultRow[] {
 export type NoteDeduction = { name: string; round: number; points: number; reason: string };
 const POINTS: Record<string, number> = { a: 1, one: 1, "1": 1, two: 2, "2": 2, three: 3, "3": 3 };
 const ROUND_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
+/** Words that take a penalty back or call it into question. */
+const REVERSAL = "penalt\\w*|rescind\\w*|overturn\\w*|revers\\w*|restor\\w*|withdr\\w*|retract\\w*|annul\\w*|void\\w*|appeal\\w*";
+const OTHER_SENTENCE = new RegExp(`\\b(?:points?|foul\\w*|${REVERSAL})\\b`, "i");
+const IN_REASON = new RegExp(`\\b(?:rounds?|points?|deduct\\w*|another|again|twice|but|later|${REVERSAL})\\b`, "i");
 const DEDUCTION_NOTE = /^(.+?) was (twice )?deducted (a|one|two|three|[123]) points? (?:in|after|at the end of) (?:round (\d|one|two|three|four|five)|the (first|second|third|fourth|fifth) round)(?: (?:due to|for) (.+?))?\.?$/i;
 
 /** The referee's penalties a results row's note states ("Medić was deducted
@@ -1065,7 +1069,7 @@ export function noteDeductions(note: string): NoteDeduction[] | null {
     if (!/deduct/i.test(sentence)) {
       // "The penalty was rescinded." / "He lost another point in round 3.":
       // anything else about points or penalties leaves the list unaccounted for.
-      if (/\b(?:points?|penalt\w*|rescind\w*|overturn\w*|revers\w*|restor\w*|foul\w*)\b/i.test(sentence)) return null;
+      if (OTHER_SENTENCE.test(sentence)) return null;
       continue;
     }
     const match = DEDUCTION_NOTE.exec(sentence.trim());
@@ -1074,7 +1078,7 @@ export function noteDeductions(note: string): NoteDeduction[] | null {
     // "... for an eye poke and another in round 3 for a fence grab": a second
     // penalty hiding in the reason would be dropped, so the note is refused.
     // So is one taken back in the same breath ("..., but the penalty was overturned").
-    if (/\b(?:rounds?|points?|deduct\w*|another|again|twice|but|later|penalt\w*|rescind\w*|overturn\w*|revers\w*|restor\w*|withdr\w*)\b/i.test(reason)) return null;
+    if (IN_REASON.test(reason)) return null;
     const number = Number(round) || ROUND_WORDS[(round ?? ordinal).toLowerCase()];
     const text = reason.trim();
     items.push({ name: name.trim(), round: number, points: POINTS[points.toLowerCase()] * (twice ? 2 : 1),
