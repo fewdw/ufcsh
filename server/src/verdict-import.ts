@@ -154,6 +154,16 @@ const fightError = db.prepare("UPDATE fights SET verdict_error = ? WHERE id = ?"
 // record is not written again.
 const storeDeductions = db.prepare(`UPDATE fights SET deductions_json = ?1 WHERE id = ?2 AND deductions_json IS NOT ?1
   AND (deductions_json IS NULL OR CASE WHEN json_valid(deductions_json) THEN json_extract(deductions_json, '$.source') END = 'Verdict MMA')`);
+// Under a Wikipedia list Verdict's own is kept current as its `previous`, so
+// the next Wikipedia pass checks against it and a withdrawal restores it.
+const storeUnderWikipedia = db.prepare(`UPDATE fights SET deductions_json = CASE WHEN ?1 IS NULL
+    THEN json_remove(deductions_json, '$.previous') ELSE json_set(deductions_json, '$.previous', json(?1)) END
+  WHERE id = ?2 AND json_valid(deductions_json) AND json_extract(deductions_json, '$.source') = 'Wikipedia'
+    AND json_extract(deductions_json, '$.previous') IS NOT json(?1)`);
+export function storeVerdictDeductions(fightId: string, record: string | null): void {
+  storeDeductions.run(record, fightId);
+  storeUnderWikipedia.run(record, fightId);
+}
 const eventError = db.prepare(`INSERT INTO verdict_events (verdict_id, checked_at, error) VALUES (?, ?, ?)
   ON CONFLICT(verdict_id) DO UPDATE SET error = excluded.error`);
 const recordEvent = db.prepare(`INSERT INTO verdict_events (verdict_id, event_id, date, checked_at) VALUES (?, ?, ?, ?)
@@ -235,7 +245,7 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
     if (deductions && alignment(deductions.f1Name, deductions.f2Name, ...sides(fight))?.order === order) {
       const items = deductions.rounds.flatMap(({ round, deduct1, deduct2 }) => ([[deduct1, 1], [deduct2, 2]] as const)
         .flatMap(([points, side]): PointDeduction[] => points ? [{ side: (side === 1) === (order === 1) ? "f1" : "f2", round, points, reason: "" }] : []));
-      storeDeductions.run(items.length ? JSON.stringify({ source: "Verdict MMA", sourceUrl, items }) : null, fight.id);
+      storeVerdictDeductions(fight.id, items.length ? JSON.stringify({ source: "Verdict MMA", sourceUrl, items }) : null);
     }
   } catch (error) {
     stats.failed += 1;

@@ -61,8 +61,10 @@ export function exportMmaDecisions(source: DatabaseSync, since: number, createdA
     const rounds = sourceUrl(prior?.sourceUrl) && Array.isArray(prior?.judges)
       ? compatibleJudgeCards([], prior.judges).filter((card: JudgeCard) => card.rounds?.length === Number(row.round)) : [];
     const entry: Entry = { ...Object.fromEntries(identity.map(key => [key, row[key]])) as Identity,
-      // Only MMA Decisions' own record: a Wikipedia or Verdict stand-in isn't this crawl's to export.
-      checkedAt: row.deductions_checked_at!, deductions: storedDeductions(row.deductions_json)?.source === "MMA Decisions" ? row.deductions_json : null,
+      // A Wikipedia or Verdict stand-in isn't this crawl's to export; anything
+      // else must pass validation as MMA Decisions' own record.
+      checkedAt: row.deductions_checked_at!,
+      deductions: ["Wikipedia", "Verdict MMA"].includes(storedDeductions(row.deductions_json)?.source ?? "") ? null : row.deductions_json,
       media: row.media_scores_json,
       judges: rounds.length ? JSON.stringify({ ...prior, judges: rounds }) : null };
     validate(entry, since, createdAt);

@@ -592,4 +592,6 @@ test("a deduction note is read only when it says plainly who, which round and ho
   assert.equal(noteDeductions("First ever unanimous draw in UFC history without point deductions."), null);
   assert.equal(noteDeductions("Bell was deducted one point in round 1 for an eye poke and another in round 3 for a fence grab."), null);
   assert.equal(noteDeductions("Bell was deducted one point in round 1 and one point in round 3."), null);
+  assert.equal(noteDeductions("Bell was deducted one point in round 2 for an eye poke. The penalty was rescinded after review."), null);
+  assert.equal(noteDeductions("Bell was deducted one point in round 2 for an eye poke. He lost another point in round 3."), null);
 });

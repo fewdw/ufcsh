@@ -3,8 +3,8 @@ import { db, getMeta, setMeta } from "./db.ts";
 import { crawlMmaDecisions, type CrawlFight } from "./mmadecisions-crawl.ts";
 import { mmaDecisionUrl, type MmaMediaScore } from "./scrape/mmadecisions.ts";
 import { log } from "./util.ts";
-import { deductionProblem, fightDeductionState, matchRow, pageDeductions, pageMedia, rowDeductions, storedDeductions, type MediaScore, type PointDeduction, type StoredDeductionRecord } from "./point-deduction-rules.ts";
-import { eventSection, fetchArticleByTitle, fetchEventArticle, resultRows, type ResultRow } from "./scrape/wikipedia.ts";
+import { deductionProblem, fightDeductionState, matchRows, pageDeductions, pageMedia, rowDeductions, storedDeductions, type MediaScore, type PointDeduction, type StoredDeductionRecord } from "./point-deduction-rules.ts";
+import { eventSection, fetchArticleByTitle, fetchEventArticle, resultRows } from "./scrape/wikipedia.ts";
 import type { JudgeCard } from "./judge-scorecards.ts";
 import { repairVerifiedPointDeductions } from "./verified-point-deductions.ts";
 export { deductionProblem, deductionSide, pageDeductions, pageMedia, verifiedDeductions, fightDeductionState } from "./point-deduction-rules.ts";
@@ -134,6 +134,10 @@ export const pointDeductionCandidates = (recheck: boolean): CrawlFight[] =>
 
 export const WIKI_DEDUCTIONS_READ = "wiki_deductions_read_at";
 
+/** Points by fighter and round: Verdict sums a round's penalties into one entry. */
+const pointsBy = (items: PointDeduction[]): Record<string, number> =>
+  items.reduce((sum, item) => ({ ...sum, [`${item.side} ${item.round}`]: (sum[`${item.side} ${item.round}`] ?? 0) + item.points }), {} as Record<string, number>);
+
 type WikiEvent = { id: string; name: string; date: string; location: string | null; wiki_title: string | null };
 const discoveryTried = new Map<string, number>();
 /** A recent card whose article wasn't found when it was first looked for
@@ -151,13 +155,13 @@ async function discoverArticle(event: WikiEvent, now: number): Promise<{ title: 
 
 /** Until MMA Decisions has a recent decision, the penalties its event
  *  article's results row states ("Sanches was deducted one point in round 3
- *  due to repeated grabbing the fence."). Over 2,613 decisions since 2016
- *  with both sources, those notes agreed on 59 of 60 penalties (the other
- *  named the wrong fighter) and never left one out. A list is stored only
+ *  due to repeated grabbing the fence."). Over 2,631 decisions since 2016
+ *  with both sources, those notes agreed on 59 of 61 penalties (one named
+ *  the wrong fighter, one had no note) and 2,524 zeroes. A list is stored only
  *  when it fits every judge's round card; it replaces Verdict MMA's, which
  *  missed two in October and November 2026, keeping Verdict's underneath
- *  (`previous`) for when an editor withdraws or rewrites the note into one
- *  that can't be used. A note naming no penalty confirms nothing, and MMA
+ *  (`previous`, kept current by `storeVerdictDeductions`) for when the table
+ *  no longer supports the list or Verdict comes to disagree. A note naming no penalty confirms nothing, and MMA
  *  Decisions' record always replaces this one. Recent cards are re-read
  *  hourly: notes are added and corrected over the first days. */
 export async function syncWikiPointDeductions(now = Date.now()): Promise<{ events: number; stored: number }> {
@@ -167,11 +171,8 @@ export async function syncWikiPointDeductions(now = Date.now()): Promise<{ event
     ORDER BY e.date DESC`).all(cutoff) as WikiEvent[];
   const fightsOf = db.prepare(`SELECT f.id, f.f1_name, f.f2_name, f.method, f.detail_json, f.judge_rounds_json, f.deductions_json
     FROM fights f WHERE f.event_id = ?`);
-  // Guarded again in the write: MMA Decisions or Verdict may have written meanwhile.
-  const store = db.prepare(`UPDATE fights AS f SET deductions_json = ?1 WHERE f.id = ?2 AND f.deductions_json IS NOT ?1
-    AND (f.deductions_json IS NULL OR ${PROVISIONAL})`);
-  const withdraw = db.prepare(`UPDATE fights SET deductions_json = ?1 WHERE id = ?2 AND json_valid(deductions_json)
-    AND json_extract(deductions_json, '$.source') = 'Wikipedia'`);
+  // Each write is conditional on the exact record read: any other writer wins.
+  const write = db.prepare("UPDATE fights SET deductions_json = ?1 WHERE id = ?2 AND deductions_json IS ?3 AND ?1 IS NOT ?3");
   let tried = 0, read = 0, stored = 0, lastError = "unusable article";
   for (const event of events) {
     let title = event.wiki_title, wikitext: string | null;
@@ -184,41 +185,41 @@ export async function syncWikiPointDeductions(now = Date.now()): Promise<{ event
     if (!title) continue;
     // A missing article or one about another card is no read: stored lists stay.
     const section = wikitext && eventSection(wikitext, event.date);
-    if (!section) continue;
+    const rows = section ? resultRows(section) : [];
+    if (!rows.length) continue;
     read++;
-    const rows = resultRows(section);
     const sourceUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_")).replace(/%3A/g, ":")}`;
     type Fight = CrawlFight & { method: string | null; detail_json: string | null; judge_rounds_json: string | null; deductions_json: string | null };
-    const fights = (fightsOf.all(event.id) as Fight[]).map(fight => ({ fight, match: matchRow(rows, fight.f1_name, fight.f2_name) }));
-    // A row two of our bouts could claim belongs to neither.
-    const claims = new Map<ResultRow, number>();
-    for (const { match } of fights) if (match) claims.set(match.row, (claims.get(match.row) ?? 0) + 1);
-    for (const { fight, match } of fights) {
-      if (!fight.method?.endsWith("DEC") || !match || claims.get(match.row) !== 1) continue;
+    const fights = fightsOf.all(event.id) as Fight[];
+    const matches = matchRows(rows, fights);
+    for (const fight of fights) {
+      if (!fight.method?.endsWith("DEC")) continue;
       const prior = storedDeductions(fight.deductions_json) as (StoredDeductionRecord & { previous?: unknown }) | null;
       if (fight.deductions_json && (!prior || !["Wikipedia", "Verdict MMA"].includes(prior.source))) continue;
       const below = [prior, storedDeductions(JSON.stringify(prior?.previous ?? null))].find(record => record?.source === "Verdict MMA") ?? null;
-      const items = rowDeductions(match);
+      const match = matches.get(fight);
+      const items = match ? rowDeductions(match) : null;
       const problem = items?.length ? deductionProblem(fightDeductionState(fight).cards, items) : null;
       if (problem) log(`point deductions: Wikipedia's for ${fight.f1_name} vs ${fight.f2_name} don't fit the cards (${problem})`);
       // The cards can't say who lost a 9-9 round's point, so a second source
-      // must agree where there is one: every penalty Verdict lists, in the
-      // same round against the same fighter. Wikipedia may add one it missed.
-      const key = (item: PointDeduction) => `${item.side} ${item.round} ${item.points}`;
-      const conflict = !!items?.length && !!below?.items.some(item => !items.some(found => key(found) === key(item)));
+      // must agree where there is one: Verdict's points in each round against
+      // each fighter, all there. Wikipedia may add a penalty Verdict missed.
+      const conflict = !!items?.length && !!below && Object.entries(pointsBy(below.items)).some(([at, points]) => (pointsBy(items)[at] ?? 0) < points);
       if (conflict) log(`point deductions: Wikipedia and Verdict MMA disagree on ${fight.f1_name} vs ${fight.f2_name}; Verdict's list stands`);
       if (!items?.length || problem || conflict) {
-        // This bout's row no longer supports the stored list: Verdict's stands again.
-        if (prior?.source === "Wikipedia") withdraw.run(below ? JSON.stringify(below) : null, fight.id);
+        // The table no longer supports the stored list (no row, a changed or
+        // withdrawn note, a conflict): Verdict's stands again, or none.
+        if (prior?.source === "Wikipedia") write.run(below ? JSON.stringify(below) : null, fight.id, fight.deductions_json);
         continue;
       }
       const record = { source: "Wikipedia", sourceUrl, items, ...(below ? { previous: below } : {}) };
-      stored += Number(store.run(JSON.stringify(record), fight.id).changes);
+      stored += Number(write.run(JSON.stringify(record), fight.id, fight.deductions_json).changes);
     }
   }
   if (tried && !read) throw new Error(`Wikipedia: no event article could be read (${lastError})`);
-  // With nothing left to read (MMA Decisions has every recent decision), the pass is current.
-  setMeta(WIKI_DEDUCTIONS_READ, String(now));
+  // Nothing eligible (MMA Decisions has every recent decision) is current; a
+  // pass that only waited on searches not yet due read nothing.
+  if (read || !events.length) setMeta(WIKI_DEDUCTIONS_READ, String(now));
   if (stored) log(`point deductions: ${stored} stored from Wikipedia`);
   return { events: read, stored };
 }

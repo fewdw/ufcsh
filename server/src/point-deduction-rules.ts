@@ -182,31 +182,43 @@ export function replaceDroppedMedia(json: string | null, f1Name: string, f2Name:
   return JSON.stringify({ ...rest, items: [...record.items, ...items], ...(dropped.length ? { dropped } : {}) });
 }
 
-/** The results row that is this bout and which of our fighters each corner
- *  is, or undefined when no single row is. Each corner is matched by full
- *  name, else by our fighter's surname alone among its words, since Wikipedia
- *  and UFCStats write some names differently ("Choi Doo-ho" for Dooho Choi,
- *  "Alex da Silva Coelho" for Alex Da Silva). A shared given name is never
- *  enough: Alex Jones is not Alex Noble. */
-export function matchRow(rows: ResultRow[], f1Name: string, f2Name: string): { row: ResultRow; sides: [1 | 2, 1 | 2] } | undefined {
-  const surnames = [f1Name, f2Name].map(name => surname(name).split(" ").at(-1) ?? "");
+export type RowMatch = { row: ResultRow; sides: [1 | 2, 1 | 2] };
+
+/** Each results row that could be this bout, with which of our fighters each
+ *  corner is. A corner is our fighter by full name; by the same letters in
+ *  either word order ("Choi Doo-ho" for Dooho Choi, "Alateng Heili" for
+ *  Alatengheili); or by its own surname being ours ("Uroš Medić"). A given
+ *  name is never enough: Scott Askham is not Brad Scott. */
+export function rowCandidates(rows: ResultRow[], f1Name: string, f2Name: string): RowMatch[] {
+  const words = (name: string) => normName(name).split(" ").filter(Boolean);
+  const joined = (name: string) => { const own = words(name); return [own.join(""), [...own].reverse().join("")]; };
+  const lastWord = (name: string) => surname(name).split(" ").at(-1) ?? "";
+  const ours = [f1Name, f2Name];
   const side = (name: string): 1 | 2 | null => {
     const full = deductionSide(name, f1Name, f2Name);
-    if (full) return full;
-    const own = new Set(normName(name).split(" "));
-    const [first, second] = surnames.map(last => last.length >= 2 && own.has(last));
-    return first === second ? null : first ? 1 : 2;
+    if (full && normName(name).split(" ").length > 1) return full;
+    const letters = words(name).join("");
+    const fits = ours.map(our => joined(our).includes(letters) || (lastWord(name).length >= 2 && lastWord(name) === lastWord(our)));
+    return fits[0] === fits[1] ? null : fits[0] ? 1 : 2;
   };
-  const matched = rows.flatMap(row => {
+  return rows.flatMap(row => {
     const sides = [side(row.f1), side(row.f2)];
     return sides[0] && sides[1] && sides[0] !== sides[1] ? [{ row, sides: sides as [1 | 2, 1 | 2] }] : [];
   });
-  return matched.length === 1 ? matched[0] : undefined;
+}
+
+/** Each bout's results row, kept only where the bout has one candidate row
+ *  and that row no other bout could claim. */
+export function matchRows<T extends { f1_name: string; f2_name: string }>(rows: ResultRow[], bouts: T[]): Map<T, RowMatch> {
+  const candidates = bouts.map(bout => ({ bout, found: rowCandidates(rows, bout.f1_name, bout.f2_name) }));
+  const claims = new Map<ResultRow, number>();
+  for (const { found } of candidates) for (const { row } of found) claims.set(row, (claims.get(row) ?? 0) + 1);
+  return new Map(candidates.flatMap(({ bout, found }) => found.length === 1 && claims.get(found[0].row) === 1 ? [[bout, found[0]]] : []));
 }
 
 /** The penalties a matched results row states, in our fighter order, or null
  *  when its note can't be read plainly or names neither fighter. */
-export function rowDeductions(match: { row: ResultRow; sides: [1 | 2, 1 | 2] }): PointDeduction[] | null {
+export function rowDeductions(match: RowMatch): PointDeduction[] | null {
   const { row, sides } = match;
   const notes = noteDeductions(row.notes);
   if (!notes) return null;

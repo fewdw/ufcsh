@@ -1062,7 +1062,12 @@ const DEDUCTION_NOTE = /^(.+?) was (twice )?deducted (a|one|two|three|[123]) poi
 export function noteDeductions(note: string): NoteDeduction[] | null {
   const items: NoteDeduction[] = [];
   for (const sentence of note.split(/(?<=\.)\s+(?=[A-Z])/)) {
-    if (!/deduct/i.test(sentence)) continue;
+    if (!/deduct/i.test(sentence)) {
+      // "The penalty was rescinded." / "He lost another point in round 3.":
+      // anything else about points or penalties leaves the list unaccounted for.
+      if (/\b(?:points?|penalt\w*|rescind\w*|overturn\w*|revers\w*|restor\w*|foul\w*)\b/i.test(sentence)) return null;
+      continue;
+    }
     const match = DEDUCTION_NOTE.exec(sentence.trim());
     if (!match) return null;
     const [, name, twice, points, round, ordinal, reason = ""] = match;
