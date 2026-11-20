@@ -1052,14 +1052,15 @@ export function resultRows(wikitext: string): ResultRow[] {
 export type NoteDeduction = { name: string; round: number; points: number; reason: string };
 const POINTS: Record<string, number> = { a: 1, one: 1, "1": 1, two: 2, "2": 2, three: 3, "3": 3 };
 const ROUND_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
-/** Words that take a penalty back or call it into question. */
-const REVERSAL = "penalt\\w*|rescind\\w*|overturn\\w*|revers\\w*|restor\\w*|withdr\\w*|retract\\w*|annul\\w*|void\\w*|appeal\\w*";
+/** Words that take a penalty back, soften it or call it into question,
+ *  checked in the reason and in every other sentence of the note alike. */
+const REVERSAL = "penalt\\w*|rescind\\w*|overturn\\w*|revers\\w*|restor\\w*|withdr\\w*|retract\\w*|annul\\w*|void\\w*|appeal\\w*|warn\\w*|waiv\\w*|reduc\\w*|downgrad\\w*|cancel\\w*|review\\w*";
 const OTHER_SENTENCE = new RegExp(`\\b(?:points?|foul\\w*|${REVERSAL})\\b`, "i");
 /** A reason is a plain phrase ("repeated groin strikes", "an eye poke and a
  *  groin strike", "striking Böhm after the bell"). A clause after it can take
  *  the penalty back or add another ("..., which the referee reduced to a
  *  warning"), so any clause structure refuses the note. */
-const IN_REASON = new RegExp(`[,;:()]|\\band (?:was|were|is|it|he|she|they|the|then)\\b|\\b(?:rounds?|points?|deduct\\w*|another|again|twice|but|later|which|who|whom|whose|that|while|whereas|although|though|however|instead|rather|until|warn\\w*|waiv\\w*|reduc\\w*|downgrad\\w*|cancel\\w*|${REVERSAL})\\b`, "i");
+const IN_REASON = new RegExp(`[,;:()]|\\band (?:was|were|is|it|he|she|they|the|then)\\b|\\b(?:rounds?|points?|deduct\\w*|another|again|twice|but|later|which|who|whom|whose|that|while|whereas|although|though|however|instead|rather|until|${REVERSAL})\\b`, "i");
 const DEDUCTION_NOTE = /^(.+?) was (twice )?deducted (a|one|two|three|[123]) points? (?:in|after|at the end of) (?:round (\d|one|two|three|four|five)|the (first|second|third|fourth|fifth) round)(?: (?:due to|for) (.+?))?\.?$/i;
 
 /** The referee's penalties a results row's note states ("Medić was deducted
