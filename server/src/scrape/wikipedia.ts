@@ -1055,7 +1055,11 @@ const ROUND_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4,
 /** Words that take a penalty back or call it into question. */
 const REVERSAL = "penalt\\w*|rescind\\w*|overturn\\w*|revers\\w*|restor\\w*|withdr\\w*|retract\\w*|annul\\w*|void\\w*|appeal\\w*";
 const OTHER_SENTENCE = new RegExp(`\\b(?:points?|foul\\w*|${REVERSAL})\\b`, "i");
-const IN_REASON = new RegExp(`\\b(?:rounds?|points?|deduct\\w*|another|again|twice|but|later|${REVERSAL})\\b`, "i");
+/** A reason is a plain phrase ("repeated groin strikes", "an eye poke and a
+ *  groin strike", "striking Böhm after the bell"). A clause after it can take
+ *  the penalty back or add another ("..., which the referee reduced to a
+ *  warning"), so any clause structure refuses the note. */
+const IN_REASON = new RegExp(`[,;:()]|\\band (?:was|were|is|it|he|she|they|the|then)\\b|\\b(?:rounds?|points?|deduct\\w*|another|again|twice|but|later|which|who|whom|whose|that|while|whereas|although|though|however|instead|rather|until|warn\\w*|waiv\\w*|reduc\\w*|downgrad\\w*|cancel\\w*|${REVERSAL})\\b`, "i");
 const DEDUCTION_NOTE = /^(.+?) was (twice )?deducted (a|one|two|three|[123]) points? (?:in|after|at the end of) (?:round (\d|one|two|three|four|five)|the (first|second|third|fourth|fifth) round)(?: (?:due to|for) (.+?))?\.?$/i;
 
 /** The referee's penalties a results row's note states ("Medić was deducted

@@ -595,6 +595,10 @@ test("a deduction note is read only when it says plainly who, which round and ho
   assert.equal(noteDeductions("Bell was deducted one point in round 2 for an eye poke. The penalty was rescinded after review."), null);
   assert.equal(noteDeductions("Bell was deducted one point in round 2 for an eye poke. He lost another point in round 3."), null);
   assert.equal(noteDeductions("Baker was deducted one point in round 3 for a fence grab, but the penalty was overturned on review."), null);
+  for (const waived of ["for a fence grab, which the referee reduced to a warning.", "for a fence grab which was waived.", "for a fence grab and the referee cancelled it.", "for a fence grab (later waived)."])
+    assert.equal(noteDeductions(`Baker was deducted one point in round 3 ${waived}`), null, waived);
+  assert.deepEqual(noteDeductions("Bell was deducted one point in round 1 for an eye poke and a groin strike."), [{ name: "Bell", round: 1, points: 1, reason: "An eye poke and a groin strike" }]);
+  assert.deepEqual(noteDeductions("Bell was deducted one point in round 3 for hitting Morales after the bell."), [{ name: "Bell", round: 3, points: 1, reason: "Hitting Morales after the bell" }]);
   for (const taken of ["It was later withdrawn on review.", "The point was restored.", "The decision was overturned.", "The call was retracted.", "The camp filed an appeal."])
     assert.equal(noteDeductions(`Baker was deducted one point in round 2 for grabbing the fence. ${taken}`), null, taken);
   assert.deepEqual(noteDeductions("Baker was deducted one point in round 2 for grabbing the fence. Fight of the Night."), [{ name: "Baker", round: 2, points: 1, reason: "Grabbing the fence" }]);
