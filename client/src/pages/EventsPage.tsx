@@ -916,10 +916,10 @@ function StepLink({ event, direction, className = STEP }: { event: EventListItem
   );
 }
 
-/** One event's card. */
 /** The coming card's largest line moves since the books opened, each told
  *  from the fighter whose price moved most, up or down. Hidden until a bout
- *  has moved three points of win chance or more. */
+ *  has moved three points of win chance or more. Shown only with the full
+ *  card's odds. */
 function CardMoves({ fights, eventId, format }: { fights: EventFight[]; eventId: string; format: OddsFormat }) {
   const moves = biggestMoves(fights.filter((fight) => fight.f1.outcome == null && fight.f2.outcome == null));
   if (!moves.length) return null;
@@ -948,6 +948,7 @@ function CardMoves({ fights, eventId, format }: { fights: EventFight[]; eventId:
   );
 }
 
+/** One event's card. */
 function EventPane({ eventId, oddsMode, nav, home = false }: { eventId: string; oddsMode: boolean; nav: EventNav; home?: boolean }) {
   const { settings, update } = useSettings();
   const navigate = useNavigate();
@@ -1114,7 +1115,6 @@ function EventPane({ eventId, oddsMode, nav, home = false }: { eventId: string; 
         </div>
       </section>
 
-      {showSections ? <CardMoves fights={event.fights} eventId={event.id} format={settings.oddsFormat} /> : null}
       {oddsCard ? (
         // Its own height, not the pane's: squeezed to fit, the list would run
         // out past the pane.
@@ -1122,6 +1122,7 @@ function EventPane({ eventId, oddsMode, nav, home = false }: { eventId: string; 
           <div className="flex flex-wrap items-center justify-end gap-2 px-1">
             <OddsFormatTabs format={settings.oddsFormat} onChange={(oddsFormat) => update("oddsFormat", oddsFormat)} />
           </div>
+          {showSections ? <CardMoves fights={event.fights} eventId={event.id} format={settings.oddsFormat} /> : null}
           <div className="flex flex-col gap-2 pb-3">
             {oddsFights.map((fight) => (
               <CardOddsRow

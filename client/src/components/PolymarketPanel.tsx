@@ -4,6 +4,7 @@ import { ExternalLink } from "lucide-react";
 import PolymarketChart from "./PolymarketChart";
 import { marketPct } from "../market-chart";
 import { marketTables, marketLabel } from "../market-groups";
+import KalshiLogo from "./KalshiLogo";
 import PolymarketLogo from "./PolymarketLogo";
 import type {
   ExtraMarket,
@@ -319,8 +320,14 @@ function PolymarketView({
     >
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-700">
         <div className="flex items-center gap-2">
-          {source === "polymarket" ? <PolymarketLogo /> : null}
-          <h2 className="text-sm font-semibold">{name}</h2>
+          {source === "polymarket" ? (
+            <>
+              <PolymarketLogo />
+              <h2 className="text-sm font-semibold">{name}</h2>
+            </>
+          ) : (
+            <h2><KalshiLogo className="h-3.5 w-auto text-[#00DD94]" /></h2>
+          )}
           {source === "polymarket" && data.fight.state === "live" && q ? (
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
               {data.stream ? "Streaming" : "Live · polling"}
