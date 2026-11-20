@@ -1056,6 +1056,10 @@ const ROUND_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4,
  *  checked in the reason and in every other sentence of the note alike. */
 const REVERSAL = "penalt\\w*|rescind\\w*|overturn\\w*|revers\\w*|restor\\w*|withdr\\w*|retract\\w*|annul\\w*|void\\w*|appeal\\w*|warn\\w*|waiv\\w*|reduc\\w*|downgrad\\w*|cancel\\w*|review\\w*";
 const OTHER_SENTENCE = new RegExp(`\\b(?:points?|foul\\w*|${REVERSAL})\\b`, "i");
+/** The only other sentences seen beside a deduction in 452 event articles
+ *  since 2016: what the bout was for. Anything else ("She lost another in the
+ *  third.", "It was reduced to a warning.") may change the list. */
+const BESIDE_DEDUCTION = /^(?:For the [^.]*?(?:Championship|title)|[^.]*?title eliminator|[^.]*?Tournament (?:Final|Semifinal)|Catchweight bout)\.?$/i;
 /** A reason is a plain phrase ("repeated groin strikes", "an eye poke and a
  *  groin strike", "striking Böhm after the bell"). A clause after it can take
  *  the penalty back or add another ("..., which the referee reduced to a
@@ -1070,11 +1074,13 @@ const DEDUCTION_NOTE = /^(.+?) was (twice )?deducted (a|one|two|three|[123]) poi
  *  nothing: editors don't always add one. */
 export function noteDeductions(note: string): NoteDeduction[] | null {
   const items: NoteDeduction[] = [];
+  const others: string[] = [];
   for (const sentence of note.split(/(?<=\.)\s+(?=[A-Z])/)) {
     if (!/deduct/i.test(sentence)) {
       // "The penalty was rescinded." / "He lost another point in round 3.":
-      // anything else about points or penalties leaves the list unaccounted for.
+      // anything about points or penalties leaves any list unaccounted for.
       if (OTHER_SENTENCE.test(sentence)) return null;
+      others.push(sentence.trim());
       continue;
     }
     const match = DEDUCTION_NOTE.exec(sentence.trim());
@@ -1089,5 +1095,7 @@ export function noteDeductions(note: string): NoteDeduction[] | null {
     items.push({ name: name.trim(), round: number, points: POINTS[points.toLowerCase()] * (twice ? 2 : 1),
       reason: text ? text[0].toUpperCase() + text.slice(1) : "" });
   }
+  // Beside a deduction, only a sentence saying what the bout was for.
+  if (items.length && others.some(sentence => !BESIDE_DEDUCTION.test(sentence))) return null;
   return items;
 }

@@ -100,9 +100,10 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   round 3 due to repeated grabbing the fence."), re-read hourly for 45 days.
   Rows hidden in comments are ignored. Only plainly worded notes are used
   (who, which round, how many points): a note like "deducted two points, one
-  in round two and one in round three", a reason that mentions another round
-  or point, or any other sentence about points, penalties or a rescinded call
-  leaves the bout to the other sources. Each corner must match our fighter by
+  in round two and one in round three", a reason that isn't a plain phrase
+  (a comma, a clause, another round or point, a warning, waiver or reversal),
+  or any other sentence beside it except what the bout was for ("For the UFC
+  Welterweight Championship.") leaves the bout to the other sources. Each corner must match our fighter by
   full name, by the same letters in either word order ("Choi Doo-ho" for
   Dooho Choi), or by its own surname being ours; a given name is never
   enough (Scott Askham is not Brad Scott). A row and a bout pair only when
