@@ -50,9 +50,17 @@ export function deductionProblem(cards: JudgeCard[], items: PointDeduction[]): s
   return null;
 }
 
+/** The record that fits the cards: the stored one, else, under a Wikipedia
+ *  list a later card rules out, the Verdict list it replaced (`previous`). */
+function fittingRecord(cards: JudgeCard[], record: Stored | null): Stored | null {
+  if (!record) return null;
+  if (!deductionProblem(cards, record.items)) return record;
+  const below = record.source === "Wikipedia" ? storedDeductions(JSON.stringify((record as { previous?: unknown }).previous ?? null)) : null;
+  return below?.source === "Verdict MMA" && !deductionProblem(cards, below.items) ? below : null;
+}
+
 export function verifiedDeductions(cards: JudgeCard[], json: string | null | undefined): PointDeduction[] {
-  const items = storedDeductions(json)?.items ?? [];
-  return items.length && !deductionProblem(cards, items) ? items : [];
+  return fittingRecord(cards, storedDeductions(json))?.items ?? [];
 }
 
 export function fightDeductionState(fight: DeductionFight): { cards: JudgeCard[]; record: Stored | null } {
@@ -68,8 +76,8 @@ export function fightDeductionState(fight: DeductionFight): { cards: JudgeCard[]
  * penalty replaces a missing, repeated or wrong-side user deduction. */
 export function confirmedDeductions(fight: DeductionFight): DeductionState {
   const { cards, record } = fightDeductionState(fight);
-  return record && !deductionProblem(cards, record.items)
-    ? { confirmed: true, items: record.items } : { confirmed: false, items: [] };
+  const fitting = fittingRecord(cards, record);
+  return fitting ? { confirmed: true, items: fitting.items } : { confirmed: false, items: [] };
 }
 
 export function deductionsIn(items: PointDeduction[], round: number): { deduct1: number; deduct2: number } {

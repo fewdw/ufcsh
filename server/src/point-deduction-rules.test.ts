@@ -69,3 +69,18 @@ test("a row and a bout pair only when each is the other's sole candidate", () =>
   const bouts = [{ f1_name: "Ian Smith", f2_name: "Peter Lee Jones" }, { f1_name: "Mike Smith", f2_name: "Rob Lee" }];
   assert.equal(matchRows(rows, bouts).size, 0);
 });
+
+test("a Wikipedia list a later card rules out falls back to the Verdict list beneath it", () => {
+  const verdict = { source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/1", items: [{ side: "f2", round: 1, points: 1, reason: "" }] };
+  const wiki = (previous?: unknown) => JSON.stringify({ source: "Wikipedia", sourceUrl: "https://en.wikipedia.org/wiki/UFC_1",
+    items: [{ side: "f2", round: 1, points: 1, reason: "Eye poke" }, { side: "f1", round: 1, points: 1, reason: "Groin strike" }], ...(previous ? { previous } : {}) });
+  // 10-8 for f1: f2's point fits, f1's too would need an 11.
+  assert.deepEqual(confirmedDeductions({ deductions_json: wiki(verdict), detail_json: judges(10, 8) }), { confirmed: true, items: verdict.items });
+  assert.deepEqual(confirmedDeductions({ deductions_json: wiki(), detail_json: judges(10, 8) }), { confirmed: false, items: [] });
+});
+
+test("a surname from another corner's given name can't hand a bout's row to a different bout", () => {
+  const rows = [{ f1: "Jordan Scott", f2: "Matt Cooper", notes: "Scott was deducted one point in round 2." }, { f1: "Jack Scott", f2: "Rob Cooper", notes: "" }];
+  const bouts = [{ f1_name: "Jordan Scott", f2_name: "Matt Cooper" }, { f1_name: "Alex Jordan", f2_name: "Tom Cooper" }];
+  assert.equal(matchRows(rows, bouts).size, 0);
+});

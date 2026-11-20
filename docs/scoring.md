@@ -116,7 +116,8 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   each Verdict read) and restored when the table no longer supports the
   Wikipedia list: the note is withdrawn or rewritten, the row is gone or
   changed, or Verdict now disagrees. Every write is conditional on the exact
-  record read. A note naming no penalty confirms nothing, and MMA Decisions'
+  record read. Scoring checks the cards at read time too: a Wikipedia list a
+  later judge's card rules out gives way to the Verdict list beneath it. A note naming no penalty confirms nothing, and MMA Decisions'
   record always replaces this one. A recent card whose article wasn't found
   the first time is searched for again every six hours.
 
