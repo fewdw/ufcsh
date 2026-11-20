@@ -89,7 +89,8 @@ test("sources show their last successful read: a failed read never refreshes one
     assert.deepEqual([source(mma, read + 3_600_000)?.at, source(mma, read + 3_600_000)?.late], [read, false]);
     assert.equal(source(mma, read + 19 * 3_600_000)?.late, true, "three missed six-hourly re-reads");
     setMeta("mma_decisions_blocked_at", String(read));
-    assert.equal(source(`${mma} · site refuses every request`, read + 19 * 3_600_000)?.late, true, "a refusing site says so");
+    const refusing = source(`${mma} · site refuses every request`, read + 19 * 3_600_000);
+    assert.deepEqual([refusing?.late, refusing?.down], [false, true], "a refusing site says so instead of turning late");
   } finally { setMeta("mma_decisions_blocked_at", refused ?? ""); }
 });
 
