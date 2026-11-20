@@ -1066,6 +1066,11 @@ const BESIDE_DEDUCTION = /^(?:For the [^.]*?(?:Championship|title)|[^.]*?title e
  *  warning", "... and one in the third for grabbing the fence"), so any
  *  clause structure, count, ordinal or second "for"/"due to" refuses it. */
 const IN_REASON = new RegExp(`[,;:()]|\\band (?:was|were|is|it|he|she|they|the|then)\\b|\\b(?:rounds?|points?|deduct\\w*|another|again|twice|once|one|two|three|[1-5]|first|second|third|fourth|fifth|for|due to|but|later|which|who|whom|whose|that|while|whereas|although|though|however|instead|rather|until|${REVERSAL})\\b`, "i");
+/** Every reason in 452 event articles since 2016 is letters and spaces (and
+ *  in-word hyphens or apostrophes), at most eight words: "Repeatedly grabbing
+ *  the inside of Grant's glove". A dash, digit or longer clause may carry a
+ *  second penalty or take this one back. */
+const PLAIN_REASON = /^\p{L}+(?:[-'’]\p{L}+)*(?: \p{L}+(?:[-'’]\p{L}+)*){0,8}$/u;
 const DEDUCTION_NOTE = /^(.+?) was (twice )?deducted (a|one|two|three|[123]) points? (?:in|after|at the end of) (?:round (\d|one|two|three|four|five)|the (first|second|third|fourth|fifth) round)(?: (?:due to|for) (.+?))?\.?$/i;
 
 /** The referee's penalties a results row's note states ("Medić was deducted
@@ -1090,7 +1095,7 @@ export function noteDeductions(note: string): NoteDeduction[] | null {
     // "... for an eye poke and another in round 3 for a fence grab": a second
     // penalty hiding in the reason would be dropped, so the note is refused.
     // So is one taken back in the same breath ("..., but the penalty was overturned").
-    if (IN_REASON.test(reason)) return null;
+    if (IN_REASON.test(reason) || (reason.trim() && !PLAIN_REASON.test(reason.trim()))) return null;
     const number = Number(round) || ROUND_WORDS[(round ?? ordinal).toLowerCase()];
     const text = reason.trim();
     items.push({ name: name.trim(), round: number, points: POINTS[points.toLowerCase()] * (twice ? 2 : 1),

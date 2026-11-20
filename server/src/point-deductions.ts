@@ -134,7 +134,6 @@ export const pointDeductionCandidates = (recheck: boolean): CrawlFight[] =>
 
 export const WIKI_DEDUCTIONS_READ = "wiki_deductions_read_at";
 
-
 type WikiEvent = { id: string; name: string; date: string; location: string | null; wiki_title: string | null };
 const discoveryTried = new Map<string, number>();
 /** A recent card whose article wasn't found when it was first looked for
@@ -158,9 +157,10 @@ async function discoverArticle(event: WikiEvent, now: number): Promise<{ title: 
  *  when it fits every judge's round card; it replaces Verdict MMA's, which
  *  missed two in October and November 2026, keeping Verdict's underneath
  *  (`previous`, kept current by `storeVerdictDeductions`) for when the table
- *  no longer supports the list or Verdict comes to disagree. A note naming no penalty confirms nothing, and MMA
- *  Decisions' record always replaces this one. Recent cards are re-read
- *  hourly: notes are added and corrected over the first days. */
+ *  no longer supports the list or Verdict comes to disagree. A note naming no
+ *  penalty confirms nothing, and MMA Decisions' record always replaces this
+ *  one. Recent cards are re-read hourly: notes are added and corrected over
+ *  the first days. */
 export async function syncWikiPointDeductions(now = Date.now()): Promise<{ events: number; stored: number }> {
   const cutoff = new Date(now - 45 * 86400_000).toISOString().slice(0, 10);
   const events = db.prepare(`SELECT e.id, e.name, e.date, e.location, e.wiki_title FROM events e WHERE e.complete = 1 AND e.date >= ?
