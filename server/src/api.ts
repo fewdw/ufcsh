@@ -1,4 +1,5 @@
 import { fightPay } from "./fight-pay.ts";
+import { kalshiDetail, sideBySide } from "./odds-sides.ts";
 import { eventCrew } from "./event-crew.ts";
 import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight, potentialTakesBets } from "./potential-matchups.ts";
 import { careerStatistics } from "./career-statistics.ts";
@@ -238,6 +239,13 @@ function fightOdds(fightId: string, includeMethodOdds = false): unknown {
     ? prepared("SELECT * FROM method_odds WHERE fight_id = ?").get(fightId) as any
     : null;
   if ((!o || (!o.f1_close && !o.f2_close)) && !method) return null;
+  const corners = (o?.books_json || o?.kalshi_json)
+    ? prepared("SELECT f.f1_id, f.f2_id, e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?").get(fightId) as { f1_id: string; f2_id: string; date: string } | undefined
+    : undefined;
+  // A card's board is read every 15 minutes in fight week and at least every
+  // 6 hours further out (syncUpcomingMethodOdds); books older than twice that
+  // are no offer.
+  const booksFor = corners && Date.parse(`${corners.date}T00:00:00Z`) - Date.now() <= 7 * 86_400_000 ? 2 * 3_600_000 : 12 * 3_600_000;
   let props = null;
   if (method) {
     try {
@@ -263,8 +271,11 @@ function fightOdds(fightId: string, includeMethodOdds = false): unknown {
     f2: { open: o?.f2_open ?? null, close: o?.f2_close ?? null },
     source_url: o?.source_url ?? null,
     ...(props ? { props } : {}),
+    ...(corners ? sideBySide(o.books_json, corners, ({ f1, f2, at }) => Date.now() - at < booksFor ? { books: { f1, f2, at } } : {}) : {}),
+    ...(corners ? sideBySide(o.kalshi_json, corners, ({ f1, f2, at, url, volume }) => ({ kalshi: { f1, f2, at, url, volume } })) : {}),
   };
 }
+
 
 /** What a card row can say about a fighter beyond the name: age on fight
  * night, the last five professional results entering the bout, and the streak they
@@ -1316,16 +1327,17 @@ export function oddsFreshness(eventId: string): { updated_at: number | null; fin
            COUNT(o.fight_id) AS priced,
            SUM(CASE WHEN o.final = 1 THEN 1 ELSE 0 END) AS frozen,
            MAX(o.source_url LIKE 'https://fightodds.io/%') AS fightodds,
-           MAX(o.source_url IS NULL OR o.source_url NOT LIKE 'https://fightodds.io/%') AS bestfightodds
+           MAX(o.source_url LIKE 'https://kalshi.com/%') AS kalshi,
+           MAX(o.source_url IS NULL OR (o.source_url NOT LIKE 'https://fightodds.io/%' AND o.source_url NOT LIKE 'https://kalshi.com/%')) AS bestfightodds
     FROM odds o JOIN fights f ON f.id = o.fight_id
     WHERE f.event_id = ? AND o.f1_close IS NOT NULL
-  `).get(eventId) as { updated_at: number | null; priced: number; frozen: number | null; fightodds: number | null; bestfightodds: number | null };
+  `).get(eventId) as { updated_at: number | null; priced: number; frozen: number | null; fightodds: number | null; kalshi: number | null; bestfightodds: number | null };
   return {
     updated_at: row.updated_at ?? null,
     final: Boolean(row.priced) && row.frozen === row.priced,
     priced: row.priced ?? 0,
     // Sources of the card's stored odds.
-    sources: [...(row.fightodds ? ["FightOdds.io"] : []), ...(row.bestfightodds ? ["BestFightOdds"] : [])],
+    sources: [...(row.fightodds ? ["FightOdds.io"] : []), ...(row.bestfightodds ? ["BestFightOdds"] : []), ...(row.kalshi ? ["Kalshi"] : [])],
   };
 }
 
@@ -2853,6 +2865,11 @@ export function startApi(port: number): http.Server {
           /^[a-f0-9]{12}$/.test(url.searchParams.get("v") ?? ""));
       }
       if ((url.searchParams.get("q")?.length ?? 0) > 120) return await sendJson(req, res, { error: "search query too long" }, 400);
+      const kalshi = /^\/api\/kalshi\/fights\/([a-f0-9]{16})$/i.exec(p);
+      if (kalshi) {
+        const detail = kalshiDetail(kalshi[1]);
+        return await sendJson(req, res, detail ?? { error: "Fight not found." }, detail ? 200 : 404);
+      }
       if (p.startsWith("/api/polymarket/")) {
         if (req.method !== "GET" && req.method !== "HEAD") {
           res.setHeader("Allow", "GET, HEAD");

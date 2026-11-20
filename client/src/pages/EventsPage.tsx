@@ -6,7 +6,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CancelledBout, CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { boutChange, clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankingTitle, rankLabel, roundsLabel } from "../format";
+import { boutChange, clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, lastName, outcomeClasses, rankingTitle, rankLabel, roundsLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
@@ -14,6 +14,8 @@ import BonusIcons from "../components/BonusIcons";
 import OddsPair from "../components/OddsPair";
 import { Moneyline, moneylineLeg, OddsFormatTabs, OddsMarkets, type FightResult } from "../components/MatchupOdds";
 import { hasOddsMarkets } from "../oddsLayout";
+import { biggestMoves } from "../oddsMovement";
+import { formatPrice } from "../methodOdds";
 import FightView from "./FightPage";
 import { NAV_STEP, EventPlace, CardNavigation } from "../components/CardHeader";
 import { useShortcutNav } from "../shortcuts";
@@ -914,6 +916,38 @@ function StepLink({ event, direction, className = STEP }: { event: EventListItem
   );
 }
 
+/** The coming card's largest line moves since the books opened, each told
+ *  from the fighter whose price moved most, up or down. Hidden until a bout
+ *  has moved three points of win chance or more. Shown only with the full
+ *  card's odds. */
+function CardMoves({ fights, eventId, format }: { fights: EventFight[]; eventId: string; format: OddsFormat }) {
+  const moves = biggestMoves(fights.filter((fight) => fight.f1.outcome == null && fight.f2.outcome == null));
+  if (!moves.length) return null;
+  return (
+    <section className={`${shell} shrink-0 overflow-hidden`} aria-labelledby="card-moves">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-2 @[34rem]:px-5">
+        <h2 id="card-moves" className="text-[11px] font-semibold text-zinc-900 dark:text-zinc-100" title="Since the opening line, in points of win chance">Biggest line moves</h2>
+        <ul className="flex min-w-0 flex-wrap gap-x-4 gap-y-1">
+          {moves.map((move) => (
+            <li key={move.fightId} className="min-w-0">
+              <Link
+                to={`/fights/${move.fightId}`}
+                state={{ eventId, eventReturnDepth: 1 }}
+                className="flex items-baseline gap-1.5 whitespace-nowrap text-[11px] text-zinc-500 transition hover:text-zinc-900 dark:hover:text-zinc-100"
+                title={`${move.name}: ${move.open} at the open, ${move.close} now (${move.points} points of win chance)`}
+              >
+                <span className="font-medium text-zinc-800 dark:text-zinc-200">{lastName(move.name)}</span>
+                <span className="tabular-nums">{formatPrice(move.open, format)} → <span className="font-semibold text-zinc-900 dark:text-zinc-100">{formatPrice(move.close, format)}</span></span>
+                <span className={`text-[10px] tabular-nums ${move.up ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`} aria-label={`${move.up ? "up" : "down"} ${Math.round(move.points)} points`}>{move.up ? "▲" : "▼"}{Math.round(move.points)}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 /** One event's card. */
 function EventPane({ eventId, oddsMode, nav, home = false }: { eventId: string; oddsMode: boolean; nav: EventNav; home?: boolean }) {
   const { settings, update } = useSettings();
@@ -1088,6 +1122,7 @@ function EventPane({ eventId, oddsMode, nav, home = false }: { eventId: string; 
           <div className="flex flex-wrap items-center justify-end gap-2 px-1">
             <OddsFormatTabs format={settings.oddsFormat} onChange={(oddsFormat) => update("oddsFormat", oddsFormat)} />
           </div>
+          {showSections ? <CardMoves fights={event.fights} eventId={event.id} format={settings.oddsFormat} /> : null}
           <div className="flex flex-col gap-2 pb-3">
             {oddsFights.map((fight) => (
               <CardOddsRow

@@ -21,6 +21,7 @@ import { CardEventTitle, NAV_STEP, CardNavigation } from "../components/CardHead
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
 import PolymarketPanel, { MarketTeaser } from "../components/PolymarketPanel";
+import KalshiTeaser from "../components/KalshiTeaser";
 import { predictionTabVisible, type PredictionSummary } from "../predictions";
 import { FightRail, FightRailSkeleton, FightStepLink, FightStrip, MatchupSkeleton } from "../components/FightRail";
 // Part of this page's own code, so the Discussion tab opens with it rather
@@ -521,6 +522,7 @@ function OddsPanel({ fight }: { fight: Matchup }) {
       <OddsMarkets
         odds={props ?? { f1: {}, f2: {}, additional: [], source_url: "", fetched_at: 0, final: fight.status === "past" }}
         moneyline={fight.odds ? { f1: fight.odds.f1, f2: fight.odds.f2 } : null}
+        books={fight.odds?.books}
         fightId={betFightId(fight)}
         f1Name={fight.f1.name}
         f2Name={fight.f2.name}
@@ -1048,11 +1050,15 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                           f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
                           f1Name={fight.f1.name} f2Name={fight.f2.name}
                           props={fight.odds?.props}
+                          kalshiLine={Boolean(fight.odds?.source_url?.startsWith("https://kalshi.com/"))}
                           fightId={betFightId(fight, fight.status !== "upcoming")} />
                       </div>
                     ) : null}
                     {!fight.potential && fight.status !== "past" && fight.f1.outcome == null && fight.f2.outcome == null
-                      ? <MarketTeaser fightId={fight.id} eventId={fight.event.id} /> : null}
+                      ? settings.predictionMarket === "kalshi"
+                        // Kalshi is read up to the bell: no pill once the bout is on.
+                        ? fight.in_progress ? null : <KalshiTeaser fightId={fight.id} kalshi={fight.odds?.kalshi} f1Name={fight.f1.name} f2Name={fight.f2.name} />
+                        : <MarketTeaser fightId={fight.id} eventId={fight.event.id} /> : null}
                   </div>
                   <div className="matchup-corner col-start-3 min-w-0">
                     <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraitOf(fight.f2)} onPortraitError={portraitUnavailable(fight.f2)} past={fight.status === "past"} />

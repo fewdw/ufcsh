@@ -4,23 +4,22 @@ import { ExternalLink } from "lucide-react";
 import PolymarketChart from "./PolymarketChart";
 import { marketPct } from "../market-chart";
 import { marketTables, marketLabel } from "../market-groups";
+import KalshiLogo from "./KalshiLogo";
 import PolymarketLogo from "./PolymarketLogo";
 import type {
   ExtraMarket,
+  KalshiDetail,
   MarketDetail,
   MarketSummary,
 } from "../polymarket-types";
 import { useMarketData } from "../useMarketData";
 import { useNow } from "../useNow";
+import { alignedKalshi, freshMarketQuote, kalshiView } from "../marketQuote";
+import MarketSourceTabs from "./MarketSourceTabs";
+import { useSettings, type PredictionMarket } from "../settings";
 
 const MARKET_SHELL =
   "rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900";
-function freshMarketQuote(row: MarketSummary, now: number) {
-  const age = row.fight.state === "live" ? 15_000 : 90_000;
-  return row.status === "open" && row.quote && now - row.quote.at < age
-    ? row.quote
-    : null;
-}
 
 /** A percentage that lights up for a moment when a live bout moves it. */
 function LivePct({ p, live }: { p: number | null | undefined; live: boolean }) {
@@ -177,9 +176,13 @@ function ExtraMarkets({
   );
 }
 
-function Comparison({ data, now }: { data: MarketDetail; now: number }) {
+/** Every source side by side, whichever market the panel shows: Polymarket,
+ *  Kalshi, the sportsbooks and the fans' picks. */
+function Comparison({ data, kalshi: answer, now }: { data: MarketDetail; kalshi: KalshiDetail | null; now: number }) {
+  const kalshi = alignedKalshi(answer, data.fight);
   const q = freshMarketQuote(data, now);
   const live = data.fight.state === "live";
+  const kalshiQuote = kalshi && kalshi.status === "open" ? freshMarketQuote(kalshiView(data, kalshi, now), now) : null;
   const rows = [
     {
       label: "Polymarket",
@@ -188,7 +191,20 @@ function Comparison({ data, now }: { data: MarketDetail; now: number }) {
         ? null
         : data.snapshot
           ? "Frozen pre-fight"
-          : "Current price unavailable",
+          : data.status === "missing"
+            ? "No market on this bout"
+            : "Current price unavailable",
+    },
+    {
+      label: "Kalshi",
+      p: kalshiQuote?.p ?? (data.fight.state === "upcoming" ? null : kalshi?.p ?? null),
+      detail: kalshi?.status !== "open"
+        ? "No market on this bout"
+        : data.fight.state !== "upcoming"
+          ? kalshi.at ? `As of ${new Date(kalshi.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "Pre-fight"
+          : kalshiQuote
+            ? null
+            : "Current price unavailable",
     },
     {
       label: "Sportsbooks",
@@ -197,15 +213,13 @@ function Comparison({ data, now }: { data: MarketDetail; now: number }) {
       // Books take no bets once a bout starts; their line stops being a price.
       closed: live,
     },
-    ...(data.community && data.community.n > 0
-      ? [
-          {
-            label: "Community picks",
-            p: data.community.p,
-            detail: `${data.community.n.toLocaleString()} picks${data.snapshot ? " · pre-fight" : ""}`,
-          },
-        ]
-      : []),
+    {
+      label: "Fans",
+      p: data.community && data.community.n > 0 ? data.community.p : null,
+      detail: data.community && data.community.n > 0
+        ? `${data.community.n.toLocaleString()} picks${data.snapshot ? " · pre-fight" : ""}`
+        : "No picks yet",
+    },
   ];
   return (
     <div className="mx-auto max-w-xl">
@@ -281,43 +295,67 @@ function Comparison({ data, now }: { data: MarketDetail; now: number }) {
 
 function PolymarketView({
   data,
+  polymarket,
+  kalshi,
+  source,
+  onSource,
   compact = false,
 }: {
+  /** What the panel shows: Polymarket's detail, or Kalshi's view of it. */
   data: MarketDetail;
+  /** Polymarket's own detail and Kalshi's read, for the comparison. */
+  polymarket: MarketDetail;
+  kalshi: KalshiDetail | null;
+  source: PredictionMarket;
+  onSource: (source: PredictionMarket) => void;
   compact?: boolean;
 }) {
   const now = useNow(true, 3000);
   const q = freshMarketQuote(data, now);
+  const name = source === "kalshi" ? "Kalshi" : "Polymarket";
   return (
     <section
       className={`${MARKET_SHELL} @container overflow-hidden`}
-      aria-label="Polymarket analysis"
+      aria-label={`${name} analysis`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-700">
         <div className="flex items-center gap-2">
-          <PolymarketLogo />
-          <h2 className="text-sm font-semibold">Polymarket</h2>
-          {data.fight.state === "live" && q ? (
+          {source === "polymarket" ? (
+            <>
+              <PolymarketLogo />
+              <h2 className="text-sm font-semibold">{name}</h2>
+            </>
+          ) : (
+            <h2><KalshiLogo className="h-3.5 w-auto text-[#00DD94]" /></h2>
+          )}
+          {source === "polymarket" && data.fight.state === "live" && q ? (
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
               {data.stream ? "Streaming" : "Live · polling"}
             </span>
           ) : null}
         </div>
+        <MarketSourceTabs source={source} onChange={onSource} />
       </div>
       <div className="space-y-5 p-4 sm:p-5">
         <PolymarketChart data={data} />
-        {!compact ? <Comparison data={data} now={now} /> : null}
+        {!compact ? <Comparison data={polymarket} kalshi={kalshi} now={now} /> : null}
         {!q && !(compact && data.fight.state === "finished") ? (
           <div
             role="status"
             className="rounded-lg bg-zinc-50 p-4 text-xs leading-relaxed text-zinc-500 dark:bg-zinc-800"
           >
-            {data.status === "closed"
-              ? "This fight has finished or the market is closed."
-              : data.status === "missing"
-                ? "No unambiguous Polymarket moneyline was found for both fighters on this date. Other fight information is still available."
-                : "Current Polymarket prices are unavailable. Retrying automatically; historical observations remain available."}
-            {data.error ? (
+            {source === "kalshi"
+              ? data.status === "missing"
+                ? "Kalshi has no market on this bout. Other fight information is still available."
+                : polymarket.fight.state === "upcoming"
+                  ? "Kalshi's price is being refreshed; its chart remains available."
+                  : "Kalshi's prices are kept as they stood at the bell."
+              : data.status === "closed"
+                ? "This fight has finished or the market is closed."
+                : data.status === "missing"
+                  ? "No unambiguous Polymarket moneyline was found for both fighters on this date. Other fight information is still available."
+                  : "Current Polymarket prices are unavailable. Retrying automatically; historical observations remain available."}
+            {source === "polymarket" && data.error ? (
               <span className="mt-1 block">{data.error}</span>
             ) : null}
           </div>
@@ -355,6 +393,11 @@ export default function PolymarketPanel({
     poll,
     active,
   );
+  // Kalshi is read every five minutes; its row in the comparison shows
+  // whichever market the panel is on.
+  const { data: kalshi } = useMarketData<KalshiDetail>(`/api/kalshi/fights/${fightId}`, 60_000, active);
+  const { settings, update } = useSettings();
+  const source = settings.predictionMarket;
   const state = data?.fight.state;
   useEffect(() => {
     if (state) setPoll(state === "live" ? 5000 : 15_000);
@@ -362,12 +405,19 @@ export default function PolymarketPanel({
   if (
     past &&
     (data
-      ? data.fight.state === "finished" && !data.url && !data.history.length
+      ? data.fight.state === "finished" && !data.url && !data.history.length && !kalshi?.history.length
       : true)
   )
     return null;
   return data ? (
-    <PolymarketView data={data} compact={compact} />
+    <PolymarketView
+      data={source === "kalshi" ? kalshiView(data, kalshi, Date.now()) : data}
+      polymarket={data}
+      kalshi={kalshi}
+      source={source}
+      onSource={(next) => update("predictionMarket", next)}
+      compact={compact}
+    />
   ) : (
     <section
       className={`${MARKET_SHELL} p-5 text-xs text-zinc-500`}

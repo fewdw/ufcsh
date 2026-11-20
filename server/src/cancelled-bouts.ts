@@ -130,9 +130,10 @@ export function storeCancelledBoard(board: Pick<Board, "pk" | "date" | "name">, 
 type Corner = { id: string | null; name: string };
 
 /** A booking that fell through on one card, from whichever source lists it:
- *  FightOdds.io's board (by UFCStats id), the card's Wikipedia article
- *  (a bout it says was scrapped), or the replacement the article names (the
- *  fighter replaced, against the opponent who stayed). */
+ *  FightOdds.io's board (by UFCStats id), a pairing UFCStats listed on the
+ *  card and dropped before it was fought (`dropped_bouts`), the card's
+ *  Wikipedia article (a bout it says was scrapped), or the replacement the
+ *  article names (the fighter replaced, against the opponent who stayed). */
 export type Cancellation = {
   key: string;
   date: string;
@@ -145,6 +146,14 @@ export type Cancellation = {
   /** Why, as the article says it, or who the replacement was. */
   reason: string | null;
   source_url: string;
+  /** The day UFCStats dropped it, when it did: a booking found from then on,
+   *  even on an earlier card, is where it moved. */
+  dropped_on?: string;
+  /** UFCStats' bout id, when it dropped it; the same id on another card is
+   *  where it moved, whatever that card's date. */
+  fight_id?: string;
+  /** UFCStats put that bout on another card: it moved only there. */
+  moved?: boolean;
 };
 
 export type CancelledBout = {
@@ -175,6 +184,7 @@ const samePair = (a: { f1: Corner; f2: Corner }, b: { f1: Corner; f2: Corner }) 
   (samePerson(a.f1, b.f1) && samePerson(a.f2, b.f2)) || (samePerson(a.f1, b.f2) && samePerson(a.f2, b.f1));
 
 const cardColumns = "id, name, date, wiki_title, cancelled_json";
+const UFCSTATS_EVENT = "http://ufcstats.com/event-details/";
 const wikiUrl = (title: string) => `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`;
 
 /** The card a board is for: ours within a day of it (FightOdds.io dates some
@@ -203,8 +213,9 @@ function divisionAt(id: string | null, date: string): string | undefined {
 }
 
 /** Every booking that fell through on one card, each pairing once: the
- *  board's first (its ids are UFCStats'), then the article's scrapped bouts,
- *  then the pairings its replacements broke up. */
+ *  board's first (its ids are UFCStats'), then the pairings UFCStats itself
+ *  dropped, then the article's scrapped bouts, then the pairings its
+ *  replacements broke up. */
 export function cardCancellations(card: Card): Cancellation[] {
   const fights = prepared(`SELECT weight_class, f1_id, f2_id, f1_name, f2_name, f1_replaced, f2_replaced, f1_replaced_id, f2_replaced_id,
     f1_outcome IS NOT NULL OR f2_outcome IS NOT NULL AS fought FROM fights WHERE event_id = ? ORDER BY ord`).all(card.id) as {
@@ -228,8 +239,13 @@ export function cardCancellations(card: Card): Cancellation[] {
     const [f1, f2] = samePerson(same.f1, entry.f1) && samePerson(same.f2, entry.f2) ? [entry.f1, entry.f2] : [entry.f2, entry.f1];
     same.f1.id ??= f1.id;
     same.f2.id ??= f2.id;
-    same.division ??= entry.division;
+    // UFCStats' own booking beats a board's or an article's division.
+    if (entry.dropped_on && entry.division) same.division = entry.division;
+    else same.division ??= entry.division;
     same.reason ??= entry.reason;
+    same.dropped_on ??= entry.dropped_on;
+    same.fight_id ??= entry.fight_id;
+    same.moved ||= entry.moved;
   };
 
   const boards = (prepared("SELECT pk, date, slug, name FROM cancelled_boards WHERE date BETWEEN date(?, '-1 day') AND date(?, '+1 day')")
@@ -241,6 +257,25 @@ export function cardCancellations(card: Card): Cancellation[] {
       const f2 = { id: row.f2_id, name: row.f2_name };
       add({ key: row.slug, f1, f2, division: checked(row.weight_class, f1, f2), reason: null, source_url: `https://fightodds.io/fights/${row.slug}/odds` }, true);
     }
+  }
+
+  // Seen first hand, so it needs no other source's word; a pairing back on
+  // the card is skipped like an article's.
+  // Its division is UFCStats' own booking, not a guess. A bout UFCStats moved
+  // to another card and then dropped there is that card's cancellation.
+  const dropped = prepared(`SELECT f1_id, f2_id, f1_name, f2_name, weight_class, dropped_at, fight_id, moved FROM dropped_bouts
+    WHERE event_id = ? AND confirmed = 1 ORDER BY dropped_at, f1_id`).all(card.id) as
+    { f1_id: string; f2_id: string; f1_name: string; f2_name: string; weight_class: string; dropped_at: number; fight_id: string; moved: number }[];
+  for (const row of dropped) {
+    const f1 = { id: row.f1_id, name: row.f1_name };
+    const f2 = { id: row.f2_id, name: row.f2_name };
+    const entry = { key: `${card.id}:dropped:${row.f1_id}:${row.f2_id}`, f1, f2, division: row.weight_class || checked("", f1, f2), reason: null,
+      source_url: `${UFCSTATS_EVENT}${card.id}`, dropped_on: new Date(row.dropped_at).toISOString().slice(0, 10), fight_id: row.fight_id, moved: !!row.moved };
+    // The same bout on a card within a day is this card filed again, not a move.
+    const elsewhere = boutElsewhere(entry, card.id);
+    if (elsewhere && dayDiff(elsewhere.date, card.date) <= 1) continue;
+    if (row.moved && !elsewhere) continue;
+    add(entry);
   }
 
   let scrapped: { f1: string; f2: string; f1_id?: string | null; f2_id?: string | null; division?: string | null; reason?: string | null }[] = [];
@@ -276,9 +311,31 @@ export function cardCancellations(card: Card): Cancellation[] {
 type Stored = { slug: string; board_pk: number; date: string; event_name: string; weight_class: string;
   f1_id: string | null; f2_id: string | null; f1_name: string; f2_name: string };
 
-/** The same two fighters' bout within a year after, fought or booked. */
-export function movedTo(entry: Pick<Cancellation, "date" | "f1" | "f2">): CancelledBout["moved_to"] {
+/** The bout UFCStats filed under this id on another card, when it is still
+ *  this pairing (each fighter by id or, after a corrected page, name). */
+function boutElsewhere(entry: Pick<Cancellation, "f1" | "f2"> & { fight_id?: string }, eventId: string | null): CancelledBout["moved_to"] {
+  if (!entry.fight_id) return null;
+  const bout = prepared(`SELECT f.id AS fight_id, e.date, e.name AS event_name, f.f1_id, f.f1_name, f.f2_id, f.f2_name
+    FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ? AND e.id IS NOT ?`).get(entry.fight_id, eventId) as
+    { fight_id: string; date: string; event_name: string; f1_id: string; f1_name: string; f2_id: string; f2_name: string } | undefined;
+  if (!bout || !samePair(entry, { f1: { id: bout.f1_id, name: bout.f1_name }, f2: { id: bout.f2_id, name: bout.f2_name } })) return null;
+  return { fight_id: bout.fight_id, date: bout.date, event_name: bout.event_name };
+}
+
+/** The same two fighters' bout within a year after, fought or booked. One
+ *  UFCStats dropped is looked for from the day it dropped, on any other card,
+ *  so a bout pulled forward to an earlier card shows as moved too. */
+export function movedTo(entry: Pick<Cancellation, "date" | "f1" | "f2"> & { event_id?: string | null; dropped_on?: string; fight_id?: string; moved?: boolean }): CancelledBout["moved_to"] {
   if (!entry.f1.id || !entry.f2.id) return null;
+  const sameBout = boutElsewhere(entry, entry.event_id ?? null);
+  // A move UFCStats made goes where it put the bout, never to a later booking.
+  if (sameBout || entry.moved) return sameBout ?? null;
+  if (entry.dropped_on) {
+    return (prepared(`SELECT f.id AS fight_id, e.date, e.name AS event_name FROM fights f JOIN events e ON e.id = f.event_id
+      WHERE ((f.f1_id = ? AND f.f2_id = ?) OR (f.f1_id = ? AND f.f2_id = ?))
+        AND e.date >= ? AND e.date <= date(?, '+1 year') AND e.id IS NOT ?
+      ORDER BY e.date LIMIT 1`).get(entry.f1.id, entry.f2.id, entry.f2.id, entry.f1.id, entry.dropped_on, entry.date, entry.event_id ?? null) as CancelledBout["moved_to"] | undefined) ?? null;
+  }
   return (prepared(`SELECT f.id AS fight_id, e.date, e.name AS event_name FROM fights f JOIN events e ON e.id = f.event_id
     WHERE ((f.f1_id = ? AND f.f2_id = ?) OR (f.f1_id = ? AND f.f2_id = ?))
       AND e.date > date(?, '+1 day') AND e.date <= date(?, '+1 year')
@@ -327,20 +384,27 @@ export function cancelledBoutsOf(fighterId: string, fought: Fought[]): Cancelled
     UNION SELECT ${cardColumns} FROM events WHERE id IN (SELECT event_id FROM fights WHERE f1_replaced_id = ?2
       UNION SELECT event_id FROM fights WHERE f2_replaced_id = ?2
       UNION SELECT event_id FROM fights WHERE f1_id = ?2 AND f2_replaced <> ''
-      UNION SELECT event_id FROM fights WHERE f2_id = ?2 AND f1_replaced <> '')`);
+      UNION SELECT event_id FROM fights WHERE f2_id = ?2 AND f1_replaced <> ''
+      UNION SELECT event_id FROM dropped_bouts WHERE f1_id = ?2 AND confirmed = 1
+      UNION SELECT event_id FROM dropped_bouts WHERE f2_id = ?2 AND confirmed = 1)`);
   for (const card of others.all(`%"${fighterId}"%`, fighterId) as Card[]) cards.set(card.id, card);
   for (const card of cards.values()) entries.push(...cardCancellations(card).filter((entry) => entry.f1.id === fighterId || entry.f2.id === fighterId));
   if (!entries.length) return [];
   const articles = prepared(`SELECT cancelled_json FROM events WHERE cancelled_json IS NOT NULL
     AND date BETWEEN date(?, '-60 days') AND date(?, '+60 days')`);
-  const seen = new Set<string>();
-  const list: CancelledBout[] = [];
-  for (const entry of entries.sort((a, b) => b.date.localeCompare(a.date) || a.key.localeCompare(b.key))) {
+  // The same booking listed twice: on one date, or a board we can't tie to a
+  // card (it moved after FightOdds.io filed it) within a fortnight of ours.
+  // Two of our cards are two bookings.
+  const kept: { entry: Cancellation; opponent: Corner }[] = [];
+  for (const entry of entries.sort((a, b) => Number(b.event_id != null) - Number(a.event_id != null) || b.date.localeCompare(a.date) || a.key.localeCompare(b.key))) {
     const opponent = entry.f1.id === fighterId ? entry.f2 : entry.f1;
     if (fought.some((bout) => dayDiff(bout.date, entry.date) <= 1 && samePerson(opponent, { id: bout.opponent.id ?? null, name: bout.opponent.name }))) continue;
-    const key = `${entry.date}:${opponent.id ?? normName(opponent.name)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (kept.some((other) => samePerson(other.opponent, opponent) && (other.entry.date === entry.date
+      || ((other.entry.event_id == null || entry.event_id == null) && dayDiff(other.entry.date, entry.date) <= 14)))) continue;
+    kept.push({ entry, opponent });
+  }
+  const list: CancelledBout[] = [];
+  for (const { entry, opponent } of kept.sort((a, b) => b.entry.date.localeCompare(a.entry.date) || a.entry.key.localeCompare(b.entry.key))) {
     list.push({
       key: entry.key,
       date: entry.date,

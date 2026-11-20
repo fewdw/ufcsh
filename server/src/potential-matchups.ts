@@ -3,6 +3,7 @@ import { normName } from "./util.ts";
 import { bestFightOddsPotentialBouts, type PotentialBout } from "./scrape/potential-odds.ts";
 import { fighterNamed } from "./fighter-identity.ts";
 import { boutLines, boutProps, fightOddsOpeners, fightOddsProps, fightOddsBoard, fightOddsEvents } from "./scrape/fightodds.ts";
+import { outageReport, recordSyncError } from "./sync-status.ts";
 
 export const POTENTIAL_EVENT_ID = "potential-matchups";
 export const POTENTIAL_EVENT_NAME = "Potential matchups";
@@ -125,10 +126,13 @@ export function syncPotentialMatchups({ props = false }: { props?: boolean } = {
     ]);
     let failed = 0;
     results.forEach((result, index) => {
-      if (result.status === "rejected") {
-        setMeta(`potential_${index ? "bestfightodds" : "fightodds"}_error`, String(result.reason));
-        failed++;
-      }
+      const source = index ? "bestfightodds" : "fightodds";
+      if (result.status === "fulfilled") { outageReport(`potential_${source}`, null, Date.now(), true); return; }
+      setMeta(`potential_${source}_error`, String(result.reason));
+      // Admin → Errors, like the scheduled jobs: a board that stops reading
+      // (a block, a markup change) once it lasts, not on every pass.
+      if (outageReport(`potential_${source}`, result.reason)) recordSyncError(`potential_${source}`, result.reason);
+      failed++;
     });
     return { failed };
   })().finally(() => { reading = null; });

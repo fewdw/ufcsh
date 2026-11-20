@@ -211,6 +211,10 @@ test("shared reads reverse prices, preserve book metadata and filter picks by ma
   assert.equal(a?.community?.n, 10);
   assert.equal(a?.community?.p, 0.7);
   assert.equal(a?.sports?.p, 0.625);
+  // A line Kalshi stands in with is no sportsbook's.
+  db.prepare("UPDATE odds SET source_url = 'https://kalshi.com/markets/kxufcfight/x' WHERE fight_id = ?").run(f.id);
+  assert.equal(f.service.context(f.id)?.sports, null);
+  db.prepare("UPDATE odds SET source_url = NULL WHERE fight_id = ?").run(f.id);
   assert.equal(a?.extras[0].question, "Go the distance?");
   const detail = await f.service.detail(f.id);
   assert.ok(detail?.history.some((p) => p.source === "history" && p.p === 0.7));

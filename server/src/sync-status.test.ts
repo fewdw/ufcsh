@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
-import { DATA_DIR, getMeta, setMeta } from "./db.ts";
+import { DATA_DIR, db, getMeta, setMeta } from "./db.ts";
 import { clearSyncErrors, OUTAGE_MS, outageReport, recentSyncError, recordSyncError, syncStatus } from "./sync-status.ts";
+import { HttpRateLimitError } from "./http.ts";
+import { syncNews } from "./news.ts";
 
 test("sync errors are kept newest first, grouped by job, and sources say when they are late", () => {
   const saved = { errors: getMeta("sync_errors"), last: getMeta("last_sync_error"), tick: getMeta("last_tick_at") };
@@ -31,6 +33,58 @@ test("sync errors are kept newest first, grouped by job, and sources say when th
   }
 });
 
+
+test("odds are late when the next card in fight week has no recent price from any source", t => {
+  const eventId = "face000000000081", fightId = "face000000000082";
+  t.after(() => {
+    db.prepare("DELETE FROM odds WHERE fight_id = ?").run(fightId);
+    db.prepare("DELETE FROM method_odds WHERE fight_id = ?").run(fightId);
+    db.prepare("DELETE FROM fights WHERE id = ?").run(fightId);
+    db.prepare("DELETE FROM events WHERE id = ?").run(eventId);
+  });
+  const now = Date.parse("2198-12-30T12:00:00Z");
+  const source = (name: string, at = now) => syncStatus(at).sources.find(entry => entry.name === name);
+  const health = (at = now) => [source("Odds (next card)", at), source("Props (next card)", at)].map(entry => [entry?.at, entry?.late]);
+  assert.equal(source("Odds (FightOdds.io)"), undefined, "no one source stands for odds");
+  db.prepare("INSERT INTO events (id, name, date, complete) VALUES (?, 'UFC Odds health fixture', '2199-01-01', 0)").run(eventId);
+  assert.deepEqual(health(), [[null, false], [null, false]], "a card with no bouts yet is not due");
+  db.prepare("INSERT INTO fights (id, event_id, ord, weight_class, f1_id, f2_id, f1_name, f2_name) VALUES (?, ?, 0, 'Lightweight', 'x1', 'x2', 'X One', 'X Two')").run(fightId, eventId);
+  assert.deepEqual(health(), [[null, true], [null, true]], "a booked card in fight week with no prices at all");
+  assert.deepEqual(health(now - 10 * 86_400_000), [[null, false], [null, false]], "a card more than a week out is not due");
+  db.prepare("INSERT INTO odds (fight_id, f1_close, f2_close, source_url, fetched_at) VALUES (?, '-150', '+130', 'https://www.bestfightodds.com/x', ?)").run(fightId, now - 60_000);
+  db.prepare("INSERT INTO method_odds (fight_id, markets_json, source_url, fetched_at) VALUES (?, '{}', 'https://www.bestfightodds.com/x', ?)").run(fightId, now - 10 * 3_600_000);
+  assert.deepEqual(health(), [[now - 60_000, false], [now - 10 * 3_600_000, true]]);
+  db.prepare("UPDATE fights SET f1_outcome = 'win', f2_outcome = 'loss' WHERE id = ?").run(fightId);
+  assert.deepEqual(health(), [[null, false], [null, false]], "a card whose bouts are all decided is priced no more");
+});
+
+test("sources show their last successful read: a failed read never refreshes one", async t => {
+  const saved = { news: getMeta("news_read_at"), rows: db.prepare("SELECT * FROM news").all() as Record<string, unknown>[] };
+  const fightId = "face000000000091";
+  t.after(() => {
+    setMeta("news_read_at", saved.news ?? "");
+    db.exec("DELETE FROM news");
+    for (const row of saved.rows) db.prepare(`INSERT INTO news (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map(() => "?").join(", ")})`).run(...Object.values(row) as never[]);
+    db.prepare("DELETE FROM fights WHERE id = ?").run(fightId);
+  });
+  const names = syncStatus().sources.map(source => source.name);
+  assert.ok(!names.some(name => /FightOdds|Past odds/.test(name)), "nothing depends on FightOdds.io any more");
+  const source = (name: string, now = Date.now()) => syncStatus(now).sources.find(entry => entry.name === name);
+
+  setMeta("news_read_at", "");
+  await syncNews(async () => { throw new Error("HTTP 503"); });
+  assert.equal(source("News feeds")?.at, null, "every outlet failing is no read");
+  await syncNews(async () => []);
+  assert.ok((source("News feeds")?.at ?? 0) > Date.now() - 60_000, "an outlet answering is");
+
+  // MMA Decisions: the newest decision whose page was read, not the hourly attempt.
+  const newest = (db.prepare("SELECT max(deductions_checked_at) AS at FROM fights").get() as { at: number | null }).at ?? 0;
+  const read = Math.max(newest, Date.parse("2199-01-01T00:00:00Z"));
+  db.prepare("INSERT INTO fights (id, event_id, ord, weight_class, f1_id, f2_id, f1_name, f2_name, deductions_checked_at) VALUES (?, 'x', 0, 'Lightweight', 'x1', 'x2', 'X One', 'X Two', ?)").run(fightId, read);
+  const mma = "Deductions and media scores (MMA Decisions)";
+  assert.deepEqual([source(mma, read + 3_600_000)?.at, source(mma, read + 3_600_000)?.late], [read, false]);
+  assert.equal(source(mma, read + 19 * 3_600_000)?.late, true, "three missed six-hourly re-reads");
+});
 
 test("a locked error archive logs the original failure without rejecting, then resumes saving", (t) => {
   const saved = { errors: getMeta("sync_errors"), last: getMeta("last_sync_error") };
@@ -104,6 +158,21 @@ test("a source's passing failure waits to see whether it lasts; an answer in bet
   const lag = new Error("Error: ufc.com event 1351 carried no fight card");
   assert.equal(outageReport("card_feed x", lag, t0), false);
   assert.equal(outageReport("card_feed x", lag, t0 + OUTAGE_MS), true);
+});
+
+test("a firewall block that goes on is reported once a day for its host, and a new block at once", () => {
+  const HOUR = 3_600_000, t0 = 3_000_000_000;
+  const block = (host: string, since: number, ray: string) =>
+    new HttpRateLimitError(`https://${host}/gql`, t0 + 30 * HOUR, `Cloudflare blocked this server (Ray ID ${ray})`, 403, since);
+  assert.equal(outageReport("blocked job", block("blocked-host.example", t0, "a5"), t0), true);
+  assert.equal(outageReport("other job", block("blocked-host.example", t0, "a6"), t0 + HOUR), false, "the host was reported already");
+  assert.equal(outageReport("blocked job", block("blocked-host.example", t0, "a7"), t0 + 6 * HOUR), false);
+  assert.equal(outageReport("other job", block("blocked-host.example", t0, "a8"), t0 + 23 * HOUR), false);
+  assert.equal(outageReport("other job", block("blocked-host.example", t0, "a9"), t0 + 24 * HOUR), true);
+  assert.equal(outageReport("third job", block("another-host.example", t0, "b1"), t0 + 25 * HOUR), true, "another host is its own news");
+  assert.equal(outageReport("blocked job", block("blocked-host.example", t0 + 26 * HOUR, "c1"), t0 + 26 * HOUR), true,
+    "blocked again after the host answered");
+  assert.equal(outageReport("plain 429", new HttpRateLimitError("https://limited.example/x", t0, "slow down"), t0), false, "a rate limit is still a passing moment");
 });
 
 test("a fault of our own is reported at once, then not again on every pass", () => {

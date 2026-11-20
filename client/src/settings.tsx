@@ -9,6 +9,8 @@ export type DateMode = "relative" | "date";
 export type DivisionOrder = "light" | "heavy";
 /** How a betting price displays: the American line or decimal payout. */
 export type OddsFormat = "american" | "decimal";
+/** Which prediction market a matchup shows beside the sportsbooks. */
+export type PredictionMarket = "polymarket" | "kalshi";
 
 export type AppSettings = {
   theme: ThemeMode;
@@ -19,6 +21,7 @@ export type AppSettings = {
   /** Which end of the scale the rankings start from. */
   divisionOrder: DivisionOrder;
   oddsFormat: OddsFormat;
+  predictionMarket: PredictionMarket;
   /** How a fighter profile's Statistics panel orders its rows: by category, or best place first. */
   statsSort: StatsSort;
   /** Which end a card is read from: the main event down, or the opener up. */
@@ -36,6 +39,7 @@ const DEFAULTS: AppSettings = {
   dateMode: "relative",
   divisionOrder: "light",
   oddsFormat: "american",
+  predictionMarket: "polymarket",
   statsSort: "grouped",
   cardOrder: "main",
 };
@@ -51,6 +55,7 @@ function loadSettings(): AppSettings {
       dateMode: saved?.dateMode === "date" ? "date" : "relative",
       divisionOrder: saved?.divisionOrder === "heavy" ? "heavy" : "light",
       oddsFormat: saved?.oddsFormat === "decimal" ? "decimal" : "american",
+      predictionMarket: saved?.predictionMarket === "kalshi" ? "kalshi" : "polymarket",
       statsSort: saved?.statsSort === "best" ? "best" : "grouped",
       cardOrder: saved?.cardOrder === "opener" ? "opener" : "main",
     };
