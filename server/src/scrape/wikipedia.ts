@@ -1073,7 +1073,8 @@ export function noteDeductions(note: string): NoteDeduction[] | null {
     const [, name, twice, points, round, ordinal, reason = ""] = match;
     // "... for an eye poke and another in round 3 for a fence grab": a second
     // penalty hiding in the reason would be dropped, so the note is refused.
-    if (/\b(?:rounds?|points?|deduct\w*|another|again|twice)\b/i.test(reason)) return null;
+    // So is one taken back in the same breath ("..., but the penalty was overturned").
+    if (/\b(?:rounds?|points?|deduct\w*|another|again|twice|but|later|penalt\w*|rescind\w*|overturn\w*|revers\w*|restor\w*|withdr\w*)\b/i.test(reason)) return null;
     const number = Number(round) || ROUND_WORDS[(round ?? ordinal).toLowerCase()];
     const text = reason.trim();
     items.push({ name: name.trim(), round: number, points: POINTS[points.toLowerCase()] * (twice ? 2 : 1),

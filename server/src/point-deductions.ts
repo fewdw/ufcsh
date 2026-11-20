@@ -3,7 +3,7 @@ import { db, getMeta, setMeta } from "./db.ts";
 import { crawlMmaDecisions, type CrawlFight } from "./mmadecisions-crawl.ts";
 import { mmaDecisionUrl, type MmaMediaScore } from "./scrape/mmadecisions.ts";
 import { log } from "./util.ts";
-import { deductionProblem, fightDeductionState, matchRows, pageDeductions, pageMedia, rowDeductions, storedDeductions, type MediaScore, type PointDeduction, type StoredDeductionRecord } from "./point-deduction-rules.ts";
+import { coversVerdict, deductionProblem, fightDeductionState, matchRows, pageDeductions, pageMedia, rowDeductions, storedDeductions, type MediaScore, type PointDeduction, type StoredDeductionRecord } from "./point-deduction-rules.ts";
 import { eventSection, fetchArticleByTitle, fetchEventArticle, resultRows } from "./scrape/wikipedia.ts";
 import type { JudgeCard } from "./judge-scorecards.ts";
 import { repairVerifiedPointDeductions } from "./verified-point-deductions.ts";
@@ -134,9 +134,6 @@ export const pointDeductionCandidates = (recheck: boolean): CrawlFight[] =>
 
 export const WIKI_DEDUCTIONS_READ = "wiki_deductions_read_at";
 
-/** Points by fighter and round: Verdict sums a round's penalties into one entry. */
-const pointsBy = (items: PointDeduction[]): Record<string, number> =>
-  items.reduce((sum, item) => ({ ...sum, [`${item.side} ${item.round}`]: (sum[`${item.side} ${item.round}`] ?? 0) + item.points }), {} as Record<string, number>);
 
 type WikiEvent = { id: string; name: string; date: string; location: string | null; wiki_title: string | null };
 const discoveryTried = new Map<string, number>();
@@ -204,7 +201,7 @@ export async function syncWikiPointDeductions(now = Date.now()): Promise<{ event
       // The cards can't say who lost a 9-9 round's point, so a second source
       // must agree where there is one: Verdict's points in each round against
       // each fighter, all there. Wikipedia may add a penalty Verdict missed.
-      const conflict = !!items?.length && !!below && Object.entries(pointsBy(below.items)).some(([at, points]) => (pointsBy(items)[at] ?? 0) < points);
+      const conflict = !!items?.length && !!below && !coversVerdict(items, below.items);
       if (conflict) log(`point deductions: Wikipedia and Verdict MMA disagree on ${fight.f1_name} vs ${fight.f2_name}; Verdict's list stands`);
       if (!items?.length || problem || conflict) {
         // The table no longer supports the stored list (no row, a changed or

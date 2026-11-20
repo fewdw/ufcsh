@@ -84,3 +84,11 @@ test("a surname from another corner's given name can't hand a bout's row to a di
   const bouts = [{ f1_name: "Jordan Scott", f2_name: "Matt Cooper" }, { f1_name: "Alex Jordan", f2_name: "Tom Cooper" }];
   assert.equal(matchRows(rows, bouts).size, 0);
 });
+
+test("a later Verdict read naming the other fighter wins at read time, before Wikipedia is read again", () => {
+  const nineNine = JSON.stringify({ judges: [{ judge: "A Judge", f1Score: 9, f2Score: 9, rounds: [{ round: 1, f1Score: 9, f2Score: 9 }] }] });
+  const verdict = { source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/1", items: [{ side: "f2", round: 1, points: 1, reason: "" }] };
+  const wiki = JSON.stringify({ source: "Wikipedia", sourceUrl: "https://en.wikipedia.org/wiki/UFC_1",
+    items: [{ side: "f1", round: 1, points: 1, reason: "Eye poke" }], previous: verdict });
+  assert.deepEqual(confirmedDeductions({ deductions_json: wiki, detail_json: nineNine }), { confirmed: true, items: verdict.items });
+});

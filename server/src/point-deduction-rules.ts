@@ -50,13 +50,25 @@ export function deductionProblem(cards: JudgeCard[], items: PointDeduction[]): s
   return null;
 }
 
+/** Points by fighter and round: Verdict sums a round's penalties into one entry. */
+export const pointsBy = (items: PointDeduction[]): Record<string, number> =>
+  items.reduce((sum, item) => ({ ...sum, [`${item.side} ${item.round}`]: (sum[`${item.side} ${item.round}`] ?? 0) + item.points }), {} as Record<string, number>);
+
+/** Whether a Wikipedia list has at least every point Verdict lists, in the
+ *  same round against the same fighter: the cards can't say who lost a 9-9
+ *  round's point, so where both sources speak they must agree. */
+export const coversVerdict = (items: PointDeduction[], verdict: PointDeduction[]): boolean =>
+  Object.entries(pointsBy(verdict)).every(([at, points]) => (pointsBy(items)[at] ?? 0) >= points);
+
 /** The record that fits the cards: the stored one, else, under a Wikipedia
- *  list a later card rules out, the Verdict list it replaced (`previous`). */
+ *  list a later card rules out or a later Verdict read contradicts, the
+ *  Verdict list it replaced (`previous`). */
 function fittingRecord(cards: JudgeCard[], record: Stored | null): Stored | null {
   if (!record) return null;
-  if (!deductionProblem(cards, record.items)) return record;
   const below = record.source === "Wikipedia" ? storedDeductions(JSON.stringify((record as { previous?: unknown }).previous ?? null)) : null;
-  return below?.source === "Verdict MMA" && !deductionProblem(cards, below.items) ? below : null;
+  const verdict = below?.source === "Verdict MMA" ? below : null;
+  if (!deductionProblem(cards, record.items) && (!verdict || coversVerdict(record.items, verdict.items))) return record;
+  return verdict && !deductionProblem(cards, verdict.items) ? verdict : null;
 }
 
 export function verifiedDeductions(cards: JudgeCard[], json: string | null | undefined): PointDeduction[] {
