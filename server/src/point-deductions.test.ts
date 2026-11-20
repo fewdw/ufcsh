@@ -175,6 +175,23 @@ test("a recent card's Wikipedia notes replace Verdict's penalties, never MMA Dec
   assert.equal(stored("wiki-c"), kept);
   assert.equal(stored("wiki-d"), null);
   assert.equal(Number(getMeta(WIKI_DEDUCTIONS_READ)), now);
+  assert.deepEqual(JSON.parse(stored("wiki-b")!).previous, { source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/2", items: [] });
+
+  // Editors rewrite notes: one Wikipedia no longer states plainly, one withdrawn.
+  // Each list goes, and Verdict's stands again where it had one.
+  const edited = article.replace("Baker was deducted one point in round 3", "Baker was deducted one point in round 3 and another in round 2")
+    .replace("Diaz was deducted one point in round 3 due to an eye poke.", "");
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ parse: { wikitext: { "*": edited } } })));
+  assert.deepEqual(await syncWikiPointDeductions(now + 3600_000), { events: 1, stored: 0 });
+  assert.equal(stored("wiki-a"), null);
+  assert.deepEqual(JSON.parse(stored("wiki-b")!), { source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/2", items: [] });
+  assert.equal(stored("wiki-c"), kept);
+
+  // A missing article is no read: nothing changes and the pass fails.
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ error: { code: "missingtitle" } })));
+  await assert.rejects(syncWikiPointDeductions(now + 7200_000), /no event article could be read/);
+  assert.equal(Number(getMeta(WIKI_DEDUCTIONS_READ)), now + 3600_000);
+
   // Older than 45 days: not read again.
   assert.deepEqual(await syncWikiPointDeductions(now + 46 * 86400_000), { events: 0, stored: 0 });
 });

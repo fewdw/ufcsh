@@ -2218,6 +2218,7 @@ export async function syncLiveEvents(): Promise<void> {
 let ticking = false;
 
 let mmaDecisionsReading: Promise<void> | null = null;
+let wikiDeductionsReading: Promise<void> | null = null;
 
 export async function tick(): Promise<void> {
   if (ticking) return;
@@ -2309,9 +2310,11 @@ export async function tick(): Promise<void> {
     }
     // Until MMA Decisions has them, the penalties each recent card's Wikipedia
     // results notes state: one small read per card.
-    if (metaAgeMs("wiki_deductions_checked_at") > HOUR) {
+    // Beside the tick, like MMA Decisions: a slow Wikipedia must not hold up odds.
+    if (!wikiDeductionsReading && metaAgeMs("wiki_deductions_checked_at") > HOUR) {
       touchMeta("wiki_deductions_checked_at");
-      await guarded("wiki_deductions", () => syncWikiPointDeductions());
+      wikiDeductionsReading = guarded("wiki_deductions", () => syncWikiPointDeductions())
+        .finally(() => { wikiDeductionsReading = null; });
     }
 
     // 7. Fight-detail pages: upcoming events within 14 days (tale of the tape)

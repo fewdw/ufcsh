@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyDeductions, confirmedDeductions, deductionsIn, rowDeductions, storedDeductions, type PointDeduction } from "./point-deduction-rules.ts";
+import { applyDeductions, confirmedDeductions, deductionsIn, matchRow, rowDeductions, storedDeductions, type PointDeduction } from "./point-deduction-rules.ts";
 
 const penalty: PointDeduction = { side: "f1", round: 1, points: 1, reason: "Low blow" };
 const record = (items: unknown[]) => JSON.stringify({ source: "MMA Decisions", sourceUrl: "https://mmadecisions.com/decision/1", items });
@@ -40,13 +40,22 @@ test("a Wikipedia results row is matched to the bout and its penalties put in ou
     { f1: "Joe Solecki", f2: "Alex da Silva Coelho", notes: "Coelho was deducted one point in round 2 for locking his toes in the fence." },
     { f1: "Gunnar Nelson", f2: "Bryan Barberena", notes: "Nelson was deducted one point in round 1 and more in round 2." },
   ];
-  assert.deepEqual(rowDeductions(rows, "Kyle Nelson", "Dooho Choi"), [{ side: "f2", round: 3, points: 1, reason: "A headbutt" }]);
-  assert.deepEqual(rowDeductions(rows, "Alex Da Silva", "Joe Solecki"), [{ side: "f1", round: 2, points: 1, reason: "Locking his toes in the fence" }]);
-  assert.deepEqual(rowDeductions(rows, "JunYong Park", "Denis Tiuliulin"), []);
+  const read = (f1: string, f2: string) => { const match = matchRow(rows, f1, f2); return match && rowDeductions(match); };
+  assert.deepEqual(read("Kyle Nelson", "Dooho Choi"), [{ side: "f2", round: 3, points: 1, reason: "A headbutt" }]);
+  assert.deepEqual(read("Alex Da Silva", "Joe Solecki"), [{ side: "f1", round: 2, points: 1, reason: "Locking his toes in the fence" }]);
+  assert.deepEqual(read("JunYong Park", "Denis Tiuliulin"), []);
   // No row, or a note that can't be read plainly: nothing is known.
-  assert.equal(rowDeductions(rows, "Mike Mathetha", "Charles Radtke"), undefined);
-  assert.equal(rowDeductions(rows, "Gunnar Nelson", "Bryan Barberena"), null);
+  assert.equal(read("Mike Mathetha", "Charles Radtke"), undefined);
+  assert.equal(read("Gunnar Nelson", "Bryan Barberena"), null);
   // A note naming neither fighter is refused, not guessed.
-  assert.equal(rowDeductions([{ f1: "Jon Jones", f2: "Anthony Smith", notes: "Herb was deducted one point in round 4." }], "Jon Jones", "Anthony Smith"), null);
+  const jones = matchRow([{ f1: "Jon Jones", f2: "Anthony Smith", notes: "Herb was deducted one point in round 4." }], "Jon Jones", "Anthony Smith");
+  assert.equal(jones && rowDeductions(jones), null);
   assert.equal(storedDeductions(JSON.stringify({ source: "Wikipedia", sourceUrl: "https://en.wikipedia.org/wiki/UFC_334", items: [penalty] }))?.source, "Wikipedia");
+});
+
+test("shared given names never tie a results row to another bout", () => {
+  const rows = [{ f1: "Alex Jones", f2: "Mike Bell", notes: "Bell was deducted one point in round 2 for an eye poke." }];
+  assert.equal(matchRow(rows, "Alex Noble", "Mike Cole"), undefined);
+  assert.equal(matchRow(rows, "Alex Noble", "Mike Bell"), undefined, "both corners must match");
+  assert.deepEqual(matchRow(rows, "Mike Bell", "Alexander Jones")?.sides, [2, 1]);
 });

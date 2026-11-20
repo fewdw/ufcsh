@@ -182,29 +182,32 @@ export function replaceDroppedMedia(json: string | null, f1Name: string, f2Name:
   return JSON.stringify({ ...rest, items: [...record.items, ...items], ...(dropped.length ? { dropped } : {}) });
 }
 
-/** The penalties an event article's results row states for this bout, in our
- *  fighter order: undefined when no single row is this bout, null when its
- *  note can't be read plainly or names neither fighter. Each row fighter is
- *  matched by full name, else by a name word only one of ours shares, since
- *  Wikipedia and UFCStats write some names differently ("Choi Doo-ho" for
- *  Dooho Choi, "Alex da Silva Coelho" for Alex Da Silva). */
-export function rowDeductions(rows: ResultRow[], f1Name: string, f2Name: string): PointDeduction[] | null | undefined {
-  const words = (name: string) => new Set(normName(name).split(" ")
-    .filter(word => word.length >= 3 && !NAME_SUFFIX.test(word) && !SURNAME_PARTICLES.has(word)));
-  const ours = [words(f1Name), words(f2Name)];
+/** The results row that is this bout and which of our fighters each corner
+ *  is, or undefined when no single row is. Each corner is matched by full
+ *  name, else by our fighter's surname alone among its words, since Wikipedia
+ *  and UFCStats write some names differently ("Choi Doo-ho" for Dooho Choi,
+ *  "Alex da Silva Coelho" for Alex Da Silva). A shared given name is never
+ *  enough: Alex Jones is not Alex Noble. */
+export function matchRow(rows: ResultRow[], f1Name: string, f2Name: string): { row: ResultRow; sides: [1 | 2, 1 | 2] } | undefined {
+  const surnames = [f1Name, f2Name].map(name => surname(name).split(" ").at(-1) ?? "");
   const side = (name: string): 1 | 2 | null => {
     const full = deductionSide(name, f1Name, f2Name);
     if (full) return full;
-    const own = [...words(name)];
-    const [first, second] = ours.map(names => own.some(word => names.has(word)));
+    const own = new Set(normName(name).split(" "));
+    const [first, second] = surnames.map(last => last.length >= 2 && own.has(last));
     return first === second ? null : first ? 1 : 2;
   };
   const matched = rows.flatMap(row => {
     const sides = [side(row.f1), side(row.f2)];
-    return sides[0] && sides[1] && sides[0] !== sides[1] ? [{ row, sides }] : [];
+    return sides[0] && sides[1] && sides[0] !== sides[1] ? [{ row, sides: sides as [1 | 2, 1 | 2] }] : [];
   });
-  if (matched.length !== 1) return undefined;
-  const { row, sides } = matched[0];
+  return matched.length === 1 ? matched[0] : undefined;
+}
+
+/** The penalties a matched results row states, in our fighter order, or null
+ *  when its note can't be read plainly or names neither fighter. */
+export function rowDeductions(match: { row: ResultRow; sides: [1 | 2, 1 | 2] }): PointDeduction[] | null {
+  const { row, sides } = match;
   const notes = noteDeductions(row.notes);
   if (!notes) return null;
   const items: PointDeduction[] = [];

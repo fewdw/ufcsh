@@ -100,11 +100,15 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   round 3 due to repeated grabbing the fence."), re-read hourly for 45 days.
   Only plainly worded notes are used (who, which round, how many points); a
   note like "deducted two points, one in round two and one in round three" is
-  left to the other sources. A list must fit every judge's card, replaces a
-  Verdict list, and is never replaced by one; a note naming no penalty
-  confirms nothing. Source check (20 November 2026): over the 2,658 decisions
+  left to the other sources, and so is a reason that mentions another round
+  or point. Each corner must match by full name or by our fighter's surname,
+  never a shared given name, and a row two of our bouts could claim is
+  skipped. A list must fit every judge's card, replaces a Verdict list (kept
+  underneath and restored if the note is withdrawn or rewritten into one
+  that can't be used), and is never replaced by one; a note naming no
+  penalty confirms nothing. Rows hidden in comments are ignored. Source check (20 November 2026): over the 2,613 decisions
   since 2016 whose row matched and had an MMA Decisions record, the notes
-  agreed on 60 penalties and 2,555 zeroes, left none out, and named the other
+  agreed on 59 penalties and 2,513 zeroes, left none out, and named the other
   fighter once (Santos–Muñoz, June 2023, where MMA Decisions' record stays).
   Since MMA Decisions went down they added the reasons for Verdict's three
   and two penalties Verdict missed (Brown against Jacobe Smith, 31 October;

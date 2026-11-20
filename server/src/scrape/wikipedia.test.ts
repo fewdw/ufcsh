@@ -570,7 +570,8 @@ test("results rows give both fighters and the notes cell, whatever the layout", 
 }}
 {{MMAevent bout|Lightweight|[[Daniel Santos (fighter)|Daniel Santos]]|def.|[[Johnny Muñoz Jr.]]|Decision (unanimous) (29–27, 29–27, 29–27)|3|5:00|
 }}
-{{MMAevent bout|Heavyweight|Ciryl Gane|vs.|Tai Tuivasa|No Contest (accidental eye poke)|1|0:30}}`);
+{{MMAevent bout|Heavyweight|Ciryl Gane|vs.|Tai Tuivasa|No Contest (accidental eye poke)|1|0:30}}
+<!--{{MMAevent bout|Flyweight|Hidden One|def.|Hidden Two|Decision (unanimous)|3|5:00|Two was deducted one point in round 1.}}-->`);
   assert.deepEqual(rows, [
     { f1: "Leon Edwards", f2: "Kamaru Usman", notes: "For the UFC Welterweight Championship. Edwards was deducted 1 point in round 3 due to grabbing the fence." },
     { f1: "Daniel Santos", f2: "Johnny Muñoz Jr.", notes: "" },
@@ -589,4 +590,6 @@ test("a deduction note is read only when it says plainly who, which round and ho
   assert.equal(noteDeductions("Stošić was deducted two points, one in round two and one in round three, both due to repeated groin strikes."), null);
   assert.equal(noteDeductions("Bout was stopped at 3:56 of round 3 as Borralho was deducted one point due to an accidental illegal knee."), null);
   assert.equal(noteDeductions("First ever unanimous draw in UFC history without point deductions."), null);
+  assert.equal(noteDeductions("Bell was deducted one point in round 1 for an eye poke and another in round 3 for a fence grab."), null);
+  assert.equal(noteDeductions("Bell was deducted one point in round 1 and one point in round 3."), null);
 });

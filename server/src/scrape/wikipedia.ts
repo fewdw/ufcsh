@@ -1021,6 +1021,8 @@ export type ResultRow = { f1: string; f2: string; notes: string };
  *  loser, method, round, time, notes. */
 export function resultRows(wikitext: string): ResultRow[] {
   const rows: ResultRow[] = [];
+  // A row an editor hid in a comment is not a result.
+  wikitext = wikitext.replace(/<!--[\s\S]*?(?:-->|$)/g, "");
   for (const start of wikitext.matchAll(/\{\{\s*MMAevent bout\s*\|/gi)) {
     const params: string[] = [];
     let depth = 0, links = 0, cell = "", i = start.index;
@@ -1064,6 +1066,9 @@ export function noteDeductions(note: string): NoteDeduction[] | null {
     const match = DEDUCTION_NOTE.exec(sentence.trim());
     if (!match) return null;
     const [, name, twice, points, round, ordinal, reason = ""] = match;
+    // "... for an eye poke and another in round 3 for a fence grab": a second
+    // penalty hiding in the reason would be dropped, so the note is refused.
+    if (/\b(?:rounds?|points?|deduct\w*|another|again|twice)\b/i.test(reason)) return null;
     const number = Number(round) || ROUND_WORDS[(round ?? ordinal).toLowerCase()];
     const text = reason.trim();
     items.push({ name: name.trim(), round: number, points: POINTS[points.toLowerCase()] * (twice ? 2 : 1),

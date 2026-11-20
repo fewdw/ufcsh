@@ -61,7 +61,9 @@ export function exportMmaDecisions(source: DatabaseSync, since: number, createdA
     const rounds = sourceUrl(prior?.sourceUrl) && Array.isArray(prior?.judges)
       ? compatibleJudgeCards([], prior.judges).filter((card: JudgeCard) => card.rounds?.length === Number(row.round)) : [];
     const entry: Entry = { ...Object.fromEntries(identity.map(key => [key, row[key]])) as Identity,
-      checkedAt: row.deductions_checked_at!, deductions: row.deductions_json, media: row.media_scores_json,
+      // Only MMA Decisions' own record: a Wikipedia or Verdict stand-in isn't this crawl's to export.
+      checkedAt: row.deductions_checked_at!, deductions: storedDeductions(row.deductions_json)?.source === "MMA Decisions" ? row.deductions_json : null,
+      media: row.media_scores_json,
       judges: rounds.length ? JSON.stringify({ ...prior, judges: rounds }) : null };
     validate(entry, since, createdAt);
     return entry;
@@ -83,7 +85,9 @@ export function replayMmaDecisions(target: DatabaseSync, patch: MmaPatch, apply 
       const fields: [string, string | number][] = [];
       for (const [column, value] of [["deductions_json", entry.deductions], ["media_scores_json", entry.media]] as const) {
         if (value === null || row[column] === value) continue;
-        if (row[column] !== null) { result.conflicts++; continue; }
+        // A provisional stand-in (Wikipedia, Verdict MMA) gives way to MMA Decisions' record.
+        const provisional = column === "deductions_json" && ["Wikipedia", "Verdict MMA"].includes(storedDeductions(row[column])?.source ?? "");
+        if (row[column] !== null && !provisional) { result.conflicts++; continue; }
         fields.push([column, value]);
       }
       const incoming = parse(entry.judges);
