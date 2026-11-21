@@ -81,9 +81,11 @@ The archive contains three new tables:
 - `polymarket_samples` (`WITHOUT ROWID`, read by its primary key): observed
   probabilities (cadence above) and source history, with provenance and bucket
   end times. Observed pre-fight rows also freeze sportsbook and community inputs.
-- `polymarket_rounds`: first observed timestamp for each live round. These are
-  observation times and may lag the broadcast. No historical round boundaries
-  are guessed.
+- `polymarket_rounds`: first observed timestamp for each live round, from a
+  round starting on Verdict MMA (`verdict-live.ts`, read every 15 s) or an admin
+  opening it. UFCStats' round totals never stamp one: they appear after a round
+  ends, often a round or two late. These are observation times and may lag the
+  broadcast. No historical round boundaries are guessed.
 
 History uses the Data API v2 price-history endpoint and cursor pagination,
 bounded to eight pages per read. Partial and failed reads stay visible. Source
