@@ -179,8 +179,9 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
   const sourceUrl = `${VERDICT}/event/${eventId}/fight/${fightNumber}`;
   try {
     // Penalties are only in the hydration payload, which costs ~1.4 MB, so
-    // only a recent decision MMA Decisions hasn't covered pays for it.
-    const penalties = isDecision(fight) && storedDeductions(fight.deductions_json)?.source !== "MMA Decisions"
+    // only a recent bout MMA Decisions hasn't covered pays for it: a decision,
+    // or a finish after round one (MMA Decisions never covers those).
+    const penalties = scoreable(fight) && storedDeductions(fight.deductions_json)?.source !== "MMA Decisions"
       && (mode === "refresh" || ageInDays(fight.date, Date.now()) <= 45);
     const path = `/event/${eventId}/fight/${fightNumber}`;
     const html = penalties ? await fetchVerdictDocument(path) : await fetchVerdictHtml(path);
