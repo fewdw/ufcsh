@@ -217,6 +217,24 @@ test("a recent card's Wikipedia notes replace Verdict's penalties, never MMA Dec
   assert.deepEqual(await syncWikiPointDeductions(now + 46 * 86400_000), { events: 0, stored: 0 });
 });
 
+test("Wikipedia's penalty in a round before a stoppage is stored; one in a first-round finish is not", async t => {
+  db.exec("BEGIN"); t.after(() => db.exec("ROLLBACK"));
+  const now = Date.parse("2030-01-25T12:00:00Z");
+  db.prepare("INSERT INTO events (id, name, date, complete, wiki_title) VALUES ('wiki-fin', 'UFC 997', '2030-01-23', 1, 'UFC 997')").run();
+  const fight = db.prepare(`INSERT INTO fights (id, event_id, ord, f1_name, f2_name, method, round) VALUES (?, 'wiki-fin', ?, ?, ?, ?, ?)`);
+  fight.run("wiki-fin-a", 1, "Amy Albar", "Ana Costa", "SUB", "3");
+  fight.run("wiki-fin-b", 2, "Bea Bell", "Cia Cruz", "KO/TKO", "1");
+  const row = (a: string, b: string, how: string, round: number, notes: string) => `{{MMAevent bout|Flyweight|[[${a}]]|def.|[[${b}]]|${how}|${round}|4:34|${notes}\n}}`;
+  const article = `{{Infobox MMA event\n| date = {{start date|2030|01|23}}\n}}\n==Results==\n`
+    + row("Amy Albar", "Ana Costa", "Submission (rear-naked choke)", 3, "Albar was deducted one point in round 2 due to grabbing the fence.")
+    + row("Bea Bell", "Cia Cruz", "TKO (punches)", 1, "Bell was deducted one point in round 1 due to a groin strike.");
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ parse: { wikitext: { "*": article } } })));
+  assert.deepEqual(await syncWikiPointDeductions(now), { events: 1, stored: 1 });
+  const stored = (id: string) => (db.prepare("SELECT deductions_json FROM fights WHERE id = ?").get(id) as { deductions_json: string | null }).deductions_json;
+  assert.deepEqual(JSON.parse(stored("wiki-fin-a")!).items, [{ side: "f1", round: 2, points: 1, reason: "Grabbing the fence" }]);
+  assert.equal(stored("wiki-fin-b"), null);
+});
+
 test("a recent card whose article wasn't found the first time is looked for again", async t => {
   db.exec("BEGIN"); t.after(() => db.exec("ROLLBACK"));
   const now = Date.parse("2030-02-20T12:00:00Z");
