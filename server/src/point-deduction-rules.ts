@@ -6,7 +6,8 @@ import { normName } from "./util.ts";
 /** Referee penalties are separate from the ten-point round a fan scores. */
 export type PointDeduction = { side: "f1" | "f2"; round: number; points: number; reason: string };
 export type DeductionState = { confirmed: boolean; items: PointDeduction[] };
-export type DeductionFight = { detail_json?: string | null; judge_rounds_json?: string | null; deductions_json?: string | null };
+export type DeductionFight = { detail_json?: string | null; judge_rounds_json?: string | null; deductions_json?: string | null;
+  method?: string | null; round?: string | number | null };
 /** MMA Decisions is the ordinary record; until it has a bout, the event's
  * Wikipedia results notes and then Verdict supply provisional penalties.
  * Reviewed commission/UFC reports can repair explicit, source-verified gaps. */
@@ -50,6 +51,24 @@ export function deductionProblem(cards: JudgeCard[], items: PointDeduction[]): s
   return null;
 }
 
+/** The round a bout ended in when it was stopped after round one: fans score
+ *  the rounds before it, and no judge's card exists to check a penalty
+ *  against. Null for a decision, a first-round finish or an unknown ending. */
+export function finishedInRound(fight: Pick<DeductionFight, "method" | "round">): number | null {
+  if (!fight.method || /DEC/.test(fight.method)) return null;
+  const round = Number(fight.round);
+  return Number.isInteger(round) && round > 1 && round <= 5 ? round : null;
+}
+
+/** What rules a source's list out for this bout: the judges' round cards for
+ *  a decision; for a finish, a penalty in a round that was never fought. */
+export function recordProblem(fight: DeductionFight, cards: JudgeCard[], items: PointDeduction[]): string | null {
+  const finish = finishedInRound(fight);
+  if (finish == null) return deductionProblem(cards, items);
+  const late = items.find(item => item.round > finish);
+  return late ? `Round ${late.round} was never fought (stopped in round ${finish})` : null;
+}
+
 /** Points by fighter and round: Verdict sums a round's penalties into one entry. */
 export const pointsBy = (items: PointDeduction[]): Record<string, number> =>
   items.reduce((sum, item) => ({ ...sum, [`${item.side} ${item.round}`]: (sum[`${item.side} ${item.round}`] ?? 0) + item.points }), {} as Record<string, number>);
@@ -63,16 +82,16 @@ export const coversVerdict = (items: PointDeduction[], verdict: PointDeduction[]
 /** The record that fits the cards: the stored one, else, under a Wikipedia
  *  list a later card rules out or a later Verdict read contradicts, the
  *  Verdict list it replaced (`previous`). */
-function fittingRecord(cards: JudgeCard[], record: Stored | null): Stored | null {
+function fittingRecord(problem: (items: PointDeduction[]) => string | null, record: Stored | null): Stored | null {
   if (!record) return null;
   const below = record.source === "Wikipedia" ? storedDeductions(JSON.stringify((record as { previous?: unknown }).previous ?? null)) : null;
   const verdict = below?.source === "Verdict MMA" ? below : null;
-  if (!deductionProblem(cards, record.items) && (!verdict || coversVerdict(record.items, verdict.items))) return record;
-  return verdict && !deductionProblem(cards, verdict.items) ? verdict : null;
+  if (!problem(record.items) && (!verdict || coversVerdict(record.items, verdict.items))) return record;
+  return verdict && !problem(verdict.items) ? verdict : null;
 }
 
 export function verifiedDeductions(cards: JudgeCard[], json: string | null | undefined): PointDeduction[] {
-  return fittingRecord(cards, storedDeductions(json))?.items ?? [];
+  return fittingRecord(items => deductionProblem(cards, items), storedDeductions(json))?.items ?? [];
 }
 
 export function fightDeductionState(fight: DeductionFight): { cards: JudgeCard[]; record: Stored | null } {
@@ -88,7 +107,7 @@ export function fightDeductionState(fight: DeductionFight): { cards: JudgeCard[]
  * penalty replaces a missing, repeated or wrong-side user deduction. */
 export function confirmedDeductions(fight: DeductionFight): DeductionState {
   const { cards, record } = fightDeductionState(fight);
-  const fitting = fittingRecord(cards, record);
+  const fitting = fittingRecord(items => recordProblem(fight, cards, items), record);
   return fitting ? { confirmed: true, items: fitting.items } : { confirmed: false, items: [] };
 }
 

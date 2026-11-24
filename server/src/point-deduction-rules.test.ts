@@ -7,6 +7,17 @@ const record = (items: unknown[]) => JSON.stringify({ source: "MMA Decisions", s
 const judges = (a: number, b: number) => JSON.stringify({ judges: [{ judge: "A Judge", f1Score: a, f2Score: b,
   rounds: [{ round: 1, f1Score: a, f2Score: b }] }] });
 
+test("a bout stopped after round one needs no judge's card, only a penalty in a round that was fought", () => {
+  const wiki = (items: PointDeduction[]) => JSON.stringify({ source: "Wikipedia", sourceUrl: "https://en.wikipedia.org/wiki/UFC_1", items });
+  const round2: PointDeduction = { side: "f1", round: 2, points: 1, reason: "Grabbing the fence" };
+  assert.deepEqual(confirmedDeductions({ method: "SUB", round: "3", deductions_json: wiki([round2]) }), { confirmed: true, items: [round2] });
+  assert.deepEqual(confirmedDeductions({ method: "KO/TKO", round: 2, deductions_json: wiki([round2]) }), { confirmed: true, items: [round2] });
+  assert.equal(confirmedDeductions({ method: "KO/TKO", round: "2", deductions_json: wiki([{ ...round2, round: 3 }]) }).confirmed, false);
+  // A first-round stoppage has nothing scored; a decision still needs its cards.
+  assert.equal(confirmedDeductions({ method: "SUB", round: "1", deductions_json: wiki([{ ...round2, round: 1 }]) }).confirmed, false);
+  assert.equal(confirmedDeductions({ method: "U-DEC", round: "3", deductions_json: wiki([round2]) }).confirmed, false);
+});
+
 test("unknown, confirmed none and conflicting sources have different reconciliation rules", () => {
   assert.deepEqual(confirmedDeductions({}), { confirmed: false, items: [] });
   assert.deepEqual(confirmedDeductions({ deductions_json: record([]), detail_json: judges(10, 9) }), { confirmed: true, items: [] });
