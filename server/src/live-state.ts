@@ -33,7 +33,9 @@ export function fightIsUnderway(fight: { detail_json: string | null; verdict_liv
  * started and ended, and its fans' average over the ended ones. */
 export type VerdictLive = {
   sourceUrl: string; status: number; started: number; ended: number;
-  community: { cards: number; avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[] } | null;
+  /** `included`: penalties Verdict's grid already took (community-scorecards.ts). */
+  community: { cards: number; avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[];
+    included?: { round: number; deduct1: number; deduct2: number }[] } | null;
 };
 export function verdictLive(fight: { verdict_live_json?: string | null } | undefined): VerdictLive | null {
   if (!fight?.verdict_live_json) return null;

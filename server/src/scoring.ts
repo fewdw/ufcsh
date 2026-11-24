@@ -560,7 +560,9 @@ export class ScoringStore {
     const rounds = live?.community?.rounds.filter(round => round.round <= max) ?? [];
     if (!live?.community || !rounds.length) return null;
     const sum = (key: "avg1" | "avg2") => rounds.reduce((total, round) => total + round[key], 0);
-    return adjustCommunityDeductions({ source: "Verdict MMA", sourceUrl: live.sourceUrl, cards: live.community.cards, avg1: sum("avg1"), avg2: sum("avg2"), rounds }, confirmedDeductions(fight ?? {}));
+    const included = live.community.included?.filter(round => round.round <= max);
+    return adjustCommunityDeductions({ source: "Verdict MMA", sourceUrl: live.sourceUrl, cards: live.community.cards, avg1: sum("avg1"), avg2: sum("avg2"), rounds,
+      ...(included ? { included } : {}) }, confirmedDeductions(fight ?? {}));
   }
   /** The scorer's own identity, minted on first use so that a reader who has
    *  not saved a card yet still has a profile to open and share. */

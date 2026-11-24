@@ -1,7 +1,7 @@
 import { validCommunityScorecard } from "./community-scorecards.ts";
 import { db } from "./db.ts";
 import { isFightDay, type VerdictLive } from "./live-state.ts";
-import { fetchVerdictDocument, parseVerdictFightPage, parseVerdictLiveCard, verdictRendered, VERDICT, type VerdictLiveFight } from "./scrape/verdict.ts";
+import { fetchVerdictDocument, parseVerdictFightPage, parseVerdictGridDeductions, parseVerdictLiveCard, verdictRendered, VERDICT, type VerdictLiveFight } from "./scrape/verdict.ts";
 import { log } from "./util.ts";
 import { alignment } from "./verdict-import.ts";
 
@@ -77,9 +77,11 @@ export function liveState(fight: VerdictLiveFight, html: string, order: 1 | -1, 
   // cover only rounds Verdict has ended.
   if (page && card && alignment(page.f1Name, page.f2Name, [fight.f1Name], [fight.f2Name])?.order === 1
     && card.rounds.length <= ended && validCommunityScorecard(card, card.rounds.length)) {
+    const included = parseVerdictGridDeductions(html, card);
     community = order === 1
-      ? { cards: card.cards, avg1: card.avg1, avg2: card.avg2, rounds: card.rounds }
-      : { cards: card.cards, avg1: card.avg2, avg2: card.avg1, rounds: card.rounds.map(round => ({ round: round.round, avg1: round.avg2, avg2: round.avg1 })) };
+      ? { cards: card.cards, avg1: card.avg1, avg2: card.avg2, rounds: card.rounds, ...(included ? { included } : {}) }
+      : { cards: card.cards, avg1: card.avg2, avg2: card.avg1, rounds: card.rounds.map(round => ({ round: round.round, avg1: round.avg2, avg2: round.avg1 })),
+        ...(included ? { included: included.map(round => ({ round: round.round, deduct1: round.deduct2, deduct2: round.deduct1 })) } : {}) };
   }
   return { sourceUrl, status: fight.status, started, ended, community };
 }

@@ -1,9 +1,9 @@
 import { completedScorecardRounds, parseCommunityScorecard, validCommunityScorecard } from "./community-scorecards.ts";
 import { db } from "./db.ts";
-import { fetchVerdictDocument, fetchVerdictHtml, parseVerdictEventFightNumbers, parseVerdictDeductions, parseVerdictEventPage, parseVerdictFightPage, VERDICT, verdictRendered } from "./scrape/verdict.ts";
+import { fetchVerdictDocument, fetchVerdictHtml, parseVerdictEventFightNumbers, parseVerdictDeductions, parseVerdictEventPage, parseVerdictFightPage, parseVerdictGridDeductions, VERDICT, verdictRendered } from "./scrape/verdict.ts";
 import { firstLastName, log, normName } from "./util.ts";
 import { combineJudgeRounds, hasCompleteJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
-import { storedDeductions, type PointDeduction } from "./point-deduction-rules.ts";
+import { confirmedDeductions, storedDeductions, type PointDeduction } from "./point-deduction-rules.ts";
 
 /**
  * Verdict MMA's official round cards and community aggregates, matched onto
@@ -183,9 +183,12 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
     // or a finish after round one (MMA Decisions never covers those).
     const penalties = scoreable(fight) && storedDeductions(fight.deductions_json)?.source !== "MMA Decisions"
       && (mode === "refresh" || ageInDays(fight.date, Date.now()) <= 45);
+    // A bout with a penalty also pays for it, to learn whether Verdict's fan
+    // grid already took the points (parseVerdictGridDeductions).
+    const full = penalties || confirmedDeductions(fight).items.some(item => item.points > 0);
     const path = `/event/${eventId}/fight/${fightNumber}`;
-    const html = penalties ? await fetchVerdictDocument(path) : await fetchVerdictHtml(path);
-    const page = parseVerdictFightPage(penalties ? verdictRendered(html) : html);
+    const html = full ? await fetchVerdictDocument(path) : await fetchVerdictHtml(path);
+    const page = parseVerdictFightPage(full ? verdictRendered(html) : html);
     if (!page) throw new Error("fight page has no title to read");
     const order = alignment(page.f1Name, page.f2Name, ...sides(fight))?.order;
     if (!order) throw new Error(`fight page names ${page.f1Name} vs ${page.f2Name}`);
@@ -222,12 +225,14 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
     let communityJson: string | null = null;
     if ((mode !== "missing" || !hasCommunity(fight)) && validCommunityScorecard(page.community, completedScorecardRounds(fight))) {
       const card = page.community;
-      const aligned = order === 1 ? card : {
+      const taken = full ? parseVerdictGridDeductions(html, card) : null;
+      const included = taken && (order === 1 ? taken : taken.map(round => ({ round: round.round, deduct1: round.deduct2, deduct2: round.deduct1 })));
+      const aligned = { ...(order === 1 ? card : {
         ...card,
         f1Name: card.f2Name, f2Name: card.f1Name,
         avg1: card.avg2, avg2: card.avg1,
         rounds: card.rounds.map(round => ({ ...round, avg1: round.avg2, avg2: round.avg1 })),
-      };
+      }), ...(included ? { included } : {}) };
       // An unchanged tally is left alone, so a re-read doesn't rebuild the
       // analytics that watch this table.
       const next = { source: "Verdict MMA", sourceUrl, ...aligned, deductionsApplied: false };
@@ -316,6 +321,27 @@ async function listedVerdictIds(): Promise<number[]> {
 
 let running = false;
 let discoveredAt = 0;
+const baseReadAt = new Map<number, number>();
+
+/** Verdict fan grids on bouts with a penalty, stored without knowing whether
+ * Verdict had already taken it (`included`): they are read as base scores,
+ * which a grid read since Verdict began taking penalties is not (Albazi–Costa
+ * showed 6.77 for a 7.77 that already had his point taken). The pass re-reads
+ * them, each at most daily, and Admin → Bugs lists any left. */
+export function basePenaltyGrids(now = Date.now()): { id: string; verdict_id: number | null; verdict_checked_at: number | null; due: boolean }[] {
+  const rows = db.prepare(`SELECT f.id, f.event_id, f.method, f.round, f.detail_json, f.judge_rounds_json, f.deductions_json, f.verdict_checked_at,
+      json_extract(f.community_score_json, '$.sourceUrl') AS source_url
+    FROM fights f WHERE f.deductions_json IS NOT NULL
+      AND json_valid(f.community_score_json) AND json_extract(f.community_score_json, '$.source') = 'Verdict MMA'
+      AND json_type(f.community_score_json, '$.included') IS NULL`).all() as (LocalFight & { source_url: unknown })[];
+  return rows.filter(fight => confirmedDeductions(fight).items.some(item => item.points > 0))
+    .map(fight => {
+      // The card that held the bout: Verdict files some under a date next to ours.
+      const card = typeof fight.source_url === "string" ? fight.source_url.match(/^https:\/\/verdictmma\.com\/event\/(\d+)\/fight\/\d+$/) : null;
+      return { id: fight.id, verdict_id: card ? Number(card[1]) : null, verdict_checked_at: fight.verdict_checked_at ?? null,
+        due: (fight.verdict_checked_at ?? 0) < now - 86_400_000 };
+    });
+}
 
 /** How long a bout's community totals may go unread, by days since it was
  * fought: votes pour in on fight night, trickle for weeks, and stop. */
@@ -354,6 +380,22 @@ const dueCards = db.prepare(`SELECT v.verdict_id, v.checked_at, julianday('now')
       AND EXISTS (SELECT 1 FROM events n WHERE n.date BETWEEN date(v.date, '-1 day') AND date(v.date, '+1 day')))
   ORDER BY age`);
 
+/** A few cards a pass: older imports re-read with Verdict's page data. */
+export async function rereadBasePenaltyGrids(): Promise<Awaited<ReturnType<typeof importVerdictEvent>>[]> {
+  const base = basePenaltyGrids().filter(fight => fight.due);
+  if (!base.length) return [];
+  const ids = new Set(base.map(fight => fight.id));
+  const cards = [...new Set(base.flatMap(fight => fight.verdict_id ?? []))].sort((a, b) => b - a)
+    // A card that would not load waits a day rather than holding the queue.
+    .filter(id => (baseReadAt.get(id) ?? 0) < Date.now() - 86_400_000).slice(0, 3);
+  const results = [];
+  for (const id of cards) {
+    baseReadAt.set(id, Date.now());
+    results.push(await importVerdictEvent(id, "recent", { due: fight => ids.has(fight.id) }));
+  }
+  return results;
+}
+
 /**
  * Background pass: find Verdict's page for every new card hourly, and re-read
  * each card and bout on the schedule above, so a decision's tally lands
@@ -365,13 +407,15 @@ export async function syncVerdictScorecards(): Promise<VerdictImportStats & { ev
   if (running) return total;
   running = true;
   try {
-    const add = (result: Awaited<ReturnType<typeof importVerdictEvent>>) => {
-      if (!result) return;
-      total.events += 1;
-      total.matchedFights += result.matchedFights;
-      total.official += result.official;
-      total.community += result.community;
-      total.failed += result.failed;
+    const add = (...results: Awaited<ReturnType<typeof importVerdictEvent>>[]) => {
+      for (const result of results) {
+        if (!result) continue;
+        total.events += 1;
+        total.matchedFights += result.matchedFights;
+        total.official += result.official;
+        total.community += result.community;
+        total.failed += result.failed;
+      }
     };
     if (Date.now() - discoveredAt > 3_600_000) {
       discoveredAt = Date.now();
@@ -397,6 +441,7 @@ export async function syncVerdictScorecards(): Promise<VerdictImportStats & { ev
       if (!every || card.checked_at >= Date.now() - every || (card.age > 365 && archive++ > 0)) continue;
       add(await importVerdictEvent(card.verdict_id, "recent", { due: fight => fightDue(fight) }));
     }
+    add(...await rereadBasePenaltyGrids());
     if (total.events) log(`verdict scorecards: ${total.events} events, ${total.matchedFights} fights, ${total.official} official, ${total.community} community, ${total.failed} failed`);
     return total;
   } finally {

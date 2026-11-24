@@ -339,6 +339,37 @@ export function parseVerdictDeductions(html: string, eventId: number, fightNumbe
   return found;
 }
 
+/** Penalties Verdict has already taken from its own fan grid, per round, in
+ * the grid's corner order. Verdict started taking them in late 2026 and only
+ * on some bouts (Albazi–Costa R2 7.77, his point taken; Stamann–Song's 2019
+ * grid still shows base scores): a grid that took them carries a
+ * `deductions` list beside its scores. Null without the hydration payload or
+ * when no payload row matches the rendered grid. */
+export function parseVerdictGridDeductions(html: string, community: VerdictCommunity): { round: number; deduct1: number; deduct2: number }[] | null {
+  const nuxt = nuxtPayload(html);
+  if (!nuxt) return null;
+  const { value, flat } = nuxt;
+  const row = (name: string, scores: number[]): number[] | null => {
+    let found: number[] | null = null;
+    for (const candidate of flat) {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate) || !("scores" in candidate) || !("name" in candidate)) continue;
+      if (cleanText(String(value(candidate.name) ?? "")) !== name) continue;
+      const listed = value(candidate.scores);
+      if (!Array.isArray(listed) || scores.some((score, index) => Number(value(listed[index])) !== score)) continue;
+      const taken = "deductions" in candidate ? value(candidate.deductions) : [];
+      if (!Array.isArray(taken)) return null;
+      const points = scores.map((_score, index) => index < taken.length ? Number(value(taken[index])) : 0);
+      if (points.some(point => !Number.isInteger(point) || point < 0 || point > 3)) return null;
+      if (found && found.join() !== points.join()) return null;
+      found = points;
+    }
+    return found;
+  };
+  const one = row(community.f1Name, community.rounds.map(round => round.avg1));
+  const two = row(community.f2Name, community.rounds.map(round => round.avg2));
+  return one && two ? community.rounds.map((round, index) => ({ round: round.round, deduct1: one[index], deduct2: two[index] })) : null;
+}
+
 /** The rendered page ends where the hydration payload starts; reading only
  * that part keeps a live poll's HTML parse small. */
 export const verdictRendered = (html: string): string => {

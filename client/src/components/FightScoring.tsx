@@ -93,10 +93,9 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
                     return (
                       <span key={index} className={`flex items-center justify-center border-t border-zinc-100 py-2 text-xs @[32rem]:text-sm ${taken ? "" : lead(mine, theirs)} ${index < eligibility.available ? "" : "opacity-50"}`}>
                         {taken ? (
-                          <span className="relative rounded bg-red-100 px-1 py-0.5 font-semibold text-red-700 dark:bg-red-950 dark:text-red-300"
+                          <span className="rounded bg-red-100 px-1 py-0.5 font-semibold text-red-700 dark:bg-red-950 dark:text-red-300"
                             title={note} aria-label={`${decimalScore(mine)}. ${note}.`}>
                             {decimalScore(mine)}
-                            <span aria-hidden="true" className="absolute -right-1.5 -top-2 rounded-full bg-red-600 px-1 text-[9px] font-bold leading-[14px] text-white">−{taken}</span>
                           </span>
                         ) : decimalScore(mine)}
                       </span>

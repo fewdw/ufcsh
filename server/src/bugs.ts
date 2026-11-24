@@ -21,7 +21,7 @@ import { VERIFIED_NON_REPLACEMENTS } from "./replacement-announcements.ts";
 import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
-import { importVerdictEvent } from "./verdict-import.ts";
+import { basePenaltyGrids, importVerdictEvent } from "./verdict-import.ts";
 import { everyFor as verdictPickEvery, importVerdictPickCard } from "./verdict-picks.ts";
 import { externalPicks } from "./predictions.ts";
 import { deductionProblem, fightDeductionState, MMA_DECISIONS_BLOCKED, storedMedia, syncFightMediaScores, syncFightPointDeductions } from "./point-deductions.ts";
@@ -1325,6 +1325,20 @@ function invalidCommunityScores(): BugCheck {
   }));
 }
 
+function basePenaltyCommunityScores(): BugCheck {
+  const pending = new Map(basePenaltyGrids().map(fight => [fight.id, fight]));
+  const rows = pending.size ? (db.prepare(`SELECT ${FIGHT_COLUMNS} FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE f.id IN (SELECT value FROM json_each(?)) ORDER BY e.date DESC`).all(JSON.stringify([...pending.keys()])) as FightRow[]) : [];
+  return check({
+    id: "fight-community-base-penalties", group: "Scorecards", label: "Fan cards on penalised bouts not yet checked for Verdict's own deductions",
+    description: "Since late 2026 Verdict takes the referee's point deductions off some of its fan grids itself (Albazi–Costa R2 7.77, his point taken) and leaves others as base scores (Stamann–Song, 2019); its page data says which. These grids were stored without that, so ufc.sh takes the penalty off as if they were base scores, which loses it twice on a grid Verdict already adjusted. The background pass re-reads them with the page data (a few cards a pass, each bout at most daily). One that stays here means Verdict's page data no longer matches its grid.",
+    grade: () => "minor",
+  }, rows.map(fight => fightItem(fight, {
+    facts: [["Verdict checked", ago(pending.get(fight.id)?.verdict_checked_at ?? null)]],
+    actions: [{ id: "verdict", label: "Re-read Verdict MMA", target: fight.id }],
+  })));
+}
+
 function verdictImportErrors(): BugCheck {
   const fights = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, f.verdict_error, f.verdict_checked_at
@@ -2521,6 +2535,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     decisionsWithoutStatsCard(),
     fightsWithoutCommunityScores(),
     invalidCommunityScores(),
+    basePenaltyCommunityScores(),
     verdictImportErrors(),
     verdictPickErrors(),
     verdictPickDrift(),
