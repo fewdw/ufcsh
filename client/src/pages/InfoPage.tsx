@@ -101,11 +101,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-11-20">November 20, 2026</time></p>
+            <p><time dateTime="2026-11-23">November 23, 2026</time></p>
             <ul>
-              <li>Point deductions now use Wikipedia results notes while MMA Decisions is unavailable.</li>
-              <li>Deductions are checked against judges’ scorecards and Verdict MMA before they affect scoring.</li>
-              <li>Admin health no longer warns about MMA Decisions while its site is down.</li>
+              <li>Point deductions in rounds before a stoppage now count toward fan scorecards.</li>
+              <li>Verdict MMA fan scorecards and live rounds no longer miss newly listed cards.</li>
+              <li>Polymarket round markers now land on the real bell instead of a round or two late.</li>
             </ul>
           </Section>
         </div>
