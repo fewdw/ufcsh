@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { alignment, importVerdictEvent, syncVerdictScorecards } from "./verdict-import.ts";
+import { alignment, basePenaltyGrids, importVerdictEvent, rereadBasePenaltyGrids, syncVerdictScorecards } from "./verdict-import.ts";
+import { communityScorecard } from "./community-scorecards.ts";
 import { db } from "./db.ts";
 import { bugReport } from "./bugs.ts";
 import { confirmedDeductions, type DeductionFight } from "./point-deduction-rules.ts";
@@ -170,6 +171,63 @@ test("Verdict's listed penalties stand in for MMA Decisions, never over it, and 
     await importVerdictEvent(verdictId, "refresh");
     assert.equal(read().deductions_json, stored);
   }
+});
+
+test("a penalised bout's fan grid learns from Verdict's page whether the point is already taken, and loses it once", async t => {
+  const eventId = "verdict-base-penalty-fixture", fightId = "eeeeeeeeeeeeeeee", verdictId = 987656;
+  const originalFetch = globalThis.fetch;
+  const paths: string[] = [];
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    db.prepare("DELETE FROM fights WHERE id = ?").run(fightId);
+    db.prepare("DELETE FROM events WHERE id = ?").run(eventId);
+    db.prepare("DELETE FROM verdict_events WHERE verdict_id = ?").run(verdictId);
+  });
+  db.prepare("INSERT INTO events (id, name, date, complete) VALUES (?, 'Base penalty fixture', '2024-03-16', 1)").run(eventId);
+  const judges = ["A", "B", "C"].map(judge => ({ judge, f1Score: 29, f2Score: 27,
+    rounds: [{ round: 1, f1Score: 9, f2Score: 9 }, { round: 2, f1Score: 10, f2Score: 9 }, { round: 3, f1Score: 10, f2Score: 9 }] }));
+  const deductions = JSON.stringify({ source: "MMA Decisions", sourceUrl: "https://mmadecisions.com/decision/2", items: [{ side: "f1", round: 1, points: 1, reason: "Fence grab" }] });
+  // Stored without the page data, from a grid that had already taken One's
+  // point: read as base scores, it loses the point a second time.
+  const stored = { source: "Verdict MMA", sourceUrl: `https://verdictmma.com/event/${verdictId}/fight/1`, fetchedAt: 1, cards: 900,
+    avg1: 27.6, avg2: 28.3, rounds: [{ round: 1, avg1: 8.8, avg2: 9.2 }, { round: 2, avg1: 9.9, avg2: 9.1 }, { round: 3, avg1: 8.9, avg2: 10 }], deductionsApplied: false };
+  db.prepare(`INSERT INTO fights (id, event_id, f1_name, f2_name, f1_outcome, f2_outcome, method, round, judge_rounds_json, deductions_json, community_score_json, verdict_checked_at)
+    VALUES (?, ?, 'Alpha One', 'Beta Two', 'win', 'loss', 'U-DEC', '3', ?, ?, ?, 1)`).run(fightId, eventId, JSON.stringify({ source: "Verdict MMA", judges }), deductions, JSON.stringify(stored));
+  const fight = () => db.prepare("SELECT method, round, detail_json, judge_rounds_json, deductions_json, community_score_json FROM fights WHERE id = ?").get(fightId) as DeductionFight & { community_score_json: string };
+  assert.ok(Math.abs(communityScorecard(fight(), 3)!.rounds[0].avg1 - 7.8) < 1e-9);
+  assert.deepEqual(basePenaltyGrids().filter(row => row.id === fightId).map(row => [row.verdict_id, row.due]), [[verdictId, true]]);
+
+  // Verdict lists the bout the other way round; its page data marks the point
+  // its grid took. Judges' cards on the page share the grid's shape.
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    paths.push(path);
+    if (path === `/event/${verdictId}`) return new Response(`<head><meta property="og:title" content="Base penalty fixture">
+      <meta name="description" content="Fixture — March 16, 2024 · Arena"></head>
+      <a href="/rate/fights/event/${verdictId}/fight/1"><div></div><div><div>Beta Two</div><div>vs.</div><div>Alpha One</div></div></a>`);
+    if (path !== `/event/${verdictId}/fight/1`) return new Response("", { status: 404 });
+    const cell = (values: number[]) => values.map(value => `<span>${value}</span>`).join("");
+    const flat: unknown[] = [];
+    const at = (value: unknown) => flat.push(value) - 1;
+    const row = (name: string, scores: string[], total: string, taken?: number[]) =>
+      at({ name: at(name), scores: at(scores.map(score => at(score))), total: at(total), ...(taken ? { deductions: at(taken.map(point => at(point))) } : {}) });
+    row("Two", ["9.2", "9.1", "10"], "28.3");
+    row("One", ["8.8", "9.9", "8.9"], "27.6", [1, 0, 0]);
+    row("One", ["9", "10", "10"], "29");
+    return new Response(`<head><meta property="og:title" content="Beta Two vs Alpha One"></head><main><section><h2>Verdict Scorecard</h2><div>
+      <div style="display:grid;padding:0 4px 10px"><span>Round</span><span>R1</span><span>R2</span><span>R3</span><span>TOT</span></div>
+      <div style="display:grid;margin-bottom:6px"><span>Two</span>${cell([9.2, 9.1, 10])}<span>28.3</span></div>
+      <div style="display:grid;margin-bottom:0"><span>One</span>${cell([8.8, 9.9, 8.9])}<span>27.6</span></div></div>
+      <a href="/community-scorecards/event/${verdictId}/fight/1"><span><span>900</span> scorecards</span></a></section></main>
+      <script type="application/json" id="__NUXT_DATA__">${JSON.stringify(flat)}</script>`);
+  };
+  await rereadBasePenaltyGrids();
+  assert.ok(paths.includes(`/event/${verdictId}/fight/1`), "the pass re-reads the grid");
+  const reread = JSON.parse(fight().community_score_json);
+  assert.deepEqual(reread.included, [{ round: 1, deduct1: 1, deduct2: 0 }, { round: 2, deduct1: 0, deduct2: 0 }, { round: 3, deduct1: 0, deduct2: 0 }]);
+  assert.equal(reread.rounds[0].avg1, 8.8);
+  assert.ok(Math.abs(communityScorecard(fight(), 3)!.rounds[0].avg1 - 8.8) < 1e-9, "the point is taken once");
+  assert.equal(basePenaltyGrids().some(row => row.id === fightId), false);
 });
 
 test("a card first read before Verdict dated it is read again, and undated pages never move the probe window", async t => {

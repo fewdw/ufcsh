@@ -7,6 +7,10 @@ export type CommunityScorecard = {
   /** The published Verdict grid is imported unchanged. Explicit provenance
    * keeps an already adjusted source from ever losing the same points twice. */
   deductionsApplied?: boolean;
+  /** Penalties Verdict had already taken from the grid it published, per
+   * round (`parseVerdictGridDeductions`). Missing on grids read without the
+   * page's data: those are taken as base scores. */
+  included?: { round: number; deduct1: number; deduct2: number }[];
 };
 
 /** A finish's last round was not completed; decisions include their last round. */
@@ -30,7 +34,10 @@ export function validCommunityScorecard(value: any, rounds: number): value is Co
     && value.rounds.every((r: any, i: number) => r?.round === i + 1
       && [r.avg1, r.avg2].every(n => Number.isFinite(n) && n >= 0 && n <= 10))
     && (["avg1", "avg2"] as const).every(key => Math.abs(value[key]
-      - value.rounds.reduce((sum: number, r: any) => sum + r[key], 0)) <= 0.05 * (rounds + 1) + 1e-9);
+      - value.rounds.reduce((sum: number, r: any) => sum + r[key], 0)) <= 0.05 * (rounds + 1) + 1e-9)
+    && (value.included === undefined || (Array.isArray(value.included) && value.included.every((r: any) =>
+      Number.isInteger(r?.round) && r.round >= 1 && r.round <= rounds
+      && [r.deduct1, r.deduct2].every(n => Number.isInteger(n) && n >= 0 && n <= 3))));
 }
 
 export function parseCommunityScorecard(raw: string | null | undefined, rounds: number): CommunityScorecard | null {
@@ -40,17 +47,23 @@ export function parseCommunityScorecard(raw: string | null | undefined, rounds: 
   } catch { return null; }
 }
 
-/** Verdict's published scorecard grid carries the fans' base round scores
- * (e.g. Garbrandt–Long, R3 9.39–9.47 despite Long's two-point penalty).
- * Apply verified penalties once, preserving the raw import and its rounding.
+/** Verdict's grid carried the fans' base round scores (Garbrandt–Long read in
+ * September 2026: R3 9.39–9.47 despite Long's two-point penalty); since late
+ * 2026 some grids come with the penalties taken (the same round read 9.39–7.47
+ * on 24 November 2026) and say which (`included`). Take each verified penalty
+ * once: whatever the grid has not already taken, preserving the raw import and
+ * its rounding.
  * Other sources are left alone unless their scoring convention is known. */
 export function adjustCommunityDeductions<T extends CommunityScorecard>(card: T, state: DeductionState): T {
-  if (card.source !== "Verdict MMA" || card.deductionsApplied || !state.confirmed || !state.items.length) return card;
+  const taken = (round: number) => card.included?.find(item => item.round === round) ?? { deduct1: 0, deduct2: 0 };
+  if (card.source !== "Verdict MMA" || card.deductionsApplied || !state.confirmed
+    || (!state.items.length && !card.included?.some(item => item.deduct1 || item.deduct2))) return card;
   let deduct1 = 0, deduct2 = 0;
   const rounds = card.rounds.map(round => {
-    const points = deductionsIn(state.items, round.round);
-    deduct1 += points.deduct1; deduct2 += points.deduct2;
-    return { ...round, avg1: round.avg1 - points.deduct1, avg2: round.avg2 - points.deduct2 };
+    const points = deductionsIn(state.items, round.round), already = taken(round.round);
+    const owed1 = points.deduct1 - already.deduct1, owed2 = points.deduct2 - already.deduct2;
+    deduct1 += owed1; deduct2 += owed2;
+    return { ...round, avg1: round.avg1 - owed1, avg2: round.avg2 - owed2 };
   });
   return { ...card, avg1: card.avg1 - deduct1, avg2: card.avg2 - deduct2, rounds, deductionsApplied: true };
 }

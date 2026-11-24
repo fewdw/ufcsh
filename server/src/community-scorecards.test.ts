@@ -53,6 +53,19 @@ test("Verdict base scores lose confirmed penalties once, without rewriting the i
   assert.equal(raw.avg2, 28.86);
   assert.equal(raw.rounds[2].avg2, 9.47);
   assert.deepEqual(adjustCommunityDeductions(raw, { confirmed: false, items: [] }), raw);
+  // The same round as Verdict publishes it now, saying it took the two points.
+  const included = [1, 2, 3].map(round => ({ round, deduct1: 0, deduct2: round === 3 ? 2 : 0 }));
+  const current = { ...raw, avg2: 26.86, rounds: [...raw.rounds.slice(0, 2), { round: 3, avg1: 9.39, avg2: 7.47 }], included };
+  const kept = adjustCommunityDeductions(current, state);
+  assert.ok(Math.abs(kept.rounds[2].avg2 - 7.47) < 1e-9 && Math.abs(kept.avg2 - 26.86) < 1e-9, "never the same points twice");
+  assert.equal((kept as { deductionsApplied?: boolean }).deductionsApplied, true);
+  // A grid that says it took none is a base grid; one that took a point the
+  // record withdrew gets it back; the record's extra point still comes off.
+  assert.ok(Math.abs(adjustCommunityDeductions({ ...raw, included: included.map(round => ({ ...round, deduct2: 0 })) }, state).rounds[2].avg2 - 7.47) < 1e-9);
+  assert.ok(Math.abs(adjustCommunityDeductions(current, { confirmed: true, items: [] }).rounds[2].avg2 - 9.47) < 1e-9);
+  const three = { confirmed: true, items: [{ side: "f2" as const, round: 3, points: 3, reason: "Low blow" }] };
+  assert.ok(Math.abs(adjustCommunityDeductions(current, three).rounds[2].avg2 - 6.47) < 1e-9);
+  assert.equal(validCommunityScorecard({ ...current, included: [{ round: 4, deduct1: 0, deduct2: 1 }] }, 3), false);
   assert.deepEqual(adjustCommunityDeductions({ ...raw, source: "Another source" }, state), { ...raw, source: "Another source" });
   // Never deduct a future/unscored round from a partial live aggregate.
   const partial = { ...raw, avg1: 18.64, avg2: 19.39, rounds: raw.rounds.slice(0, 2) };
