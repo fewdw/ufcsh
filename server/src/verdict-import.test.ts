@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { alignment, importVerdictEvent } from "./verdict-import.ts";
+import { alignment, importVerdictEvent, syncVerdictScorecards } from "./verdict-import.ts";
 import { db } from "./db.ts";
 import { bugReport } from "./bugs.ts";
 import { confirmedDeductions, type DeductionFight } from "./point-deduction-rules.ts";
@@ -170,4 +170,24 @@ test("Verdict's listed penalties stand in for MMA Decisions, never over it, and 
     await importVerdictEvent(verdictId, "refresh");
     assert.equal(read().deductions_json, stored);
   }
+});
+
+test("a card first read before Verdict dated it is read again, and undated pages never move the probe window", async t => {
+  const originalFetch = globalThis.fetch;
+  const paths: string[] = [];
+  db.exec("BEGIN");
+  t.after(() => { globalThis.fetch = originalFetch; db.exec("ROLLBACK"); });
+  const dated = (db.prepare("SELECT MAX(verdict_id) AS id FROM verdict_events WHERE event_id IS NOT NULL OR date IS NOT NULL").get() as { id: number | null }).id ?? 0;
+  const undated = db.prepare("INSERT OR REPLACE INTO verdict_events (verdict_id, event_id, date, checked_at) VALUES (?, NULL, NULL, 0)");
+  undated.run(dated + 5);
+  undated.run(dated + 5_000);
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    paths.push(path);
+    return new Response(path === "/events" ? `<a href="/event/${dated + 5}">card</a>` : "", { status: path === "/events" ? 200 : 404 });
+  };
+  await syncVerdictScorecards();
+  assert.ok(paths.includes(`/event/${dated + 5}`), "the undated card is read again");
+  assert.ok(paths.includes(`/event/${dated + 10}`), "probes start past the newest dated card");
+  assert.ok(!paths.includes(`/event/${dated + 5_001}`), "an undated page past the end never moves the window");
 });

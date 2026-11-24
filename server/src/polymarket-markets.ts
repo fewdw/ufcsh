@@ -45,6 +45,8 @@ type Context = MarketFight & {
   identity: string;
   names: [string[], string[]];
   round: number;
+  /** The highest round seen starting live (Verdict or an admin), for chart markers. */
+  bell: number;
   sports: MarketSummary["sports"];
   community: MarketSummary["community"];
 };
@@ -226,6 +228,9 @@ export class PolymarketMarkets {
         statsRounds,
         admin?.rounds ?? 0,
       ),
+      // UFCStats posts a round's totals after it ends, often a round or two
+      // late, so only Verdict's started rounds and hand-opened ones mark a bell.
+      bell: Math.max(verdictLive(f)?.started ?? 0, admin?.rounds ?? 0),
       sports: p == null || !f.odds_at ? null : { p, at: f.odds_at },
       community:
         n1 + n2 ? { p: n1 / (n1 + n2), n: n1 + n2, at: Date.now() } : null,
@@ -505,10 +510,10 @@ export class PolymarketMarkets {
   private record(c: Context, mapping: Mapping, q: MarketQuote): void {
     // A timestamp is read only when a round is first observed live. No guessed
     // round boundaries are reconstructed from sparse historical prices.
-    if (c.state === "live" && c.round > 0)
+    if (c.state === "live" && c.bell > 0)
       db.prepare(
         "INSERT OR IGNORE INTO polymarket_rounds VALUES (?, ?, ?, ?)",
-      ).run(c.id, c.identity, c.round, q.at);
+      ).run(c.id, c.identity, c.bell, q.at);
     const last = db
       .prepare(
         `SELECT MAX(at) AS at FROM polymarket_samples WHERE fight_id=? AND identity=? AND market_key=? AND source='observed'`,
