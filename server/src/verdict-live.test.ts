@@ -132,3 +132,16 @@ test("Admin → Bugs lists bouts past round one with no live read, and only thos
   assert.deepEqual(keys.filter(key => /decision|live|finish|started/.test(key)).sort(), ["missed-decision", "missed-live"]);
   assert.equal(report.level, "must");
 });
+
+test("a card Verdict's picks feed links is read before the scorecard import matches it", async t => {
+  const paths = serve(t, path => path.includes("/fight/") ? boutPage(90009, 6) : cardPage(90009, 6));
+  db.exec("BEGIN");
+  t.after(() => db.exec("ROLLBACK"));
+  fixture("verdict-live-picks", 90009);
+  db.prepare("DELETE FROM verdict_events WHERE verdict_id = 90009").run();
+  db.prepare("UPDATE fights SET verdict_picks_json = ? WHERE id = 'verdict-live-picks-bout'")
+    .run(JSON.stringify({ source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/90009/fight/6" }));
+  await syncVerdictLive();
+  assert.deepEqual(paths.filter(path => path.includes("90009")), ["/event/90009", "/event/90009/fight/6"]);
+  assert.equal(stored("verdict-live-picks-bout").started, 3);
+});

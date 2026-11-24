@@ -132,6 +132,13 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   and two Verdict missed (Brown against Jacobe Smith, 31 October; Sanches
   against Elder, UFC 334).
 
+  A bout stopped after round one has fan-scored rounds but no judges' cards
+  and no MMA Decisions page, so its penalties come only from the Wikipedia
+  notes and Verdict's round data. A listed penalty applies when it falls in a
+  round that was fought (`finishedInRound`/`recordProblem` in
+  `point-deduction-rules.ts`). Example: Albazi's round-two point against Costa
+  (21 November 2026, a third-round submission).
+
   Source check (19 October 2026): Verdict's [guide](https://verdictmma.com/how_to_score)
   says it applies deductions, but its [Garbrandt–Long published grid](https://verdictmma.com/event/1324/fight/1)
   gives Long 9.47 in R3 and 28.86 overall while its round metadata lists two

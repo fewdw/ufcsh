@@ -369,6 +369,23 @@ test("the bout on now is captured live before any evidence it has started", asyn
   );
 });
 
+test("round markers wait for a bell, never UFCStats' totals of a round already over", async (t) => {
+  const f = fixture(t, { today: true, onNow: true });
+  db.prepare("UPDATE fights SET detail_json = ? WHERE id = ?").run(
+    JSON.stringify({ type: "past", totalsRounds: { rounds: [{}, {}] } }),
+    f.id,
+  );
+  assert.deepEqual([f.service.context(f.id)!.round, f.service.context(f.id)!.bell], [2, 0]);
+  assert.equal((await f.service.detail(f.id))!.rounds.length, 0);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  db.prepare("UPDATE fights SET verdict_live_json = ? WHERE id = ?").run(
+    JSON.stringify({ sourceUrl: "", status: 1, started: 3, ended: 2, community: null }),
+    f.id,
+  );
+  assert.equal(f.service.context(f.id)!.bell, 3);
+});
+
 test("a live bout's props are priced from their books, never a reader's wait", async (t) => {
   const f = fixture(t, { today: true, onNow: true });
   const first = (await f.service.detail(f.id))!;

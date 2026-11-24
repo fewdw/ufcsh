@@ -34,6 +34,10 @@ const unfinished = db.prepare(`SELECT f.id, f.event_id, e.date, f.f1_name, f.f2_
 const verdictCards = db.prepare(`SELECT verdict_id FROM verdict_events
   WHERE event_id IN (SELECT value FROM json_each(?))
     OR (event_id IS NULL AND date BETWEEN date(?, '-1 day') AND date(?, '+1 day'))`);
+/** Tonight's Verdict cards as its picks feed links them (`/event/<id>/fight/<n>`),
+ * read before the scorecard import has matched the card itself. */
+const pickedCards = db.prepare(`SELECT DISTINCT json_extract(verdict_picks_json, '$.sourceUrl') AS url FROM fights
+  WHERE event_id IN (SELECT value FROM json_each(?)) AND json_valid(verdict_picks_json)`);
 const store = db.prepare("UPDATE fights SET verdict_live_json = ? WHERE id = ? AND verdict_live_json IS NOT ?");
 
 /** Per Verdict card: when to read it next, and the bout it had on. */
@@ -119,8 +123,14 @@ export async function syncVerdictLive(now = Date.now()): Promise<void> {
     const fights = (unfinished.all() as LocalFight[]).filter(fight => isFightDay(fight.date, now));
     if (!fights.length) { cards.clear(); return; }
     const date = fights[0].date;
-    const ids = (verdictCards.all(JSON.stringify([...new Set(fights.map(fight => fight.event_id))]), date, date) as { verdict_id: number }[])
-      .map(row => row.verdict_id);
+    const events = JSON.stringify([...new Set(fights.map(fight => fight.event_id))]);
+    const ids = [...new Set([
+      ...(verdictCards.all(events, date, date) as { verdict_id: number }[]).map(row => row.verdict_id),
+      ...(pickedCards.all(events) as { url: unknown }[]).flatMap(row => {
+        const id = Number(/^https:\/\/verdictmma\.com\/event\/(\d+)\/fight\/\d+$/.exec(String(row.url))?.[1]);
+        return Number.isSafeInteger(id) && id > 0 ? [id] : [];
+      }),
+    ])];
     for (const id of ids) {
       try { await readCard(id, fights, now); }
       catch (error) {

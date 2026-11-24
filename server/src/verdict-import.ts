@@ -179,8 +179,9 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
   const sourceUrl = `${VERDICT}/event/${eventId}/fight/${fightNumber}`;
   try {
     // Penalties are only in the hydration payload, which costs ~1.4 MB, so
-    // only a recent decision MMA Decisions hasn't covered pays for it.
-    const penalties = isDecision(fight) && storedDeductions(fight.deductions_json)?.source !== "MMA Decisions"
+    // only a recent bout MMA Decisions hasn't covered pays for it: a decision,
+    // or a finish after round one (MMA Decisions never covers those).
+    const penalties = scoreable(fight) && storedDeductions(fight.deductions_json)?.source !== "MMA Decisions"
       && (mode === "refresh" || ageInDays(fight.date, Date.now()) <= 45);
     const path = `/event/${eventId}/fight/${fightNumber}`;
     const html = penalties ? await fetchVerdictDocument(path) : await fetchVerdictHtml(path);
@@ -374,8 +375,12 @@ export async function syncVerdictScorecards(): Promise<VerdictImportStats & { ev
     };
     if (Date.now() - discoveredAt > 3_600_000) {
       discoveredAt = Date.now();
-      const known = new Set((db.prepare("SELECT verdict_id FROM verdict_events WHERE error IS NULL OR date IS NOT NULL").all() as { verdict_id: number }[]).map(row => row.verdict_id));
-      const maxKnown = (db.prepare("SELECT MAX(verdict_id) AS id FROM verdict_events").get() as { id: number | null }).id ?? 0;
+      // A card first read before Verdict dated it (nothing matched, no date)
+      // is read again whenever it is listed or probed, until it has a date.
+      const known = new Set((db.prepare("SELECT verdict_id FROM verdict_events WHERE event_id IS NOT NULL OR date IS NOT NULL").all() as { verdict_id: number }[]).map(row => row.verdict_id));
+      // Probe past the newest dated card: undated pages past the end would
+      // otherwise move the probe window ten ids further every hour.
+      const maxKnown = (db.prepare("SELECT MAX(verdict_id) AS id FROM verdict_events WHERE event_id IS NOT NULL OR date IS NOT NULL").get() as { id: number | null }).id ?? 0;
       let ids: number[] = [];
       try { ids = await listedVerdictIds(); } catch (error) { log(`verdict events listing: ${String(error)}`); }
       // Ids are allocated as cards are announced, so anything past the highest
