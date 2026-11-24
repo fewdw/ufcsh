@@ -101,11 +101,10 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-11-23">November 23, 2026</time></p>
+            <p><time dateTime="2026-11-24">November 24, 2026</time></p>
             <ul>
-              <li>Point deductions in rounds before a stoppage now count toward fan scorecards.</li>
-              <li>Verdict MMA fan scorecards and live rounds no longer miss newly listed cards.</li>
-              <li>Polymarket round markers now land on the real bell instead of a round or two late.</li>
+              <li>Community scorecards now mark the round a referee took a point and say who lost it and why.</li>
+              <li>Fan scores no longer lose a point twice when Verdict MMA has already taken it off.</li>
             </ul>
           </Section>
         </div>

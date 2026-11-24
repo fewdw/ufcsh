@@ -1189,13 +1189,13 @@ type Judge = NonNullable<FightDetailBlock["judges"]>[number];
 type Deduction = NonNullable<FightDetailBlock["deductions"]>[number];
 
 /** "Evloev lost a point in round 4: low blow." */
-function deductionSentence(fight: Matchup, deduction: Deduction): string {
+export function deductionSentence(fight: Matchup, deduction: Deduction): string {
   const points = deduction.points === 1 ? "a point" : `${deduction.points} points`;
   return `${lastName(fight[deduction.side].name)} lost ${points} in round ${deduction.round}${deduction.reason ? `: ${deduction.reason.toLowerCase()}` : ""}.`;
 }
 
 /** Points the referee took from each side in one round. */
-function deductedIn(deductions: Deduction[], round: number): Partial<Record<Side, number>> {
+export function deductedIn(deductions: Deduction[], round: number): Partial<Record<Side, number>> {
   const taken: Partial<Record<Side, number>> = {};
   for (const deduction of deductions) if (deduction.round === round) taken[deduction.side] = (taken[deduction.side] ?? 0) + deduction.points;
   return taken;

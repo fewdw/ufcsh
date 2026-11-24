@@ -68,10 +68,14 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   `ScoringStore` applies the same overrides to round averages, whole-card
   averages, winner/draw counts, public profiles and agreement calculations.
   Raw saved cards keep their revision, timestamp and base round choices.
-- Verdict's published scorecard grid is stored unchanged, tagged
-  `deductionsApplied: false`, and adjusted at read time before weighting it
-  with UFC.sh cards. Legacy Verdict imports use the same rule. An explicitly
-  already adjusted source is not adjusted again; unknown sources are untouched.
+- Verdict's published scorecard grid is stored unchanged. Verdict now
+  publishes it with the referee's penalties already taken, so every read is
+  tagged `deductionsApplied: true` (live grids too) and is never adjusted
+  again. Grids read before that change (`false` or untagged) carry the fans'
+  base scores and lose confirmed penalties at read time. Those on bouts with a
+  penalty are re-read a few cards a pass (`rereadBasePenaltyGrids`), and any
+  left are listed in Admin → Bugs ("Fan cards waiting for Verdict's grid with
+  penalties"). Unknown sources are untouched.
   Only rounds present in an imported/live card lose points, and published
   total rounding is preserved. Analytics, controversy and career scorecard
   averages share this adjustment. Referee penalties can explain a difference
@@ -141,9 +145,14 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
 
   Source check (19 October 2026): Verdict's [guide](https://verdictmma.com/how_to_score)
   says it applies deductions, but its [Garbrandt–Long published grid](https://verdictmma.com/event/1324/fight/1)
-  gives Long 9.47 in R3 and 28.86 overall while its round metadata lists two
-  deducted points. The imported grid therefore needs adjustment to 7.47 and
-  26.86. Do not assume the site's explanatory copy describes the exported grid.
+  then gave Long 9.47 in R3 and 28.86 overall while its round metadata listed
+  two deducted points, so the import was adjusted to 7.47 and 26.86. Re-checked
+  24 November 2026: the same grid now reads 7.47 and 26.86 itself, and
+  Albazi–Costa reads 7.77 in R2 with his point taken (a base average can't be
+  under 7). Grids read since mid-November had been losing the point twice
+  (Albazi showed 6.77). Do not assume the site's explanatory copy, or last
+  month's grid, describes the exported grid; the deducted rounds' two averages
+  summing near 19 (base) or near 18 (penalty taken) tells them apart.
 - Completed cards must include every completed round, starting at round one.
   Stoppage rounds are excluded: both panels end with the finish itself — the
   winner, the method and the time — in place of rounds that were never fought. First-round stoppages have a Score tab explaining
