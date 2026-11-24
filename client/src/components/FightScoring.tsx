@@ -3,7 +3,7 @@ import type { Matchup } from "../api";
 import { apiCache, useApi } from "../api";
 import { decimalScore, fightFinish } from "../scoring";
 import type { ScoreSummary } from "../scoring";
-import { PANEL_SHELL, PanelHeading, sectionLabel } from "./FightStats";
+import { PANEL_SHELL, PanelHeading, deductedIn, deductionSentence, sectionLabel } from "./FightStats";
 // Part of the matchup page's own code: a lazily loaded editor held the Score
 // tab on a fallback for at least React's 300 ms reveal throttle.
 import ScoreEditor from "./ScoreEditor";
@@ -36,6 +36,9 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
   // last line of the card, in place of rows that could never carry a score.
   const finish = fightFinish(fight, eligibility);
   const rows = eligibility.state === "completed" ? eligibility.available : eligibility.scheduled;
+  // Confirmed referee penalties are already in the fans' averages: mark the
+  // round they came off and say what they were for.
+  const deductions = data.deductions?.confirmed ? data.deductions.items.filter(item => item.points > 0) : [];
   return (
     <>
       <section className={PANEL_SHELL}>
@@ -85,9 +88,17 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
                     const round = index + 1;
                     const row = data.rounds.find(item => item.round === round);
                     const [mine, theirs] = side === 1 ? [row?.total1, row?.total2] : [row?.total2, row?.total1];
+                    const taken = deductedIn(deductions, round)[side === 1 ? "f1" : "f2"] ?? 0;
+                    const note = taken ? `Includes a ${taken}-point deduction` : undefined;
                     return (
-                      <span key={index} className={`flex items-center justify-center border-t border-zinc-100 py-2 text-xs @[32rem]:text-sm ${lead(mine, theirs)} ${index < eligibility.available ? "" : "opacity-50"}`}>
-                        {decimalScore(mine)}
+                      <span key={index} className={`flex items-center justify-center border-t border-zinc-100 py-2 text-xs @[32rem]:text-sm ${taken ? "" : lead(mine, theirs)} ${index < eligibility.available ? "" : "opacity-50"}`}>
+                        {taken ? (
+                          <span className="relative rounded bg-red-100 px-1 py-0.5 font-semibold text-red-700 dark:bg-red-950 dark:text-red-300"
+                            title={note} aria-label={`${decimalScore(mine)}. ${note}.`}>
+                            {decimalScore(mine)}
+                            <span aria-hidden="true" className="absolute -right-1.5 -top-2 rounded-full bg-red-600 px-1 text-[9px] font-bold leading-[14px] text-white">−{taken}</span>
+                          </span>
+                        ) : decimalScore(mine)}
                       </span>
                     );
                   })}
@@ -105,8 +116,13 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
             })}
           </div>
         </div>
-        {data.deductions?.confirmed && data.deductions.items.length ? (
-          <p className="border-t border-zinc-100 px-4 py-2 text-xs text-zinc-500 sm:px-5">Fan scores include referee deductions.</p>
+        {deductions.length ? (
+          <p className="border-t border-zinc-100 px-4 py-2 text-xs leading-5 sm:px-5">
+            {deductions.map((deduction, index) => (
+              <span key={index} className={`block font-semibold ${deduction.side === "f1" ? "text-f1-ink" : "text-f2-ink"}`}>{deductionSentence(fight, deduction)}</span>
+            ))}
+            <span className="block text-zinc-500">Fan scores include them.</span>
+          </p>
         ) : null}
         {eligibility.reason ? <p className="border-t border-zinc-100 px-5 py-3 text-xs text-zinc-500">{eligibility.reason}</p> : null}
       </section>
