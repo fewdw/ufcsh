@@ -585,7 +585,9 @@ export function parseEventMethodOddsHtml(html: string, sourceUrl: string): Event
     for (let j = i + 2; j < rows.length; j++) {
       const row = rows[j];
       if (boardMatchupId($, row) != null) break;
-      const label = cleanText(row.find("th").first().text());
+      // The source escapes its labels twice ("Over 3&amp;#189; rounds"), so the
+      // text still holds the entity for ½ after parsing.
+      const label = cleanText(row.find("th").first().text()).replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)));
 
       const method = METHOD_MARKET.exec(label);
       if (method) {

@@ -414,6 +414,38 @@ function oddsMissingByRound(): BugCheck {
   }, items);
 }
 
+const TOTAL_ROUNDS = /^(?:Over|Under) \d+½ rounds$/i;
+
+/** Props exist but carry no Over/Under rounds line, the first prop a book
+ *  posts. BestFightOdds escapes those labels twice, and in November 2026 the
+ *  parser dropped every one of them unnoticed. */
+function oddsMissingTotals(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, e.bfo_url, m.markets_json, m.final, m.fetched_at
+    FROM fights f JOIN events e ON e.id = f.event_id JOIN method_odds m ON m.fight_id = f.id
+    WHERE (e.complete = 1 AND e.date >= '2021-01-01') OR (e.complete = 0 AND e.date <= date('now', '+7 day'))
+    ORDER BY e.date DESC, f.ord ASC
+  `).all() as (FightRow & { bfo_url: string | null; markets_json: string; final: number; fetched_at: number })[];
+  const items: BugItem[] = [];
+  for (const fight of rows) {
+    let additional: { label: string }[];
+    try { additional = JSON.parse(fight.markets_json)?.additional ?? []; } catch { continue; }
+    if (additional.some((q) => TOTAL_ROUNDS.test(q.label))) continue;
+    items.push(fightItem(fight, {
+      facts: [["Board read in full", fight.final ? "yes" : "no"], ["Fetched", ago(fight.fetched_at)]],
+      links: fight.bfo_url ? [{ label: "BFO event board", href: fight.bfo_url }] : [],
+      actions: [{ id: "props", label: "Re-read board", target: fight.id }],
+    }));
+  }
+  return check({
+    id: "odds-missing-totals",
+    group: "Odds",
+    label: "Props with no Over/Under rounds line",
+    description: "Props are stored for this bout, but none of them is an Over/Under rounds line, which books usually post first. Re-reading the board replaces props it read before (FightOdds.io's are kept).",
+    grade: recent([[30, "minor"]]),
+  }, items);
+}
+
 function suspiciousOdds(): BugCheck {
   const rows = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, o.f1_open, o.f1_close, o.f2_open, o.f2_close, o.source_url
@@ -2553,6 +2585,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     upcomingProps(),
     pastProps(),
     oddsMissingByRound(),
+    oddsMissingTotals(),
     unverifiedRecords(active),
     rankedRecordGaps(),
     rankedHistoryGaps(),
