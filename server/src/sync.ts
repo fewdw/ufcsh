@@ -1489,7 +1489,8 @@ export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: stri
         failed++;
       }
     }
-    if (alreadyFinal.get(fight.id)) continue;
+    // A final read is kept, except when an admin asks for this bout again.
+    if (alreadyFinal.get(fight.id) && !onlyFightId) continue;
     if (fightOddsProps.get(fight.id, event.complete, Date.now() - HOUR)) continue;
     let resolved: ScrapedMethodOdds;
     try {

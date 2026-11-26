@@ -84,7 +84,7 @@ const currentBoard = (header: (id: number) => string) => `
     <tbody>
       <tr ><th ${header(45574)}><a href="/fighters/jiri-prochazka-6058"><span class="t-b-fcc">Jiri Prochazka</span></a></th><td class="but-sg" data-li="[21,1,45574]"><span>+132</span></td><td class="but-sg" data-li="[25,1,45574]"><span>+130</span></td><td class="button-cell but-si" data-li="[1,45574]"></td><td class="prop-cell prop-cell-exp" data-mu="45574">92</td></tr>
       <tr ><th scope="row"><a href="/fighters/navajo-stirling-18344"><span class="t-b-fcc">Navajo Stirling</span></a></th><td class="but-sg" data-li="[21,2,45574]"><span>-170</span></td><td class="but-sg" data-li="[25,2,45574]"><span>-162</span></td><td class="button-cell but-si" data-li="[2,45574]"></td><td class="prop-cell prop-cell-exp" data-mu="45574">92</td></tr>
-      <tr class="pr"><th scope="row">Over 1&#189; rounds</th><td class="but-sgp" data-li="[21,1,45574,32,0]"><span>-152</span></td><td class="but-sgp" data-li="[25,1,45574,32,0]"><span>-167</span></td><td class="button-cell but-sip" data-li="[1,45574,32,0]"></td></tr>
+      <tr class="pr"><th scope="row">Over 1&amp;#189; rounds</th><td class="but-sgp" data-li="[21,1,45574,32,0]"><span>-152</span></td><td class="but-sgp" data-li="[25,1,45574,32,0]"><span>-167</span></td><td class="button-cell but-sip" data-li="[1,45574,32,0]"></td></tr>
       <tr class="pr"><th scope="row">Prochazka wins by TKO/KO</th><td class="but-sgp" data-li="[21,1,45574,8,1]"><span>+250</span></td><td></td><td class="button-cell but-sip" data-li="[1,45574,8,1]"></td></tr>
       <tr ><th ${header(45575)}><a href="/fighters/first-one-1"><span class="t-b-fcc">First One</span></a></th><td class="but-sg" data-li="[21,1,45575]"><span>-200</span></td><td class="button-cell but-si" data-li="[1,45575]"></td></tr>
       <tr ><th scope="row"><a href="/fighters/second-two-2"><span class="t-b-fcc">Second Two</span></a></th><td class="but-sg" data-li="[21,2,45575]"><span>+170</span></td><td class="button-cell but-si" data-li="[2,45575]"></td></tr>
@@ -107,7 +107,7 @@ test("the current board markup keys each bout by its row header, and its props s
     assert.deepEqual([rangeMiddle(["-170", "-162"]), rangeMiddle(["+132", "+130"])], ["-166", "+131"]);
     assert.equal(odds.f2.ko?.prices[0].line, "+250");
     assert.equal(odds.f1.ko, undefined);
-    assert.deepEqual(odds.additional.map((quote) => quote.prices.map((price) => price.line)), [["-152", "-167"]]);
+    assert.deepEqual(odds.additional.map((quote) => [quote.label, quote.prices.map((price) => price.line)]), [["Over 1½ rounds", ["-152", "-167"]]]);
     assert.equal(methodOddsForFight(board, "First One", "Second Two")?.f2.submission?.prices[0].line, "+900");
   }
 });

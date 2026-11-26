@@ -6,7 +6,7 @@ import { resolvePublicApi } from "./api.ts";
 import { kalshiDetail } from "./odds-sides.ts";
 import { comingOddsFreshness } from "./sync-status.ts";
 import { unmatchedBouts } from "./odds-unmatched.ts";
-import { unmatchedSourceBouts } from "./bugs.ts";
+import { bugReport, runBugAction, unmatchedSourceBouts } from "./bugs.ts";
 import type { KalshiBout } from "./scrape/kalshi.ts";
 
 const board = (link: string) => `<table class="odds-table">
@@ -52,6 +52,52 @@ test("one unreadable board on a date is reported, and the readable one's props a
   assert.match(recorded[0].error, /markup unrecognized.*ufc-board-fixture-9001/);
   const checked = db.prepare("SELECT bfo_checked_at AS at FROM events WHERE id = ?").get(eventId) as { at: number | null };
   assert.ok(checked.at, "checked, so the next pass doesn't re-read it at once");
+});
+
+test("a completed card's final props are re-read only on an admin's request, which fills the twice-escaped totals and keeps FightOdds.io's", async (t) => {
+  const eventId = "face0000000000t1", bfo = "face0000000000t2", fo = "face0000000000t3";
+  const url = "https://www.bestfightodds.com/events/ufc-board-fixture-9010";
+  t.after(() => {
+    db.prepare("DELETE FROM method_odds WHERE fight_id IN (?, ?)").run(bfo, fo);
+    db.prepare("DELETE FROM odds WHERE fight_id IN (?, ?)").run(bfo, fo);
+    db.prepare("DELETE FROM fights WHERE event_id = ?").run(eventId);
+    db.prepare("DELETE FROM events WHERE id = ?").run(eventId);
+  });
+  db.prepare("INSERT INTO events (id, name, date, complete, bfo_url) VALUES (?, 'UFC Totals fixture', '2026-11-21', 1, ?)").run(eventId, url);
+  const fight = db.prepare(`INSERT INTO fights (id, event_id, ord, weight_class, f1_id, f2_id, f1_name, f2_name) VALUES (?, ?, ?, 'Light Heavyweight', ?, ?, ?, ?)`);
+  fight.run(bfo, eventId, 0, "face0000000000t4", "face0000000000t5", "Jiri Prochazka", "Navajo Stirling");
+  fight.run(fo, eventId, 1, "face0000000000t6", "face0000000000t7", "First One", "Second Two");
+  const stale = JSON.stringify({ f1: { ko: { label: "Prochazka wins by TKO/KO", prices: [{ bookmaker: "FanDuel", line: "+250" }] } }, f2: {}, additional: [] });
+  const write = db.prepare("INSERT INTO method_odds (fight_id, markets_json, source_url, final, fetched_at) VALUES (?, ?, ?, 1, 1)");
+  write.run(bfo, stale, url);
+  write.run(fo, stale, "https://fightodds.io/fights/first-one-vs-second-two-1/odds");
+  const totals = (id: number) => `<tr class="pr"><th scope="row">Over 2&amp;#189; rounds</th><td class="but-sgp" data-li="[21,1,${id},32,0]"><span>-140</span></td><td class="button-cell but-sip" data-li="[1,${id},32,0]"></td></tr>
+    <tr class="pr"><th scope="row">Under 2&amp;#189; rounds</th><td class="but-sgp" data-li="[21,2,${id},32,0]"><span>+110</span></td><td class="button-cell but-sip" data-li="[2,${id},32,0]"></td></tr>`;
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    const requested = String(input instanceof Request ? input.url : input);
+    if (requested !== url) return new Response("");
+    return new Response(`<table class="odds-table"><thead><tr><th></th><th data-b="21">FanDuel</th></tr></thead><tbody>
+      <tr><th scope="row" data-admin-matchup="45574"><a href="/fighters/jiri-prochazka-6058">Jiri Prochazka</a></th><td class="but-sg" data-li="[21,1,45574]"><span>+132</span></td><td class="button-cell but-si" data-li="[1,45574]"></td></tr>
+      <tr><th scope="row"><a href="/fighters/navajo-stirling-18344">Navajo Stirling</a></th><td class="but-sg" data-li="[21,2,45574]"><span>-170</span></td><td class="button-cell but-si" data-li="[2,45574]"></td></tr>
+      ${totals(45574)}
+      <tr><th scope="row" data-admin-matchup="45575"><a href="/fighters/first-one-1">First One</a></th><td class="but-sg" data-li="[21,1,45575]"><span>-200</span></td><td class="button-cell but-si" data-li="[1,45575]"></td></tr>
+      <tr><th scope="row"><a href="/fighters/second-two-2">Second Two</a></th><td class="but-sg" data-li="[21,2,45575]"><span>+170</span></td><td class="button-cell but-si" data-li="[2,45575]"></td></tr>
+      ${totals(45575)}
+    </tbody></table>`);
+  });
+  const labels = (id: string) => JSON.parse((db.prepare("SELECT markets_json FROM method_odds WHERE fight_id = ?").get(id) as { markets_json: string }).markets_json)
+    .additional.map((quote: { label: string; prices: { line: string }[] }) => `${quote.label} ${quote.prices[0].line}`);
+  const flagged = () => bugReport().checks.find((check) => check.id === "odds-missing-totals")!.items.map((item) => item.key).filter((key) => key === bfo || key === fo).sort();
+  assert.deepEqual(flagged(), [bfo, fo]);
+
+  await syncMethodOddsForEvent(eventId);
+  assert.deepEqual(labels(bfo), [], "the scheduled pass leaves a final read alone");
+  assert.equal((await runBugAction("props", bfo)).ok, true);
+  assert.deepEqual(labels(bfo), ["Over 2½ rounds -140", "Under 2½ rounds +110"]);
+  assert.equal((db.prepare("SELECT final FROM method_odds WHERE fight_id = ?").get(bfo) as { final: number }).final, 1);
+  await runBugAction("props", fo);
+  assert.deepEqual(labels(fo), [], "FightOdds.io's close is kept");
+  assert.deepEqual(flagged(), [fo]);
 });
 
 test("an upcoming card's board sets each bout's line on its own fighters, fills a missing open once, and leaves a bout at the bell alone", async (t) => {
